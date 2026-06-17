@@ -1,0 +1,17 @@
+[versions]
+# Pinned, single source of truth for every module. Bumping a version here
+# updates the whole monorepo.
+springBoot = "3.5.15"
+nodeGradle = "7.1.0"
+jacoco = "0.8.13"
+junit = "5.11.4"
+
+[libraries]
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-batch = { module = "org.springframework.boot:spring-boot-starter-batch" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-batch-test = { module = "org.springframework.batch:spring-batch-test" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+node-gradle = { id = "com.github.node-gradle.node", version.ref = "nodeGradle" }
