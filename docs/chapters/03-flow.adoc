@@ -1,0 +1,33 @@
+== 履约流程
+
+本章用 PlantUML 时序图展示一次成功下单的主流程,同样使用 Smetana 布局。
+
+[plantuml, diagram-flow, svg]
+----
+@startuml
+!pragma layout smetana
+skinparam defaultFontName "Noto Sans SC"
+skinparam sequenceMessageAlign center
+
+actor "用户" as User
+participant "订单服务" as Order
+participant "库存服务" as Inventory
+participant "支付服务" as Payment
+participant "物流服务" as Logistics
+
+User -> Order : 提交订单
+Order -> Inventory : 校验并锁定库存
+Inventory --> Order : 锁定成功
+Order -> Payment : 发起支付
+Payment --> Order : 支付成功
+Order -> Logistics : 创建发货单
+Logistics --> Order : 已受理
+Order --> User : 下单成功
+@enduml
+----
+
+=== 异常与补偿
+
+若支付超时,订单服务发布「订单取消」事件,库存服务据此**释放锁定库存**,形成补偿闭环(Saga 模式)。
+
+TIP: 这个 admonition 块也用来验证 `icons=font` 与中文混排在 PDF 中的呈现。

@@ -1,0 +1,37 @@
+== 系统架构
+
+本章用 PlantUML 组件图展示子系统边界。图表使用 **Smetana 布局引擎**(设计决策 2),`!pragma layout smetana` 一行切换,构建期无需 Graphviz 的 `dot`。
+
+[plantuml, diagram-architecture, svg]
+----
+@startuml
+!pragma layout smetana
+skinparam backgroundColor transparent
+skinparam componentStyle rectangle
+skinparam defaultFontName "Noto Sans SC"
+
+package "订单履约系统" {
+  [订单服务] as Order
+  [库存服务] as Inventory
+  [支付服务] as Payment
+  [物流服务] as Logistics
+}
+
+database "订单库" as OrderDB
+queue "事件总线" as Bus
+
+Order --> OrderDB : 持久化
+Order --> Bus : 发布订单事件
+Inventory --> Bus : 订阅/扣减
+Payment --> Bus : 订阅/收款
+Logistics --> Bus : 订阅/发货
+@enduml
+----
+
+=== 架构说明
+
+* **订单服务**:聚合根,负责订单状态机与一致性边界。
+* **事件总线**:解耦子系统,保证最终一致性。
+* **库存 / 支付 / 物流**:各自独立部署,通过事件协作。
+
+矢量 SVG 输出(设计决策 3)意味着 PM 在 Acrobat 里放大看组件连线时不会糊。

@@ -1,0 +1,16 @@
+= 产品设计文档:订单履约系统
+产品架构组
+:revnumber: v1.0
+:revremark: POC 示例
+:lang: zh-CN
+// 图表全局默认使用 Smetana 布局(设计决策 2:纯 JVM,免 Graphviz)
+:plantuml-format: svg
+
+[.text-center]
+本文档演示「AsciiDoc + PlantUML → PDF」流水线的可复现构建能力,面向非技术读者(PM)。
+
+include::chapters/01-overview.adoc[]
+
+include::chapters/02-architecture.adoc[]
+
+include::chapters/03-flow.adoc[]
