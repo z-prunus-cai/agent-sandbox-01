@@ -1,12 +1,12 @@
-== 履约流程
+= 履约流程
+:keywords: 流程, 时序图, saga
 
-本章用 PlantUML 时序图展示一次成功下单的主流程,同样使用 Smetana 布局。
+本页用 PlantUML 时序图展示一次成功下单的主流程,同样使用 Smetana 布局。
 
-[plantuml, diagram-flow, svg]
-----
+[plantuml, diagram-flow, png]
+....
 @startuml
 !pragma layout smetana
-skinparam defaultFontName "Noto Sans SC"
 skinparam sequenceMessageAlign center
 
 actor "用户" as User
@@ -24,10 +24,10 @@ Order -> Logistics : 创建发货单
 Logistics --> Order : 已受理
 Order --> User : 下单成功
 @enduml
-----
+....
 
-=== 异常与补偿
+== 异常与补偿
 
 若支付超时,订单服务发布「订单取消」事件,库存服务据此**释放锁定库存**,形成补偿闭环(Saga 模式)。
 
-TIP: 这个 admonition 块也用来验证 `icons=font` 与中文混排在 PDF 中的呈现。
+TIP: 这个 admonition 块用来验证 AsciiDoc 的 admonition 在 Confluence 里映射为对应的信息宏。

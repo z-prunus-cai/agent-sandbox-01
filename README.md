@@ -1,87 +1,93 @@
-# 设计文档 → PDF 流水线(POC)
+# 设计文档 → Confluence 流水线(POC)
 
-把 `docs/**/*.adoc`(含 PlantUML 图表)构建成**单个可复现的中文 PDF**,带封面、目录、
-章节编号。面向非技术读者(PM)。CI 容器只需一个 JDK —— 无 `gem install` / `apt install`
-/ `npm install`,不引入 Chromium / 系统级 Ruby / Graphviz。
+把 `docs/**/*.adoc`(含 PlantUML 图表)通过 **Confluence Publisher CLI** 发布到 Confluence。
+**Git 是唯一事实来源(SSOT)**,Confluence 是单向只读镜像。Gradle 调用 CLI,纯 JVM,无需 Docker。
 
-本仓库是对应设计方案的**可运行 POC**,已端到端验证通过。
+本仓库是对应设计方案的**可运行 POC**,已用离线 `convertOnly` 端到端验证通过。
 
 ## 快速开始
 
 ```bash
-./gradlew asciidoctorPdf
-# 产物:build/docs/pdf/index.pdf
+# 1) 离线转换校验(不连 Confluence,CI/本地校验文档没写坏)
+./gradlew confluenceConvert
+# 产物:build/confluence/  (Confluence 存储格式 XHTML + PlantUML 渲染的 PNG 附件)
+
+# 2) 真正发布(需凭据)
+./gradlew confluencePublish \
+  -PconfluenceUrl=https://your-org.atlassian.net/wiki \
+  -PconfluenceSpaceKey=DOCS \
+  -PconfluenceAncestorId=123456 \
+  -PconfluenceUsername=you@org.com \
+  -PconfluencePassword=<API_TOKEN>
 ```
 
-## 技术栈(五个版本全部锁死,见 `gradle.properties`)
+也可用环境变量:`CONFLUENCE_URL / CONFLUENCE_SPACE_KEY / CONFLUENCE_ANCESTOR_ID / CONFLUENCE_USERNAME / CONFLUENCE_PASSWORD`。
 
-| 层 | 组件 | 版本 |
-|---|---|---|
-| 构建入口 | `org.asciidoctor.jvm.pdf` | 4.0.4 |
-| 转换引擎 | AsciidoctorJ | 3.0.0 |
-| PDF 后端 | asciidoctorj-pdf | 2.3.19 |
-| 图表后端 | asciidoctorj-diagram | 2.3.1 |
-| Ruby 运行时 | JRuby | 9.4.8.0 |
+## 技术栈(版本锁定,见 `gradle.properties`)
 
-图表用 **PlantUML + Smetana** 布局(纯 JVM,免 Graphviz),输出 **SVG**(矢量,放大不糊)。
-中文字体是仓库内的 Noto Sans/Serif SC(`docs/theme/fonts/`),通过 `pdf-fontsdir` 指定。
+| 项 | 值 |
+|---|---|
+| 同步工具 | Confluence Publisher CLI `0.35.0` |
+| 调用方式 | Gradle `JavaExec` 调官方 main 类(纯 JVM,免 Docker) |
+| 图表 | PlantUML + Smetana(`!pragma layout smetana`,免 Graphviz)→ PNG 附件 |
+| 运行要求 | JDK 11+;构建环境需有 **CJK 字体**(PlantUML 把中文光栅化进 PNG) |
 
-## 目录结构
+CLI 及其依赖(含 `asciidoctorj-diagram` + `plantuml`)由 Gradle 从 Maven Central 解析为
+`confluenceCli` configuration,用 `JavaExec` 运行 main 类
+`org.sahli.asciidoc.confluence.publisher.cli.AsciidocConfluencePublisherCommandLineClient`。
+
+## 目录结构(Confluence 页面树约定)
 
 ```
 docs/
-  index.adoc              # 入口,doctype=book,include 各章节
-  chapters/*.adoc         # 章节(含内联 PlantUML)
+  index.adoc              # 根页「产品设计文档:订单履约系统」(含"勿编辑"横幅)
+  index/                  # index.adoc 的子页(folder 名 = 父文件名去掉 .adoc)
+    01-overview.adoc      #   子页「概述」
+    02-architecture.adoc  #   子页「系统架构」(内联 PlantUML → PNG 附件)
+    03-flow.adoc          #   子页「履约流程」(内联 PlantUML → PNG 附件)
   images/                 # 静态图片(本 POC 未用)
   diagrams/               # 外部 .puml(本 POC 内联,未用)
-  theme/
-    default-theme.yml     # PDF 主题:字体 catalog / 页脚
-    fonts/                # Noto Sans/Serif SC 静态 TTF(400/700)
-build.gradle.kts          # 单 task,无自定义 task,无 Exec
-gradle.properties         # 五个版本锁
-.github/workflows/docs-pdf.yml
+build.gradle.kts          # Gradle 调 CLI:confluenceConvert / confluencePublish
+gradle.properties         # CLI 版本锁
+.github/workflows/docs-confluence.yml
 ```
 
-## 验证结果(本机 JDK 21 实跑)
+约定:每个非 include 的 `.adoc` = 一个 Confluence 页,页标题取文档首个 `= 一级标题`;
+`foo.adoc` 与同名 `foo/` 文件夹配对形成父子层级。
+
+## 验证结果(本机实跑 `confluenceConvert`)
 
 | 验证点 | 结果 |
 |---|---|
-| 构建 | `asciidoctorPdf` 单 task,~20s,`BUILD SUCCESSFUL` |
-| 中文正文 | ✅ 6 页,641 个 CJK 字符正确渲染,文字可选可搜(非方块) |
-| **中文粗体**(已知坑 3) | ✅ catalog 四 variant 指路径,粗体不 fallback、不丢字 |
-| PlantUML(Smetana) | ✅ 组件图 + 时序图,中文标签,SVG 嵌入,**无 Graphviz** |
-| doctype=book | ✅ 封面 / 章节编号(Chapter N)/ 小节编号 / TOC |
-| icons=font | ✅ TIP admonition 的 FontAwesome 图标正常 |
-| **可复现性**(硬约束) | ✅ 设 `:reproducible:` 后同 commit 两次构建 **PDF 字节级一致**(MD5 相同),SVG 也字节一致 —— 优于设计预期的"视觉级" |
+| Gradle 调 CLI | ✅ 解析 CLI 0.35.0 + 依赖,`JavaExec` 运行,`BUILD SUCCESSFUL` |
+| 离线转换 | ✅ `convertOnly=true` 走本地分支,不连 Confluence |
+| AsciiDoc→存储格式 | ✅ 输出合法 Confluence XHTML;NOTE/TIP → `ac:structured-macro`(info/tip 宏),表格、中英混排、内联样式正常 |
+| PlantUML(Smetana) | ✅ 组件图 + 时序图渲染成 **PNG**,经 `<ac:image><ri:attachment>` 作为**附件**引用,**无 Graphviz** |
+| 中文 | ✅ XHTML 与 PNG 中文均正确渲染(非方块) |
+| 页面树 | ✅ `index` 根页 + 3 子页,folder 约定生效 |
 
-> 复现性验证命令:
-> ```bash
-> ./gradlew clean asciidoctorPdf && md5sum build/docs/pdf/index.pdf
-> ./gradlew clean asciidoctorPdf && md5sum build/docs/pdf/index.pdf   # 同一 MD5
-> ```
+## 关键设计点
 
-## 与设计文档的对应关系
+- **单向 + 幂等**:`orphanRemovalStrategy=REMOVE_ORPHANS`(默认)+ 增量发布 —— Git 删/改页自动同步,
+  Confluence 成只读镜像。根页顶部有"请勿编辑"横幅。
+- **发布锚点是页面而非空间根**:`ancestorId`(必填)指定一个 Confluence 页作为根;
+  所有内容挂在这棵子树下,**孤儿删除也只在这棵子树内生效**,不动空间里其他页。
+  → 务必用**专用 ancestor 页 / 专用空间**,别指向别人维护的页面树。
+- **`APPEND_TO_ANCESTOR`(默认)**:文档作为 ancestor 的子页;
+  若想让 ancestor 页**本身**变成文档根,改用 `REPLACE_ANCESTOR`(要求根 `.adoc` 唯一)。
+- **凭据不入库**:本地用 `-P` 参数,CI 用 secrets(`confluencePublish` 会在缺凭据/占位 ancestorId 时报错阻止误发)。
+  Cloud 认证 = 邮箱(username)+ API token(password)。
 
-- **决策 1 字体入库**:`docs/theme/fonts/` 内 4 个静态 TTF(Sans/Serif × Regular/Bold,
-  由 Noto SC 变量字体 `varLib.instancer` 实例化)。
-- **决策 2 Smetana**:每个 PlantUML block 首行 `!pragma layout smetana`。
-- **决策 3 SVG**:`:plantuml-format: svg` + block 属性 `svg`。
-- **决策 4 doctype=book**:`index.adoc` 及构建属性。
-- **决策 5 版本锁死**:五个版本在 `gradle.properties` 显式声明。
-- **已知坑 2**:`.asciidoctor/` 已入 `.gitignore`。
-- **已知坑 3**:`default-theme.yml` 的 `font.catalog` 显式给 CJK 的
-  normal/bold/italic/bold_italic 四路径(italic→regular、bold_italic→bold,CJK 无真斜体)。
+## 已知坑
 
-## 实现说明:JRuby 锁定方式
+1. **PlantUML 中文依赖构建环境的 CJK 字体**:PNG 光栅化走 JVM/AWT + fontconfig。
+   本机有文泉驿;CI 精简镜像需显式安装(见 workflow 的 `apt-get install fonts-noto-cjk`),否则中文出方块。
+2. **标题全空间唯一**是 Confluence 硬限制;多来源发同一空间时用 `pageTitlePrefix`/`pageTitleSuffix`。
+3. **CLI `notifyWatchers` 默认为 `true`**(与 Maven 插件不同),本 POC 显式设 `false` 避免刷屏。
+4. Confluence Publisher 仍是 **0.x**:功能成熟、活跃维护(0.35.0 发布于 2026-07),但不承诺 API 稳定,升级读 changelog。
 
-`asciidoctorj { setJrubyVersion(...) }` 在 project 级配置时会触发插件内部
-`updateConfiguration()` 的时序 NullPointerException。POC 改用等价、更可控的
-`resolutionStrategy.force("org.jruby:jruby:9.4.8.0")` 锁定(见 `build.gradle.kts`),
-效果与设计意图一致。
+## 与上一版(PDF 流水线)的关系
 
-## 需要拍板的点(设计 §8,POC 已给默认选择,可调)
-
-- 字体:**入库**(当前)。仓库因此约 +49MB。若嫌大,可改为内部 Maven artifact 解压。
-- 输出粒度:**单个大 PDF**(当前)。
-- HTML 版:未产出(可加 `org.asciidoctor.jvm.convert` 一并生成)。
-- 品牌化:未加封面 logo / 公司页眉(theme 已预留 `title-page`/`footer` 扩展点)。
+本次按需求改造:**去掉 PDF、不引入 Markdown**,改为 AsciiDoc → Confluence。
+随之移除了 PDF 专用的 `asciidoctor-pdf` 插件、`docs/theme/` 主题与 49MB CJK 字体
+(Confluence 自带渲染,无需入库字体)。PlantUML 输出从 SVG 改为 PNG(Confluence 附件对 PNG 更稳)。

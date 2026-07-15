@@ -2,9 +2,6 @@
 .gradle/
 build/
 
-# asciidoctor-diagram 缓存产物(已知坑 2)
+# asciidoctor-diagram 缓存产物
 .asciidoctor/
 docs/**/.asciidoctor/
-
-# 生成的图表中间产物
-**/*.puml.svg

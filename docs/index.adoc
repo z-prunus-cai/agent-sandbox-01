@@ -1,16 +1,19 @@
 = 产品设计文档:订单履约系统
-产品架构组
-:revnumber: v1.0
-:revremark: POC 示例
-:lang: zh-CN
-// 图表全局默认使用 Smetana 布局(设计决策 2:纯 JVM,免 Graphviz)
-:plantuml-format: svg
+:keywords: 设计文档, 订单履约, docs-as-code
 
-[.text-center]
-本文档演示「AsciiDoc + PlantUML → PDF」流水线的可复现构建能力,面向非技术读者(PM)。
+[NOTE]
+====
+本页及其子页由 Git 仓库经 *Confluence Publisher CLI* 自动发布(Git 为唯一事实来源)。
+**请勿在 Confluence 直接编辑** —— 改动会在下次同步时被覆盖。
+====
 
-include::chapters/01-overview.adoc[]
+本文档演示「AsciiDoc(含 PlantUML)→ Confluence」的 docs-as-code 发布流水线。
 
-include::chapters/02-architecture.adoc[]
+按 Confluence Publisher 的约定,本目录结构映射为 Confluence 页面树:`index.adoc` 是根页,
+`index/` 文件夹下的每个 `.adoc` 成为它的子页。
 
-include::chapters/03-flow.adoc[]
+子页:
+
+* 概述
+* 系统架构
+* 履约流程

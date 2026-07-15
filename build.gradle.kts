@@ -1,8 +1,6 @@
-import org.asciidoctor.gradle.jvm.pdf.AsciidoctorPdfTask
-
 plugins {
-    // (1/5) 构建入口:提供 asciidoctorPdf task。版本来自 gradle.properties。
-    id("org.asciidoctor.jvm.pdf") version "4.0.4"
+    // 仅为 clean 等生命周期 task,不做任何编译
+    base
 }
 
 repositories {
@@ -10,67 +8,77 @@ repositories {
 }
 
 // ---------------------------------------------------------------------------
-// 版本锁定:五个都显式声明,不让插件填默认值(设计决策 5)
+// Gradle 调 Confluence Publisher CLI:
+//   把 CLI 及其全部依赖(含 asciidoctorj-diagram + PlantUML)解析成一个
+//   configuration,再用 JavaExec 以官方 main 类运行。纯 JVM,无需 Docker。
 // ---------------------------------------------------------------------------
-val asciidoctorjVersion: String by project
-val asciidoctorjPdfVersion: String by project
-val asciidoctorjDiagramVersion: String by project
-val jrubyVersion: String by project
+val confluencePublisherCliVersion: String by project
 
-asciidoctorj {
-    // (2/5) 转换引擎
-    setVersion(asciidoctorjVersion)
-
-    modules {
-        // (3/5) PDF 后端
-        pdf.version(asciidoctorjPdfVersion)
-        // (4/5) 图表后端
-        diagram.version(asciidoctorjDiagramVersion)
+val confluenceCli: Configuration by configurations.creating {
+    // 声明标准 JVM 属性,否则 guava 的 android/jre 变体无法消歧
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(
+            TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(TargetJvmEnvironment.STANDARD_JVM)
+        )
     }
 }
 
-// (5/5) 底层 Ruby 运行时 —— 显式锁死。
-// 注:asciidoctorj 扩展的 setJrubyVersion() 在 project 级配置时会触发插件内部
-// 的 updateConfiguration() 时序 NPE,故改用 resolutionStrategy.force 锁定,
-// 效果等价且更可控(设计决策 5:五个版本全部显式声明)。
-configurations.configureEach {
-    resolutionStrategy {
-        force("org.jruby:jruby:$jrubyVersion")
-        force("org.jruby:jruby-complete:$jrubyVersion")
-    }
+dependencies {
+    confluenceCli(
+        "org.sahli.asciidoc.confluence.publisher:asciidoc-confluence-publisher-cli:$confluencePublisherCliVersion"
+    )
 }
 
-tasks.withType<AsciidoctorPdfTask>().configureEach {
-    // 入口文档,doctype=book(设计决策 4:封面 / 章节分页 / 罗马数字前言页码)
-    baseDirFollowsSourceFile()
-    sourceDir(file("docs"))
-    sources { include("index.adoc") }
-    setOutputDir(layout.buildDirectory.dir("docs/pdf").get().asFile)
+val cliMainClass = "org.sahli.asciidoc.confluence.publisher.cli.AsciidocConfluencePublisherCommandLineClient"
+val docsRoot = layout.projectDirectory.dir("docs").asFile
+val convertOutput = layout.buildDirectory.dir("confluence").get().asFile
 
-    // 启用 diagram 扩展(PlantUML 拦截)
-    asciidoctorj {
-        modules {
-            diagram.use()
+// 从 -P 属性或环境变量读取,convert(离线)用占位默认值即可
+fun cfg(prop: String, env: String, default: String): String =
+    (findProperty(prop) as String?) ?: System.getenv(env) ?: default
+
+// CLI 参数是 key=value 形式;这些是 convert / publish 共用的部分
+fun baseArgs(): List<String> = listOf(
+    "asciidocRootFolder=${docsRoot.absolutePath}",
+    "asciidocBuildFolder=${convertOutput.absolutePath}",
+    "rootConfluenceUrl=${cfg("confluenceUrl", "CONFLUENCE_URL", "https://your-org.atlassian.net/wiki")}",
+    "spaceKey=${cfg("confluenceSpaceKey", "CONFLUENCE_SPACE_KEY", "DOCS")}",
+    // ancestorId:发布锚点页(不是空间根),孤儿删除也只在这棵子树内生效
+    "ancestorId=${cfg("confluenceAncestorId", "CONFLUENCE_ANCESTOR_ID", "000000")}",
+    "username=${cfg("confluenceUsername", "CONFLUENCE_USERNAME", "")}",
+    "password=${cfg("confluencePassword", "CONFLUENCE_PASSWORD", "unused-in-convert-only")}",
+    "publishingStrategy=APPEND_TO_ANCESTOR",
+    "orphanRemovalStrategy=REMOVE_ORPHANS",
+    "notifyWatchers=false",
+    "versionMessage=${cfg("versionMessage", "VERSION_MESSAGE", "Published from Git")}",
+)
+
+// 离线转换校验:convertOnly=true 走本地分支,不连 Confluence。
+// 输出 XHTML + PlantUML 渲染的 PNG 附件到 build/confluence/,可直接检查。
+tasks.register<JavaExec>("confluenceConvert") {
+    group = "documentation"
+    description = "本地转换校验(convertOnly,不连 Confluence,CI 校验文档没写坏)"
+    classpath = confluenceCli
+    mainClass.set(cliMainClass)
+    args = baseArgs() + "convertOnly=true"
+}
+
+// 真正发布到 Confluence:需要凭据(Cloud = 邮箱 + API token)。
+tasks.register<JavaExec>("confluencePublish") {
+    group = "documentation"
+    description = "发布到 Confluence(需 -PconfluenceUsername/-PconfluencePassword 或环境变量)"
+    classpath = confluenceCli
+    mainClass.set(cliMainClass)
+    args = baseArgs() + "convertOnly=false"
+    doFirst {
+        require(cfg("confluenceUsername", "CONFLUENCE_USERNAME", "").isNotBlank()) {
+            "缺少凭据:请设置 -PconfluenceUsername + -PconfluencePassword(或 CONFLUENCE_USERNAME/CONFLUENCE_PASSWORD 环境变量)"
+        }
+        require(cfg("confluenceAncestorId", "CONFLUENCE_ANCESTOR_ID", "000000") != "000000") {
+            "请设置真实的 ancestorId(-PconfluenceAncestorId 或 CONFLUENCE_ANCESTOR_ID)"
         }
     }
-
-    // 主题目录 + 字体目录(设计决策 1:字体入库,pdf-fontsdir 指向仓库内文件)
-    attributes(
-        mapOf(
-            "doctype" to "book",
-            "toc" to "",
-            "toclevels" to "3",
-            "sectnums" to "",
-            "sectnumlevels" to "3",
-            "icons" to "font",
-            "source-highlighter" to "rouge",
-            "pdf-theme" to "default",
-            "pdf-themesdir" to file("docs/theme").absolutePath,
-            "pdf-fontsdir" to file("docs/theme/fonts").absolutePath,
-            // 图表默认输出 SVG(设计决策 3:矢量,PDF 内无限缩放不糊)
-            "diagram-format" to "svg",
-            // 可复现:固定日期,避免 revdate/footer 随构建时间漂移
-            "reproducible" to "",
-        )
-    )
 }
