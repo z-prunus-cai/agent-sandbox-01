@@ -83,9 +83,35 @@ gradle.properties         # CLI 版本锁
 
 `assembleVersionedDocs` 会把上面 + 各历史 ref 装配到 `build/versioned-docs/`(真正喂给 CLI 的根)。
 
-约定:每个非 include 的 `.adoc` = 一个 Confluence 页,页标题取文档首个 `= 一级标题`;
+约定:每个 `.adoc` = 一个 Confluence 页,页标题取文档首个 `= 一级标题`;
 `foo.adoc` 与同名 `foo/` 文件夹配对形成父子层级。多版本下,顶层每个 `<slug>.adoc` = 一个版本页,
 其 `<slug>/` 子树 = 该 ref 的整棵 `docs/`。
+
+### 哪些 `.adoc` **不**成页(include 片段的排除规则)
+
+想让某个 `.adoc` 只作被 `include::` 的**片段**、而不单独生成一个 Confluence 页,有两种办法
+(均为 Confluence Publisher 的原生判定,本仓库已实测):
+
+1. **文件名以 `_` 开头** —— 如 `_shared-legal.adoc`。它不会成页,但仍可被 `include::_shared-legal.adoc[]` 内联进正文。**这是首选、最明确的写法。**
+2. **放进"孤儿文件夹"** —— 即某文件夹没有与它同名的配对 `.adoc`(如 `partials/`、或 `_partials/`)。
+   该文件夹整体不会被下钻,里面的 `.adoc` 都不成页(旧 `v1.0` 版本的 `chapters/` 就是这样,只出 1 页)。
+
+```
+docs/
+  index.adoc                # 成页
+  _shared-legal.adoc        # ✗ 不成页(_ 前缀);被 index.adoc include
+  index/
+    01-overview.adoc        # 成页
+    _partials/              # ✗ 整个文件夹不下钻(孤儿 + _ 前缀)
+      tip.adoc              #   只作片段,被 01-overview.adoc include
+```
+
+> 片段自身**不要**用 `= 一级标题`(那是页标题级),否则被 include 进 article 会触发
+> asciidoctor 的 “level 0 sections can only be used when doctype is book”。片段用 `==`、
+> 纯内容或 `[NOTE]` 之类即可;需要保留层级时用 `include::x.adoc[leveloffset=+1]`。
+
+装配时,给各版本页标题加 `[展示名]` 前缀的这步**只作用于"会成页"的 `.adoc`**(按上面同一套规则判定),
+不碰 include 片段,避免破坏 include。
 
 ## 验证结果(本机实跑 `confluenceConvert`)
 

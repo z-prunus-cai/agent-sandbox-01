@@ -144,6 +144,23 @@ fun shortSha(ref: String): String = try {
     out.toString().trim().ifEmpty { ref }
 } catch (e: Exception) { ref }
 
+// 收集"会真正变成 Confluence 页面"的 .adoc —— 复刻 Confluence Publisher 的判定规则:
+//   1) 文件名以 `_` 开头的被当作 include 片段,不成页;
+//   2) 只有与某个页 `foo.adoc` 同名配对的 `foo/` 文件夹才会被下钻,
+//      没有配对 .adoc 的"孤儿"文件夹(如纯 include 的 partials/)整体跳过。
+// 用它来界定"哪些是页",从而只给页加标题前缀、不动 include 片段。
+fun collectPageFiles(dir: File): List<File> {
+    val result = mutableListOf<File>()
+    val adocs = dir.listFiles { f -> f.isFile && f.extension == "adoc" && !f.name.startsWith("_") }
+        ?.sortedBy { it.name } ?: emptyList()
+    for (adoc in adocs) {
+        result.add(adoc)
+        val childDir = File(dir, adoc.nameWithoutExtension)
+        if (childDir.isDirectory) result.addAll(collectPageFiles(childDir))
+    }
+    return result
+}
+
 // 给一个 .adoc 的文档标题(首个 `= ` 行)加版本前缀,避免跨版本标题撞车
 fun prefixDocTitle(adoc: File, prefix: String) {
     val lines = adoc.readLines().toMutableList()
@@ -197,11 +214,10 @@ tasks.register("assembleVersionedDocs") {
                 copy { from(File(extract, "docs")); into(subtree) }
             }
 
-            // 2) 给该版本子树内所有 .adoc 的文档标题加 [展示名] 前缀(去重跨版本标题)
+            // 2) 只给"会成页"的 .adoc 的文档标题加 [展示名] 前缀(去重跨版本标题);
+            //    include 片段(`_` 开头 / 孤儿文件夹内)不算页,保持原样,避免破坏 include。
             val titlePrefix = "[${v.name}]"
-            subtree.walkTopDown().filter { it.isFile && it.extension == "adoc" }.forEach {
-                prefixDocTitle(it, titlePrefix)
-            }
+            collectPageFiles(subtree).forEach { prefixDocTitle(it, titlePrefix) }
 
             // 3) 生成版本落地页 <slug>.adoc
             val sha = shortSha(v.ref)
