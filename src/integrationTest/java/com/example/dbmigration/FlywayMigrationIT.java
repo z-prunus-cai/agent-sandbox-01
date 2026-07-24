@@ -8,9 +8,11 @@ import java.sql.Statement;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
@@ -23,12 +25,21 @@ import org.testcontainers.mssqlserver.MSSQLServerContainer;
  * the real migrations against real SQL Server. The assertions then confirm the
  * schema, seed data and repeatable view all materialised.
  *
- * <p>Requires a Docker daemon (present in CI). It pulls the SQL Server image on
- * first run, so it may take a minute the first time.
+ * <p>This lives in the {@code integrationTest} source set, so it never runs in
+ * the default {@code ./gradlew test}. It runs only via {@code ./gradlew
+ * integrationTest}, and the {@code @EnabledIf} guard makes it self-skip (rather
+ * than fail) when no Docker daemon is available. It pulls the SQL Server image
+ * on first run, so it may take a minute the first time.
  */
 @SpringBootTest
 @Testcontainers
+@EnabledIf("dockerAvailable")
 class FlywayMigrationIT {
+
+    /** Skip the whole class when there is no reachable Docker daemon. */
+    static boolean dockerAvailable() {
+        return DockerClientFactory.instance().isDockerAvailable();
+    }
 
     @Container
     @ServiceConnection

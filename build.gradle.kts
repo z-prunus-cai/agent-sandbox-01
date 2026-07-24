@@ -42,6 +42,26 @@ repositories {
     mavenCentral()
 }
 
+// ---------------------------------------------------------------------------
+// Integration tests live in their own source set + task so the DEFAULT build
+// needs no Docker. `./gradlew test` runs only fast unit tests; the container
+// tests run only when you explicitly ask for them (and self-skip if Docker is
+// absent, see @EnabledIf in FlywayMigrationIT).
+//
+// Declared before `dependencies` so the integrationTest* configurations exist
+// when the dependency block references them.
+// ---------------------------------------------------------------------------
+sourceSets {
+    create("integrationTest") {
+        compileClasspath += sourceSets["main"].output
+        runtimeClasspath += sourceSets["main"].output
+    }
+}
+
+// Let integrationTest reuse the regular test dependencies (JUnit, AssertJ, ...).
+configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
+
 dependencies {
     // Boot 4 is modular: the Flyway starter brings flyway-core + the Boot
     // auto-configuration that runs migrations on startup.
@@ -56,12 +76,26 @@ dependencies {
     // implementation("org.flywaydb:flyway-database-postgresql")
     // runtimeOnly("org.postgresql:postgresql")
 
+    // Fast unit tests (no external infrastructure) run in the default `test` task.
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+
+    // Testcontainers is only needed by the integration tests (Docker required).
     // Testcontainers 2.x prefixes every module artifact with "testcontainers-".
-    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
-    testImplementation("org.testcontainers:testcontainers-mssqlserver")
+    "integrationTestImplementation"("org.springframework.boot:spring-boot-testcontainers")
+    "integrationTestImplementation"("org.testcontainers:testcontainers-junit-jupiter")
+    "integrationTestImplementation"("org.testcontainers:testcontainers-mssqlserver")
 }
+
+val integrationTest = tasks.register<Test>("integrationTest") {
+    description = "Runs integration tests against real infrastructure (requires Docker)."
+    group = "verification"
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    shouldRunAfter(tasks.named("test"))
+}
+
+// Deliberately NOT wired into `check`/`build`: the default verification path
+// stays Docker-free. Run integration tests on demand: `./gradlew integrationTest`.
 
 tasks.withType<Test> {
     useJUnitPlatform()

@@ -19,7 +19,7 @@ The same versioned SQL scripts can be run two ways:
 | JDK  | 21 (LTS) |
 | Gradle | Wrapper included (`./gradlew`) |
 | SQL Server | 2017+ (tested against `mcr.microsoft.com/mssql/server:2022-latest`) |
-| Docker | Only for the Testcontainers integration test |
+| Docker | Optional — only for `./gradlew integrationTest` (auto-skipped if absent) |
 
 Versions are pinned by the Spring Boot 4.1.0 BOM: Flyway `12.4.0`,
 mssql-jdbc `13.4.0.jre11`, Testcontainers `2.0.5`.
@@ -41,7 +41,7 @@ src/main/
         ├── V1__init_customer_schema.sql
         ├── V2__seed_reference_data.sql
         └── R__vw_active_customer.sql   # repeatable (views/procs/functions)
-src/test/
+src/integrationTest/                    # separate source set — NOT run by `test`
 └── java/com/example/dbmigration/
     └── FlywayMigrationIT.java          # Testcontainers: real SQL Server end-to-end
 ```
@@ -113,13 +113,24 @@ export DB_USER=sa DB_PASSWORD='Local_Str0ng_Passw0rd'
 
 ## Testing
 
+Tests are split by whether they need external infrastructure:
+
 ```bash
+# Fast unit tests — NO Docker required. This is the default verification path
+# and the only one wired into `check` / `build`.
 ./gradlew test
+
+# Integration tests — start a real SQL Server container and run the actual
+# migrations against it. Requires Docker; run this only in a Docker environment.
+./gradlew integrationTest
 ```
 
-`FlywayMigrationIT` starts a real SQL Server container (`@ServiceConnection`),
-runs the actual migrations against it, and asserts the schema, seed data and
-repeatable view all materialised. Requires a running Docker daemon.
+`FlywayMigrationIT` lives in the `integrationTest` source set, so it never runs
+during `./gradlew test`. It uses `@ServiceConnection` to point the datasource at
+the container and asserts the schema, seed data and repeatable view all
+materialised. If no Docker daemon is reachable, an `@EnabledIf` guard makes it
+**skip gracefully** (the task still succeeds) instead of failing — so a
+Docker-less machine or CI stage is never blocked by it.
 
 ## Extending to another database
 
