@@ -1,1 +1,1 @@
-rootProject.name = "design-docs-pdf"
+rootProject.name = "design-docs-confluence"

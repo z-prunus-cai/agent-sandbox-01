@@ -17,9 +17,9 @@
 latestName: "latest(当前)"     # latest 版本页的展示名(latest = 自己)
 versions:
   - ref: ec067a6                # tag / branch / sha 均可
-    name: "v2.0 · Confluence 版"
+    name: "v2.0"
   - ref: b4d8f0b
-    name: "v1.0 · PDF 版"
+    name: "v1.0"
 ```
 
 装配由 Gradle 的 `assembleVersionedDocs` 完成(`confluenceConvert` / `confluencePublish` 会自动先跑它):
@@ -98,7 +98,7 @@ gradle.properties         # CLI 版本锁
 | 中文 | ✅ XHTML 与 PNG 中文均正确渲染(非方块) |
 | 页面树 | ✅ `index` 根页 + 3 子页,folder 约定生效 |
 | **多版本装配** | ✅ `docs-versions.yaml`(latest + 2 个 ref)→ 根页下 3 个版本页,共 12 页;标题 `[展示名]` 前缀去重 |
-| **各版本内容独立** | ✅ `latest`/`v2` 为 Confluence 多页树(图表出 PNG);`v1(PDF 版)` 为单页(章节 include 内联,图表出 SVG)—— 各自反映各自 ref |
+| **各版本内容独立** | ✅ `latest`/`v2.0` 为多页树(图表出 PNG);`v1.0`(旧 commit)为单页(章节 include 内联,图表出 SVG)—— 各自反映各自 ref |
 | **latest = 自己** | ✅ `latest` 取当前工作区 `docs/`(HEAD),ref 元信息显示解析出的短 sha |
 
 ## 关键设计点

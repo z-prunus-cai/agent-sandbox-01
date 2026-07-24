@@ -16,6 +16,6 @@ latestName: "latest(当前)"
 
 versions:
   - ref: ec067a6
-    name: "v2.0 · Confluence 版"
+    name: "v2.0"
   - ref: b4d8f0b
-    name: "v1.0 · PDF 版"
+    name: "v1.0"
