@@ -1,0 +1,107 @@
+======================================================================
+==  PHASE 1: CONTAINER STARTING  (refresh -> steps 0..13 for every non-lazy singleton)
+======================================================================
+01 | STEP 0   | circularA        | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+02 | STEP 1   | circularA        | determineCandidateConstructors (constructor selection)
+03 | STEP 1'  | circularA        | constructed (first of the A<->B cycle)
+04 | STEP 2   | circularA        | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+05 | STEP 4   | circularA        | postProcessAfterInstantiation (true -> continue to property population)
+06 | STEP 5   | circularA        | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+07 | STEP 0   | circularB        | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+08 | STEP 1   | circularB        | determineCandidateConstructors (constructor selection)
+09 | STEP 1'  | circularB        | constructed (second of the A<->B cycle; wired with A's EARLY reference)
+10 | STEP 2   | circularB        | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+11 | STEP 4   | circularB        | postProcessAfterInstantiation (true -> continue to property population)
+12 | STEP 5   | circularB        | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+13 | STEP 3   | circularA        | getEarlyBeanReference INVOKED (a real circular reference is being resolved)
+14 | STEP 7   | circularB        | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+15 | STEP 7b  | circularB        | @PostConstruct: a is wired? true
+16 | STEP 10  | circularB        | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+17 | STEP 7   | circularA        | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+18 | STEP 7b  | circularA        | @PostConstruct: b is wired? true
+19 | STEP 10  | circularA        | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+20 | STEP 0   | inventoryClient  | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+21 | STEP 1   | inventoryClient  | determineCandidateConstructors (constructor selection)
+22 | STEP 1'  | inventoryClient  | constructed (a @Autowired field target, wired into OrderService at step 5)
+23 | STEP 2   | inventoryClient  | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+24 | STEP 4   | inventoryClient  | postProcessAfterInstantiation (true -> continue to property population)
+25 | STEP 5   | inventoryClient  | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+26 | STEP 7   | inventoryClient  | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+27 | STEP 10  | inventoryClient  | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+28 | STEP 0   | paymentGateway   | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+29 | STEP 1   | paymentGateway   | determineCandidateConstructors (constructor selection)
+30 | STEP 1'  | paymentGateway   | constructed (must exist BEFORE OrderService can be new'd)
+31 | STEP 2   | paymentGateway   | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+32 | STEP 4   | paymentGateway   | postProcessAfterInstantiation (true -> continue to property population)
+33 | STEP 5   | paymentGateway   | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+34 | STEP 7   | paymentGateway   | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+35 | STEP 10  | paymentGateway   | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+36 | STEP 0   | shortCircuitBean | postProcessBeforeInstantiation RETURNS a ready object -> SHORT-CIRCUIT
+37 | STEP 10  | shortCircuitBean | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+38 | STEP 0   | orderService     | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+39 | STEP 1'  | orderService     | constructor ran -> gateway=SET inventory=null timeout=0 name=null ctx=null pool=null
+40 | STEP 2   | orderService     | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+41 | STEP 4   | orderService     | postProcessAfterInstantiation (true -> continue to property population)
+42 | STEP 5   | orderService     | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+43 | STEP 6   | orderService     | BeanNameAware.setBeanName("orderService") -> gateway=SET inventory=SET timeout=30 name=orderService ctx=null pool=null
+44 | STEP 6   | orderService     | BeanClassLoaderAware.setBeanClassLoader(...)
+45 | STEP 6   | orderService     | BeanFactoryAware.setBeanFactory(...)
+46 | STEP 7a  | orderService     | EnvironmentAware.setEnvironment(...) [context-layer Aware]
+47 | STEP 7a  | orderService     | ApplicationContextAware.setApplicationContext(...) -> gateway=SET inventory=SET timeout=30 name=orderService ctx=SET pool=null
+48 | STEP 7   | orderService     | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+49 | STEP 7b  | orderService     | @PostConstruct init(): built thread pool -> gateway=SET inventory=SET timeout=30 name=orderService ctx=SET pool=SET
+50 | --       | orderService     |    inside @PostConstruct 'this' is the RAW object: com.example.lifecycle.domain.OrderService
+51 | STEP 8   | orderService     | InitializingBean.afterPropertiesSet() [init method (1)]
+52 | STEP 9   | orderService     | custom init-method customInit() [init method (2)]
+53 | STEP 10  | orderService     | postProcessAfterInitialization boundary (AOP weaves here) -> returned a CGLIB PROXY: OrderService$$SpringCGLIB$$0
+54 | STEP 0   | resourceHolder   | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+55 | STEP 1'  | resourceHolder   | constructed (AutoCloseable; will destroy via close(), not customDestroy())
+56 | STEP 2   | resourceHolder   | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+57 | STEP 4   | resourceHolder   | postProcessAfterInstantiation (true -> continue to property population)
+58 | STEP 5   | resourceHolder   | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+59 | STEP 7   | resourceHolder   | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+60 | STEP 10  | resourceHolder   | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+61 | STEP 12  | (container)      | SmartInitializingSingleton.afterSingletonsInstantiated() [ALL singletons ready]
+62 | STEP 13  | orderService     | SmartLifecycle.start() [container finishRefresh -> now serving]
+======================================================================
+==  PHASE 2: APPLICATION RUNNING (all singletons ready; beans handed to callers)
+======================================================================
+63 | --       | driver           | ctx.getBean(OrderService) returned: com.example.lifecycle.domain.OrderService$$SpringCGLIB$$0
+64 | --       | driver           |   -> is it a CGLIB proxy? true
+65 | --       | driver           | calling orderService.placeOrder(...) through the injected reference:
+66 | --       | aspect           | >> advice BEFORE placeOrder (we went through the proxy)
+67 | --       | orderService     | placeOrder() body running on OrderService (proxy? false)
+68 | --       | orderService     | audit() body running (reached via this.audit() -> aspect is bypassed)
+69 | --       | aspect           | << advice AFTER placeOrder
+70 | --       | driver           | requesting two prototype instances:
+71 | STEP 0   | prototypeBean    | postProcessBeforeInstantiation asked (returning null -> normal creation path)
+72 | STEP 1   | prototypeBean    | determineCandidateConstructors (constructor selection)
+73 | STEP 2   | prototypeBean    | postProcessMergedBeanDefinition (cache injection-point metadata; nothing injected yet)
+74 | STEP 4   | prototypeBean    | postProcessAfterInstantiation (true -> continue to property population)
+75 | STEP 5   | prototypeBean    | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+76 | STEP 7   | prototypeBean    | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+77 | STEP 7b  | prototypeBean    | @PostConstruct RAN (prototypes are still initialized)
+78 | STEP 10  | prototypeBean    | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+79 | STEP 4   | prototypeBean    | postProcessAfterInstantiation (true -> continue to property population)
+80 | STEP 5   | prototypeBean    | postProcessProperties (DI point; @Autowired/@Value/@Resource wired around here)
+81 | STEP 7   | prototypeBean    | postProcessBeforeInitialization boundary (context-Aware @ 7a + @PostConstruct @ 7b run here)
+82 | STEP 7b  | prototypeBean    | @PostConstruct RAN (prototypes are still initialized)
+83 | STEP 10  | prototypeBean    | postProcessAfterInitialization boundary (AOP weaves here) -> returned the raw bean
+84 | --       | driver           |   same instance? false (prototypes are fresh each getBean)
+======================================================================
+==  PHASE 3: CONTAINER CLOSING   (ctx.close() -> SmartLifecycle.stop, then D1..D3)
+======================================================================
+85 | STEP 13  | orderService     | SmartLifecycle.stop() [container closing, BEFORE destruction callbacks]
+86 | STEP D1  | resourceHolder   | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+87 | STEP D3  | resourceHolder   | AutoCloseable.close() called by the adapter [close() WINS over destroy-method]
+88 | STEP D1  | orderService     | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+89 | STEP D1  | orderService     | @PreDestroy cleanup(): thread pool shut down
+90 | STEP D2  | orderService     | DisposableBean.destroy() [destruction (1)]
+91 | STEP D3  | orderService     | custom destroy-method customDestroy() [destruction (2)]
+92 | STEP D1  | paymentGateway   | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+93 | STEP D1  | inventoryClient  | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+94 | STEP D1  | circularB        | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+95 | STEP D1  | circularA        | postProcessBeforeDestruction boundary (@PreDestroy runs here)
+======================================================================
+==  DONE. Note which 'SHOULD NOT PRINT' lines are absent -- that absence is the evidence.
+======================================================================
