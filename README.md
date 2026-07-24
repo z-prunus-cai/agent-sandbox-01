@@ -69,6 +69,48 @@ Profile differences (safety hardening as you move toward prod):
 | stg     | no  | no  | no |
 | prod    | no  | no  | no |
 
+### Connection details from an external service (extension point)
+
+Static `spring.datasource.*` is the default, but production credentials often
+come from a secrets service (Vault, AWS/Azure secrets managers, a config
+server). Publish **one** bean implementing `DbCredentialsProvider` and it takes
+over — `ConnectionDetailsConfig` adapts it into the `JdbcConnectionDetails`
+Spring Boot uses to build both the DataSource and Flyway:
+
+```java
+@Component
+class VaultCredentialsProvider implements DbCredentialsProvider {
+    private final VaultClient vault;
+    VaultCredentialsProvider(VaultClient vault) { this.vault = vault; }
+    @Override public DbCredentials get() {
+        var s = vault.read("secret/data/appdb");
+        return new DbCredentials(s.get("url"), s.get("username"), s.get("password"));
+    }
+}
+```
+
+- Resolved once at startup, before migrations run; throw to fail fast.
+- With no such bean, connection details come from the profile files / env vars.
+- It backs off when a `JdbcConnectionDetails` already exists, so it never
+  interferes with Testcontainers' `@ServiceConnection` in tests.
+
+A ready-to-adapt example, `ExternalServiceCredentialsProvider`, ships disabled;
+enable it with `db.credentials.source=external-service` and point
+`db.credentials.secrets-file` at a bundle, or replace its body with your client.
+
+## Artifact versioning
+
+The jar is versioned and self-describing so you always know which migration
+bundle is deployed:
+
+- **Version** is single-sourced from `gradle.properties` and overridable in CI:
+  `./gradlew bootJar -Pversion=2.3.1` → `build/libs/db-migration-2.3.1.jar`.
+- Each jar embeds `META-INF/build-info.properties` with `build.version`,
+  `build.time`, `build.group/artifact`, and the git `build.commit`.
+- On startup the job logs its own identity, e.g.
+  `db-migration 2.3.1 (commit 2cfdd85) starting; active profiles: [prod]`,
+  so deployment logs record exactly what ran.
+
 ## Running
 
 ### As a Boot migration job
@@ -110,6 +152,15 @@ export DB_USER=sa DB_PASSWORD='Local_Str0ng_Passw0rd'
   would land in `dbo`. Flyway itself creates and owns the `app` schema and keeps
   its `flyway_schema_history` table there.
 - Never edit a migration that has already been applied anywhere — add a new one.
+
+### Edition & rollback
+
+This project uses the **free, open-source (Community) Flyway** only — no
+Enterprise/paid features. Flyway's automatic `undo` command is Enterprise-only,
+so rollback here follows the standard Community practice of **forward
+compensation**: to reverse `V2`, add a new `V3__revert_*.sql` with the inverse
+SQL rather than "undoing" `V2`. This keeps the schema history append-only and
+auditable. Take a database backup/snapshot before destructive changes.
 
 ## Testing
 

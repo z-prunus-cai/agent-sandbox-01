@@ -1,14 +1,18 @@
 package com.example.dbmigration;
 
+import java.util.Arrays;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 /**
  * Drives Flyway according to {@link MigrationProperties.Mode}.
@@ -24,8 +28,12 @@ public class FlywayJobConfig {
     private static final Logger log = LoggerFactory.getLogger(FlywayJobConfig.class);
 
     @Bean
-    public FlywayMigrationStrategy flywayMigrationStrategy(MigrationProperties properties) {
+    public FlywayMigrationStrategy flywayMigrationStrategy(
+            MigrationProperties properties,
+            Environment environment,
+            ObjectProvider<BuildProperties> buildProperties) {
         return flyway -> {
+            logBuildIdentity(environment, buildProperties);
             log.info("Running Flyway in '{}' mode against default schema '{}'",
                     properties.getMode(), flyway.getConfiguration().getDefaultSchema());
             switch (properties.getMode()) {
@@ -45,6 +53,15 @@ public class FlywayJobConfig {
                 }
             }
         };
+    }
+
+    /** Log exactly which build of the migration jar is running, for traceability. */
+    private static void logBuildIdentity(Environment environment, ObjectProvider<BuildProperties> buildProperties) {
+        BuildProperties build = buildProperties.getIfAvailable();
+        String version = build != null ? build.getVersion() : "dev";
+        String commit = build != null ? build.get("commit") : "unknown";
+        log.info("db-migration {} (commit {}) starting; active profiles: {}",
+                version, commit, Arrays.toString(environment.getActiveProfiles()));
     }
 
     private static void migrate(Flyway flyway) {

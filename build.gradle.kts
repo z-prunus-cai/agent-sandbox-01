@@ -29,12 +29,34 @@ plugins {
 }
 
 group = "com.example.db"
-version = "1.0.0"
+// Artifact version is single-sourced from gradle.properties and overridable in
+// CI, e.g. `./gradlew bootJar -Pversion=1.4.2` or from a git tag. It ends up in
+// the jar name (db-migration-<version>.jar) and in build-info.properties.
+version = providers.gradleProperty("version").getOrElse("0.0.1-SNAPSHOT")
 description = "Self-contained Flyway database migration project for SQL Server (extensible)"
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Short git commit for build traceability; "unknown" outside a git checkout.
+fun gitCommit(): String = try {
+    providers.exec {
+        commandLine("git", "rev-parse", "--short", "HEAD")
+    }.standardOutput.asText.get().trim().ifEmpty { "unknown" }
+} catch (ex: Exception) {
+    "unknown"
+}
+
+// Generate META-INF/build-info.properties (version, build time, group/artifact)
+// plus the git commit, so a deployed jar can report exactly what it is.
+springBoot {
+    buildInfo {
+        properties {
+            additional.put("commit", gitCommit())
+        }
     }
 }
 
