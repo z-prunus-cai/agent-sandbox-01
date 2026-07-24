@@ -21,9 +21,9 @@ import org.testcontainers.mssqlserver.MSSQLServerContainer;
  * End-to-end migration test against a real SQL Server in a container.
  *
  * <p>{@code @ServiceConnection} wires the Boot datasource to the container, so
- * when the application context starts the {@code FlywayMigrationStrategy} runs
- * the real migrations against real SQL Server. The assertions then confirm the
- * schema, seed data and repeatable view all materialised.
+ * when the application context starts Spring Boot's Flyway auto-configuration
+ * runs the real migrations against real SQL Server. The assertions then confirm
+ * the schema, reference data, env overlay and repeatable view all materialised.
  *
  * <p>This lives in the {@code integrationTest} source set, so it never runs in
  * the default {@code ./gradlew test}. It runs only via {@code ./gradlew

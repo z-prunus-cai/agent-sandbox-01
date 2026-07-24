@@ -7,8 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Entry point for the self-contained database migration job.
  *
  * <p>This is a non-web Spring Boot application whose only job is to run Flyway
- * migrations and exit. Flyway is executed by the {@code FlywayMigrationStrategy}
- * bean (see {@link FlywayJobConfig}) during context startup, after which the JVM
+ * migrations and exit. Spring Boot's Flyway auto-configuration runs the pending
+ * migrations during context startup (no custom code needed); afterwards the JVM
  * has nothing left to keep it alive, so the process terminates with an exit code
  * that reflects success (0) or failure (non-zero). This makes it a clean CI/CD
  * migration step: {@code java -jar db-migration.jar --spring.profiles.active=prod}.

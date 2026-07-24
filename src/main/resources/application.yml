@@ -58,11 +58,6 @@ spring:
 app:
   env: ${APP_ENV:local}
 
-# Migration job behaviour (see MigrationProperties): migrate | validate | info | repair | baseline
-db:
-  migration:
-    mode: ${DB_MIGRATION_MODE:migrate}
-
 logging:
   level:
     org.flywaydb: INFO

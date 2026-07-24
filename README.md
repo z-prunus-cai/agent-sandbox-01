@@ -31,9 +31,7 @@ build.gradle.kts                       # Boot + Flyway plugins, deps, Gradle Fly
 settings.gradle.kts
 src/main/
 ├── java/com/example/dbmigration/
-│   ├── DbMigrationApplication.java     # Boot entry point (migrate then exit)
-│   ├── FlywayJobConfig.java            # FlywayMigrationStrategy: migrate|validate|info|repair|baseline
-│   └── MigrationProperties.java        # binds db.migration.mode
+│   └── DbMigrationApplication.java     # the only Java: Boot entry point; Flyway auto-runs
 └── resources/
     ├── application.yml                 # base config + layered Flyway locations
     ├── application-{local,dev,test,stg,prod}.yml   # each sets app.env
@@ -77,7 +75,6 @@ them from environment variables:
 | `DB_URL` | JDBC URL | `jdbc:sqlserver://db:1433;databaseName=appdb;encrypt=true` |
 | `DB_USER` | Login | `migrator` |
 | `DB_PASSWORD` | Password | *(from secret store)* |
-| `DB_MIGRATION_MODE` | `migrate` (default) `\| validate \| info \| repair \| baseline` | `validate` |
 | `SPRING_PROFILES_ACTIVE` | `local \| dev \| test \| stg \| prod` | `prod` |
 
 Profile differences (safety hardening as you move toward prod):
@@ -94,30 +91,24 @@ Profile differences (safety hardening as you move toward prod):
 
 Static `spring.datasource.*` is the default, but production credentials often
 come from a secrets service (Vault, AWS/Azure secrets managers, a config
-server). Publish **one** bean implementing `DbCredentialsProvider` and it takes
-over — `ConnectionDetailsConfig` adapts it into the `JdbcConnectionDetails`
-Spring Boot uses to build both the DataSource and Flyway:
+server). No framework code is needed for this — Spring Boot's own
+`JdbcConnectionDetails` **is** the extension point. Publish one bean implementing
+it and Boot uses it to build both the DataSource and Flyway; without one, details
+come from the profile files / env vars.
 
 ```java
 @Component
-class VaultCredentialsProvider implements DbCredentialsProvider {
+class VaultConnectionDetails implements JdbcConnectionDetails {
     private final VaultClient vault;
-    VaultCredentialsProvider(VaultClient vault) { this.vault = vault; }
-    @Override public DbCredentials get() {
-        var s = vault.read("secret/data/appdb");
-        return new DbCredentials(s.get("url"), s.get("username"), s.get("password"));
-    }
+    VaultConnectionDetails(VaultClient vault) { this.vault = vault; }
+    @Override public String getJdbcUrl()  { return vault.read("secret/appdb").get("url"); }
+    @Override public String getUsername() { return vault.read("secret/appdb").get("username"); }
+    @Override public String getPassword() { return vault.read("secret/appdb").get("password"); }
 }
 ```
 
-- Resolved once at startup, before migrations run; throw to fail fast.
-- With no such bean, connection details come from the profile files / env vars.
-- It backs off when a `JdbcConnectionDetails` already exists, so it never
-  interferes with Testcontainers' `@ServiceConnection` in tests.
-
-A ready-to-adapt example, `ExternalServiceCredentialsProvider`, ships disabled;
-enable it with `db.credentials.source=external-service` and point
-`db.credentials.secrets-file` at a bundle, or replace its body with your client.
+Testcontainers' `@ServiceConnection` registers a `JdbcConnectionDetails` the same
+way in tests, so the two mechanisms compose cleanly.
 
 ## Artifact versioning
 
@@ -127,14 +118,15 @@ bundle is deployed:
 - **Version** is single-sourced from `gradle.properties` and overridable in CI:
   `./gradlew bootJar -Pversion=2.3.1` → `build/libs/db-migration-2.3.1.jar`.
 - Each jar embeds `META-INF/build-info.properties` with `build.version`,
-  `build.time`, `build.group/artifact`, and the git `build.commit`.
-- On startup the job logs its own identity, e.g.
-  `db-migration 2.3.1 (commit 2cfdd85) starting; active profiles: [prod]`,
-  so deployment logs record exactly what ran.
+  `build.time`, `build.group/artifact`, and the git `build.commit`, so a deployed
+  jar records exactly what it is.
 
 ## Running
 
 ### As a Boot migration job
+
+Starting the app runs Flyway — that's the whole job. Spring Boot's Flyway
+auto-configuration applies pending migrations on startup; the app then exits.
 
 ```bash
 # Local (uses application-local.yml defaults; override with env vars)
@@ -145,13 +137,11 @@ bundle is deployed:
 DB_URL='jdbc:sqlserver://db:1433;databaseName=appdb;encrypt=true;trustServerCertificate=true' \
 DB_USER=migrator DB_PASSWORD=*** \
 java -jar build/libs/db-migration-1.0.0.jar --spring.profiles.active=prod
-
-# Validate only (no changes):
-DB_MIGRATION_MODE=validate java -jar build/libs/db-migration-1.0.0.jar --spring.profiles.active=prod
 ```
 
 The process exits `0` on success and non-zero if a migration fails, so it plugs
-directly into a pipeline step.
+directly into a pipeline step. For validate/info without applying changes, use
+the Flyway Gradle tasks below.
 
 ### Via the Flyway Gradle plugin (dev convenience)
 
