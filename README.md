@@ -5,6 +5,34 @@
 
 本仓库是对应设计方案的**可运行 POC**,已用离线 `convertOnly` 端到端验证通过。
 
+## 多版本发布(本次新增)
+
+由 `docs-versions.yaml`(仓库根,SSOT)定义**要同步的所有 git 标签 / 分支 / sha 及其展示名**。
+构建时,在 Confluence 根页(`ancestorId`,即"根目录")下,为清单里**每个 ref + 一个 `latest`**
+各生成一个「版本页」,每个版本页的整棵子树 = 对应 ref 检出时的 `docs/` 原样内容 ——
+**各版本互不影响,分别反映各自 ref 的文档**。`latest` 指向"自己"(当前检出/工作区 HEAD)。
+
+```yaml
+# docs-versions.yaml
+latestName: "latest(当前)"     # latest 版本页的展示名(latest = 自己)
+versions:
+  - ref: ec067a6                # tag / branch / sha 均可
+    name: "v2.0 · Confluence 版"
+  - ref: b4d8f0b
+    name: "v1.0 · PDF 版"
+```
+
+装配由 Gradle 的 `assembleVersionedDocs` 完成(`confluenceConvert` / `confluencePublish` 会自动先跑它):
+
+- `latest` 取**当前工作区** `docs/`;其余版本用 `git archive <ref> docs` 取历史内容;
+- 产物在 `build/versioned-docs/`:顶层每个 `<slug>.adoc` 是版本落地页(展示名作标题 + ref 元信息 +
+  只读横幅),其子文件夹 `<slug>/` 是该 ref 的 `docs/` 全树;
+- 为避开 **Confluence 全空间标题唯一**的硬限制,装配时给每个版本子树内所有页标题统一加
+  `[展示名]` 前缀。
+
+> CI 注意:历史版本靠 `git archive` 取,checkout 必须是**全历史**(`fetch-depth: 0`,已在 workflow 配好),
+> 否则浅克隆里找不到旧 ref。
+
 ## 快速开始
 
 ```bash
@@ -36,24 +64,28 @@ CLI 及其依赖(含 `asciidoctorj-diagram` + `plantuml`)由 Gradle 从 Maven Ce
 `confluenceCli` configuration,用 `JavaExec` 运行 main 类
 `org.sahli.asciidoc.confluence.publisher.cli.AsciidocConfluencePublisherCommandLineClient`。
 
-## 目录结构(Confluence 页面树约定)
+## 目录结构
 
 ```
-docs/
-  index.adoc              # 根页「产品设计文档:订单履约系统」(含"勿编辑"横幅)
-  index/                  # index.adoc 的子页(folder 名 = 父文件名去掉 .adoc)
-    01-overview.adoc      #   子页「概述」
-    02-architecture.adoc  #   子页「系统架构」(内联 PlantUML → PNG 附件)
-    03-flow.adoc          #   子页「履约流程」(内联 PlantUML → PNG 附件)
-  images/                 # 静态图片(本 POC 未用)
-  diagrams/               # 外部 .puml(本 POC 内联,未用)
-build.gradle.kts          # Gradle 调 CLI:confluenceConvert / confluencePublish
+docs-versions.yaml        # 版本清单(SSOT):要同步的 tag/branch/sha + 展示名;latest = 自己
+docs/                     # 「当前(latest)」版本的源
+  index.adoc              #   根页「产品设计文档:订单履约系统」(含"勿编辑"横幅)
+  index/                  #   index.adoc 的子页(folder 名 = 父文件名去掉 .adoc)
+    01-overview.adoc      #     子页「概述」
+    02-architecture.adoc  #     子页「系统架构」(内联 PlantUML → PNG 附件)
+    03-flow.adoc          #     子页「履约流程」(内联 PlantUML → PNG 附件)
+  images/                 #   静态图片(本 POC 未用)
+  diagrams/               #   外部 .puml(本 POC 内联,未用)
+build.gradle.kts          # Gradle:assembleVersionedDocs / confluenceConvert / confluencePublish
 gradle.properties         # CLI 版本锁
 .github/workflows/docs-confluence.yml
 ```
 
+`assembleVersionedDocs` 会把上面 + 各历史 ref 装配到 `build/versioned-docs/`(真正喂给 CLI 的根)。
+
 约定:每个非 include 的 `.adoc` = 一个 Confluence 页,页标题取文档首个 `= 一级标题`;
-`foo.adoc` 与同名 `foo/` 文件夹配对形成父子层级。
+`foo.adoc` 与同名 `foo/` 文件夹配对形成父子层级。多版本下,顶层每个 `<slug>.adoc` = 一个版本页,
+其 `<slug>/` 子树 = 该 ref 的整棵 `docs/`。
 
 ## 验证结果(本机实跑 `confluenceConvert`)
 
@@ -65,6 +97,9 @@ gradle.properties         # CLI 版本锁
 | PlantUML(Smetana) | ✅ 组件图 + 时序图渲染成 **PNG**,经 `<ac:image><ri:attachment>` 作为**附件**引用,**无 Graphviz** |
 | 中文 | ✅ XHTML 与 PNG 中文均正确渲染(非方块) |
 | 页面树 | ✅ `index` 根页 + 3 子页,folder 约定生效 |
+| **多版本装配** | ✅ `docs-versions.yaml`(latest + 2 个 ref)→ 根页下 3 个版本页,共 12 页;标题 `[展示名]` 前缀去重 |
+| **各版本内容独立** | ✅ `latest`/`v2` 为 Confluence 多页树(图表出 PNG);`v1(PDF 版)` 为单页(章节 include 内联,图表出 SVG)—— 各自反映各自 ref |
+| **latest = 自己** | ✅ `latest` 取当前工作区 `docs/`(HEAD),ref 元信息显示解析出的短 sha |
 
 ## 关键设计点
 

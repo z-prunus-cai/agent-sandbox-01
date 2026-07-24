@@ -1,0 +1,21 @@
+# 文档版本清单(SSOT)—— 定义所有要同步到 Confluence 的文档版本。
+#
+# 作用:构建时,本清单里的每个条目都会在 Confluence 根页(ancestorId,即"根目录")
+# 下生成一个版本页;该版本页的整棵子树 = 对应 git ref 检出时的 docs/ 内容。
+# 换言之:清单里"每个 ref 一个页面",页面内容"各自反映各自 ref 的文档"。
+#
+# 字段:
+#   ref  —— git 引用,可以是 标签(tag)/ 分支(branch)/ 提交(sha,支持短 sha)。
+#   name —— 该版本在 Confluence 上展示的页面标题(展示名)。
+#
+# 关于 latest:
+#   除了下面列出的固定版本,构建时总会额外生成一个 `latest` 版本页。
+#   latest 指的是"自己" —— 当前检出/工作区(HEAD),不需要、也不应在此列出 ref。
+#   它的展示名由 latestName 配置。
+latestName: "latest(当前)"
+
+versions:
+  - ref: ec067a6
+    name: "v2.0 · Confluence 版"
+  - ref: b4d8f0b
+    name: "v1.0 · PDF 版"
