@@ -25,9 +25,19 @@ spring:
 
   flyway:
     enabled: true
-    # {vendor} resolves to the datasource vendor id (e.g. "sqlserver"), so the
-    # same config drives multiple databases: just add db/migration/<vendor>/.
-    locations: classpath:db/migration/{vendor}
+    # Layered locations, merged into ONE version-ordered history:
+    #   1. ddl              — common structure (V__) + structural repeatables (R__1xx)
+    #   2. masterdata/common — common reference data (R__5xx, idempotent)
+    #   3. env/${app.env}/masterdata — this environment's data only (R__8xx, idempotent)
+    # {vendor} resolves to the datasource vendor (sqlserver); ${app.env} is the
+    # active environment, so each env loads only its own data overlay. Schema
+    # (the ddl layer) is identical everywhere — differences live purely in data.
+    locations: >-
+      classpath:db/migration/{vendor}/ddl,
+      classpath:db/migration/{vendor}/masterdata/common,
+      classpath:db/migration/{vendor}/env/${app.env}/masterdata
+    # Don't fail if an env has no data overlay folder yet.
+    fail-on-missing-locations: false
     # Flyway owns the "app" schema: it creates it and puts its history table there.
     schemas: app
     default-schema: app
@@ -41,7 +51,12 @@ spring:
     clean-disabled: true
     # Placeholders usable inside SQL as ${env}, ${flyway:defaultSchema}, etc.
     placeholders:
-      env: ${APP_ENV:local}
+      env: ${app.env}
+
+# Logical environment name that selects the master-data overlay in the Flyway
+# locations above. Defaults to local; every profile overrides it, or set APP_ENV.
+app:
+  env: ${APP_ENV:local}
 
 # Migration job behaviour (see MigrationProperties): migrate | validate | info | repair | baseline
 db:

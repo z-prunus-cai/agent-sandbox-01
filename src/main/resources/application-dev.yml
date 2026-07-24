@@ -10,3 +10,7 @@ spring:
     clean-disabled: false
     # Tolerate hotfix migrations landing out of order on the shared dev DB.
     out-of-order: true
+
+# Selects env/dev/masterdata as the data overlay.
+app:
+  env: dev

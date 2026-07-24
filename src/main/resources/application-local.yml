@@ -12,3 +12,7 @@ spring:
 logging:
   level:
     org.flywaydb: DEBUG
+
+# Selects env/local/masterdata as the data overlay.
+app:
+  env: local

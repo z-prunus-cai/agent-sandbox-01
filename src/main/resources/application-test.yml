@@ -8,3 +8,7 @@ spring:
   flyway:
     clean-disabled: true
     out-of-order: false
+
+# Selects env/test/masterdata as the data overlay.
+app:
+  env: test

@@ -10,3 +10,7 @@ spring:
     out-of-order: false
     # Do not auto-baseline: staging schema history is managed deliberately.
     baseline-on-migrate: false
+
+# Selects env/stg/masterdata as the data overlay.
+app:
+  env: stg

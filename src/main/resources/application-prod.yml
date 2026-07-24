@@ -15,3 +15,7 @@ spring:
 logging:
   level:
     org.flywaydb: INFO
+
+# Selects env/prod/masterdata as the data overlay.
+app:
+  env: prod

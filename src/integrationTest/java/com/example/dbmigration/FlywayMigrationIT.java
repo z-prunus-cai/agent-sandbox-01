@@ -58,24 +58,45 @@ class FlywayMigrationIT {
         // If applied migrations diverged from the scripts, validate() throws.
         flyway.validate();
 
-        // V1 + V2 are versioned; the state should be at version 2.
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+        // Only common DDL is versioned; the single V1 is the current version.
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
     }
 
     @Test
-    void seedDataAndRepeatableViewArePresent() throws Exception {
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
+    void commonReferenceDataIsSeededInEveryEnvironment() throws Exception {
+        // Bucket ②: common reference data (R__5xx) — present regardless of env.
+        try (Connection c = dataSource.getConnection();
+             Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM app.customer_status")) {
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(3); // ACTIVE, INACTIVE, SUSPENDED
+        }
+    }
 
-            // Seed rows from V2.
-            try (ResultSet rs = statement.executeQuery("SELECT COUNT(*) FROM app.customer")) {
+    @Test
+    void environmentSpecificDataMatchesActiveEnvironment() throws Exception {
+        // No profile is activated, so the default profile "local" is used and the
+        // env/local overlay (R__8xx) is applied — bucket ④.
+        try (Connection c = dataSource.getConnection();
+             Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT config_value FROM app.app_config WHERE config_key = 'env.name'")) {
+            rs.next();
+            assertThat(rs.getString(1)).isEqualTo("local");
+        }
+    }
+
+    @Test
+    void localDemoCustomersFeedTheRepeatableView() throws Exception {
+        try (Connection c = dataSource.getConnection();
+             Statement st = c.createStatement()) {
+            // local demo data (R__810) seeds 3 customers, 2 of them ACTIVE.
+            try (ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM app.customer")) {
                 rs.next();
-                assertThat(rs.getInt(1)).isGreaterThanOrEqualTo(3);
+                assertThat(rs.getInt(1)).isEqualTo(3);
             }
-
-            // Repeatable view R__ should only expose ACTIVE customers.
-            try (ResultSet rs = statement.executeQuery(
-                    "SELECT COUNT(*) FROM app.vw_active_customer")) {
+            // Bucket ① repeatable view exposes only the ACTIVE ones.
+            try (ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM app.vw_active_customer")) {
                 rs.next();
                 assertThat(rs.getInt(1)).isEqualTo(2);
             }

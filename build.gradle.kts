@@ -126,14 +126,21 @@ tasks.withType<Test> {
 // ---------------------------------------------------------------------------
 // Flyway Gradle plugin config (dev convenience: flywayInfo / flywayValidate).
 // Credentials come from environment variables — never hard-code secrets here.
-// The Boot app is the source of truth for real migrations; keep locations aligned.
+// The Boot app is the source of truth for real migrations; these locations
+// mirror the layered layout for one env, chosen with -PflywayEnv (default local):
+//   ./gradlew flywayInfo -PflywayEnv=dev
 // ---------------------------------------------------------------------------
+val flywayEnv = (project.findProperty("flywayEnv") as String?) ?: "local"
 flyway {
     url = System.getenv("DB_URL")
     user = System.getenv("DB_USER")
     password = System.getenv("DB_PASSWORD")
     schemas = arrayOf("app")
     defaultSchema = "app"
-    locations = arrayOf("filesystem:src/main/resources/db/migration/sqlserver")
+    locations = arrayOf(
+        "filesystem:src/main/resources/db/migration/sqlserver/ddl",
+        "filesystem:src/main/resources/db/migration/sqlserver/masterdata/common",
+        "filesystem:src/main/resources/db/migration/sqlserver/env/$flywayEnv/masterdata",
+    )
     cleanDisabled = true
 }
