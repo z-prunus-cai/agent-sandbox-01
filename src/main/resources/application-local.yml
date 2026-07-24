@@ -1,0 +1,14 @@
+# Local developer machine. Convenient defaults point at a local SQL Server
+# (e.g. the docker image mcr.microsoft.com/mssql/server). Override via env vars.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=appdb;encrypt=true;trustServerCertificate=true}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:Local_Str0ng_Passw0rd}
+  flyway:
+    # Allow `clean` locally so developers can reset their scratch database.
+    clean-disabled: false
+
+logging:
+  level:
+    org.flywaydb: DEBUG

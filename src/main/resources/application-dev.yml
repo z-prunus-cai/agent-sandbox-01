@@ -1,0 +1,12 @@
+# Shared DEV environment. Connection details are injected by the platform
+# (CI secrets / container env). No credentials are stored in the repo.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  flyway:
+    # Dev databases may be reset by the team, so allow clean here too.
+    clean-disabled: false
+    # Tolerate hotfix migrations landing out of order on the shared dev DB.
+    out-of-order: true

@@ -1,0 +1,10 @@
+# Automated TEST / QA environment. Strict and reproducible: migrations must
+# apply cleanly and in order. Everything comes from the environment.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  flyway:
+    clean-disabled: true
+    out-of-order: false

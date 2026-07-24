@@ -1,0 +1,12 @@
+# STAGING / pre-production. Mirrors prod settings as closely as possible so
+# that what passes here is what runs in prod. Credentials from the environment.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  flyway:
+    clean-disabled: true
+    out-of-order: false
+    # Do not auto-baseline: staging schema history is managed deliberately.
+    baseline-on-migrate: false

@@ -1,0 +1,17 @@
+# PRODUCTION. Most conservative settings. Never destructive, never out of order,
+# never auto-baseline. All connection details are injected from a secret store.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  flyway:
+    clean-disabled: true
+    out-of-order: false
+    baseline-on-migrate: false
+    # Refuse to run if the history table doesn't match the scripts.
+    validate-on-migrate: true
+
+logging:
+  level:
+    org.flywaydb: INFO

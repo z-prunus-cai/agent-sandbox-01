@@ -1,0 +1,54 @@
+# ===========================================================================
+# Base configuration shared by every environment.
+# Environment-specific overrides live in application-{profile}.yml
+# Activate with: --spring.profiles.active=local|dev|test|stg|prod
+#                (or SPRING_PROFILES_ACTIVE / APP_ENV)
+# ===========================================================================
+spring:
+  application:
+    name: db-migration
+
+  # Default to the "local" profile so a bare `./gradlew bootRun` does something sensible.
+  profiles:
+    default: local
+
+  # This is a migration job, not a service — no web server.
+  main:
+    web-application-type: none
+
+  datasource:
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    # All connection details come from the environment; profiles supply defaults.
+    url: ${DB_URL:}
+    username: ${DB_USER:}
+    password: ${DB_PASSWORD:}
+
+  flyway:
+    enabled: true
+    # {vendor} resolves to the datasource vendor id (e.g. "sqlserver"), so the
+    # same config drives multiple databases: just add db/migration/<vendor>/.
+    locations: classpath:db/migration/{vendor}
+    # Flyway owns the "app" schema: it creates it and puts its history table there.
+    schemas: app
+    default-schema: app
+    create-schemas: true
+    table: flyway_schema_history
+    # Fail fast if a previously-applied script has been changed.
+    validate-on-migrate: true
+    # Keep migrations in strict order by default (override per env if needed).
+    out-of-order: false
+    # Safety: `clean` is destructive and disabled everywhere unless a profile re-enables it.
+    clean-disabled: true
+    # Placeholders usable inside SQL as ${env}, ${flyway:defaultSchema}, etc.
+    placeholders:
+      env: ${APP_ENV:local}
+
+# Migration job behaviour (see MigrationProperties): migrate | validate | info | repair | baseline
+db:
+  migration:
+    mode: ${DB_MIGRATION_MODE:migrate}
+
+logging:
+  level:
+    org.flywaydb: INFO
+    com.example.dbmigration: INFO
