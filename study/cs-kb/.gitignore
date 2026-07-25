@@ -1,0 +1,7 @@
+# 一手源码/规范离线副本，只读不入库
+.reference/
+# 实证产物兜底（测试代码应写在仓库外 scratchpad）
+*.o
+*.class
+a.out
+scratch/
