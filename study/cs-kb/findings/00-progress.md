@@ -46,7 +46,7 @@
 | TODO | — | L5 | P2 | L5-14 | Rust 与内存安全 | findings/037-rust-memory-safety.md |
 | TODO | — | L5 | P2 | L5-15 | 嵌入式系统 | findings/038-embedded-systems.md |
 | TODO | — | L6 | P2 | L6-08 | AI/LLM 系统（硬标演进快） | findings/039-ai-llm-systems.md |
-| TODO | — | L6 | P2 | L6-09 | 数据密集型应用（DDIA） | findings/040-data-intensive-apps.md |
+| TODO | — | L6 | P1 | L6-09 | 数据密集型应用（DDIA）（✎R2:P2→P1） | findings/040-data-intensive-apps.md |
 | REG  | — | L5 | P2 | L5-07 | 选修桶（已展开：HCI→L5-09/嵌入式→L5-15 升级；内核→并入 L4-01；DSP 仅登记） | — 仅登记 |
 | REG  | — | L6 | P2 | L6-07 | 专题研讨+论文答辩 | — 仅登记（元课程） |
 | REG  | — | — | P2 | X-DSP | 数字信号处理 DSP | — 仅登记（EE 交叉，CS 主线外围） |
