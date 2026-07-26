@@ -26,7 +26,7 @@ class Repository(ABC):
 Repository()   # 直接实例化抽象基类
 ```
 
-真实输出（Python 3.11.15）：
+在本机 Python 3.11.15 上的真实输出是
 
 ```
 TypeError: Can't instantiate abstract class Repository with abstract method get
@@ -69,7 +69,7 @@ print(isinstance([1, 2], Sized))   # True：list 有 __len__
 print(isinstance(5, Sized))        # False：int 没有 __len__
 ```
 
-真实输出：
+在本机 Python 3.11.15 上的真实输出是
 
 ```
 True
