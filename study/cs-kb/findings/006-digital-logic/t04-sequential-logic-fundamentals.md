@@ -222,7 +222,7 @@ P(t_res > t) = (T0 / Tc) · e^(−t/τ)
 异步 D → [F1] →(D2, 有 Tc − tsetup 时间解析)→ [F2] → 干净的同步输出 Q
 ```
 
-直觉：给亚稳态"多留一拍时间自己滚下山顶"。代价是同步器引入一拍（或多拍）延迟；要更低失效率就再加第三级触发器。核心记忆点：跨时钟域/异步输入进入同步系统前，必须过同步器，否则亚稳态会随机地把错误值传遍全系统。
+给亚稳态"多留一拍时间自己滚下山顶"。代价是同步器引入一拍（或多拍）延迟；要更低失效率就再加第三级触发器。核心记忆点：跨时钟域/异步输入进入同步系统前，必须过同步器，否则亚稳态会随机地把错误值传遍全系统。
 
 ### MTBF：平均无故障时间
 
@@ -335,7 +335,7 @@ t_cd > t_hold − t_ccq
 保持（最坏 CLK2 晚到）: t_cd > t_hold + t_skew − t_ccq
 ```
 
-直觉：偏斜是不确定的"时间误差预算"，无论建立还是保持，都得把它当额外裕量扣掉，让约束更苛刻。所以时钟树设计要尽量压低 skew。本条为 DL-6（时序分析与时钟）埋下伏笔，那里会把关键路径、Fmax、偏斜/抖动展开。
+偏斜是不确定的"时间误差预算"，无论建立还是保持，都得把它当额外裕量扣掉，让约束更苛刻。所以时钟树设计要尽量压低 skew。本条为 DL-6（时序分析与时钟）埋下伏笔，那里会把关键路径、Fmax、偏斜/抖动展开。
 
 #### 来源与时效
 - 一手锚点：Harris & Harris《DDCA》ch3「Input/Output Timing Constraints、Dynamic Discipline、Setup/Hold Time Constraint、Clock Skew、Setup/Hold Time Constraint with Skew」，定义 t_a=t_setup+t_hold、约束 Tc≥t_pcq+t_pd+t_setup 与 t_hold<t_ccq+t_cd、带 skew 修正式均逐字核对自作者讲义（含 tccq=30ps/tpcq=50ps/tsetup=60ps/thold=70ps、Tc≥215ps→fc=4.65GHz 例）。核实 2026-07-26。
