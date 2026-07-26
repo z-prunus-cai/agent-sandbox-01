@@ -56,6 +56,11 @@
 
 ## 计数对账（收尾时填）
 - 范围：40 门产报告 + 5 项并入 + 6 项仅登记。
-- prompt 数（切块）：待定（Round 3 产出后填）
-- 落盘报告数：0 / 40（产报告课程）
+- prompt 数（切块）：**423**（Round 3c 完成；40 文件 × 各大主题一条；```text 块=自报合计=423，已对账）。
+- 报告单元：423 个大主题（1 大主题=1 报告，个别可拆）→ Round 4 逐条取证。
+- 落盘报告数：0 / 423（大主题报告）
 - 质检：0 PASS / 0 MINOR / 0 MAJOR
+
+## Round 进度
+- ✅ 阶段0 对齐 · ✅ R1 scoping(round1-map) · ✅ R2 定方向(round2-partials) · ✅ R3a 大主题(round3a) · ✅ R3b 小主题(round3b) · ✅ **R3c 造 prompt 库(round-prompts/ 40 文件 423 条 + round3-index.md)**
+- ⏸ 待启动 **Round 4（逐条三条腿/多来源取证，产 v3 报告）**
