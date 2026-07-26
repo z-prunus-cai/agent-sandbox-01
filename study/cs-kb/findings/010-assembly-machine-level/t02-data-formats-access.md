@@ -224,7 +224,7 @@ disp(base, index, scale)
 (,%rcx,4)           只有 index×scale：       地址 = R[rcx]×4
 ```
 
-实测：数组元素访问 `a[i]`（`a` 是 `int*`，元素 4 字节）编译成一条比例变址寻址：
+用一段实测坐实。数组元素访问 `a[i]`（`a` 是 `int*`，元素 4 字节）编译成一条比例变址寻址：
 
 ```c
 int arr_index(int *a, long i) { return a[i]; }
