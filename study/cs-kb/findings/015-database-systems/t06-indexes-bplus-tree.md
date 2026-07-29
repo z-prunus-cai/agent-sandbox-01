@@ -334,7 +334,7 @@ MySQL 判读时第一眼看 `type` 是不是 `ALL`（是则全表扫描、可能
 
 `EXPLAIN` 并无跨引擎统一格式，判读前先认清在读哪家：**SQLite** 的 `EXPLAIN QUERY PLAN` 是粗粒度可读树（而裸 `EXPLAIN` 是 VDBE 字节码，另一回事）；**PostgreSQL** 的 `EXPLAIN` 是带代价估算的计划树，`ANALYZE` 才真跑、`BUFFERS` 看 I/O；**MySQL** 的 `EXPLAIN` 是表格（`type/key/Extra`），`FORMAT=TREE`/`EXPLAIN ANALYZE` 才给树与实测。
 
-给初学者的落点：同一个概念在三家里叫法都不同——「全表扫描」在 SQLite 是 `SCAN`、PG 是 `Seq Scan`、MySQL 是 `type: ALL`；「覆盖索引」在 SQLite 是 `USING COVERING INDEX`、PG 是 `Index Only Scan`、MySQL 是 `Extra: Using index`。跨库排查性能时，先把这张「词表」对齐，再看命中行估算与实际是否吻合，就能快速定位「该走的索引为什么没走」。
+同一个概念在三家里叫法都不同——「全表扫描」在 SQLite 是 `SCAN`、PG 是 `Seq Scan`、MySQL 是 `type: ALL`；「覆盖索引」在 SQLite 是 `USING COVERING INDEX`、PG 是 `Index Only Scan`、MySQL 是 `Extra: Using index`。跨库排查性能时，先把这张「词表」对齐，再看命中行估算与实际是否吻合，就能快速定位「该走的索引为什么没走」。
 
 #### 来源与时效
 - SQLite「EXPLAIN QUERY PLAN」文档（`SCAN`/`SEARCH`/`COVERING INDEX`/rowid 关键词；裸 `EXPLAIN` 为 VDBE 字节码）+ 本报告本机实测（SQLite 3.45.1，`基线 Py3.11.15 @2026-07-29`，命令与真实输出见 03-6.6.1）。核实 2026-07-29。
