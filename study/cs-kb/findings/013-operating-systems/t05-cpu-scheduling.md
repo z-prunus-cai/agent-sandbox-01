@@ -184,7 +184,7 @@ se.slice         :     2100000      # 单位 ns，本任务的时间片/请求�
 
 ### 5.5.1 基线现状：EEVDF 已取代 CFS（≥6.6，2023）
 
-**必须先分清教材与实现两账**：OSTEP/CS162 讲的 CFS 是理解 Linux 公平调度的主线，但它**不是基线机器上此刻在跑的东西**。Linux 6.6（2023 年发布）用 **EEVDF（Earliest Eligible Virtual Deadline First）** 取代了 CFS 作为普通任务（`SCHED_OTHER`/`SCHED_NORMAL`，即 fair 类）的默认调度器。EEVDF 算法本身源自 1995 年 Stoica 与 Abdel-Wahab 的论文，由内核维护者 Peter Zijlstra 落地进内核。
+这里必须先分清教材与实现两账。OSTEP/CS162 讲的 CFS 是理解 Linux 公平调度的主线，但它**不是基线机器上此刻在跑的东西**。Linux 6.6（2023 年发布）用 **EEVDF（Earliest Eligible Virtual Deadline First）** 取代了 CFS 作为普通任务（`SCHED_OTHER`/`SCHED_NORMAL`，即 fair 类）的默认调度器。EEVDF 算法本身源自 1995 年 Stoica 与 Abdel-Wahab 的论文，由内核维护者 Peter Zijlstra 落地进内核。
 
 本机实证坐实这一点：基线 `uname -r` 为 6.18.5（≥6.6），`/proc/self/sched` 里出现了 EEVDF 特有的 `se.slice` 字段（CFS 时代没有的"每任务请求时间片"），普通任务 `policy=0`（`SCHED_OTHER`）走的即 fair 类。初学者只需记住：**读教材理解 CFS 的 vruntime/红黑树心智模型，但谈"我这台 Linux 现在怎么调度普通任务"，答案是 EEVDF**。二者共享"按 nice 折算权重、红黑树里挑一个"的骨架，区别在挑选判据。
 
@@ -218,13 +218,13 @@ Linux 不是只有一个调度器，而是若干**调度类（scheduling classes
 
 stop  >  deadline (SCHED_DEADLINE)  >  rt (SCHED_FIFO / SCHED_RR)  >  ext (sched_ext, ≥6.12)  >  fair (EEVDF: SCHED_OTHER/BATCH/IDLE)  >  idle
 
-**deadline 类（`SCHED_DEADLINE`）**：用 EDF（最早截止优先）配合 CBS（恒定带宽服务器）实现，任务用 (Runtime, Deadline, Period) 三参数声明"每 Period 内需要 Runtime 的 CPU、须在 Deadline 前拿到"，是用户可控的最高优先级实时策略。
+deadline 类（`SCHED_DEADLINE`）用 EDF（最早截止优先）配合 CBS（恒定带宽服务器）实现，任务用 (Runtime, Deadline, Period) 三参数声明"每 Period 内需要 Runtime 的 CPU、须在 Deadline 前拿到"，是用户可控的最高优先级实时策略。
 
-**rt 类（`SCHED_FIFO`/`SCHED_RR`）**：固定优先级实时策略，优先级 1–99。`SCHED_FIFO` 跑到自己阻塞、被更高优先级抢占或主动 `sched_yield()` 为止；`SCHED_RR` 是加了时间片轮转的 FIFO（同优先级内轮转）。
+rt 类（`SCHED_FIFO`/`SCHED_RR`）是固定优先级实时策略，优先级 1–99。`SCHED_FIFO` 跑到自己阻塞、被更高优先级抢占或主动 `sched_yield()` 为止；`SCHED_RR` 是加了时间片轮转的 FIFO（同优先级内轮转）。
 
-**fair 类**：普通任务的家，基线上由 EEVDF 实现，含 `SCHED_OTHER`（默认）、`SCHED_BATCH`（批处理、弱化唤醒抢占）、`SCHED_IDLE`（极低优先级）。
+fair 类是普通任务的家，基线上由 EEVDF 实现，含 `SCHED_OTHER`（默认）、`SCHED_BATCH`（批处理、弱化唤醒抢占）、`SCHED_IDLE`（极低优先级）。
 
-**ext 类（`sched_ext`，≥6.12，2024）**：⚙新特性——允许用 BPF 程序把调度策略写成可在运行时热插拔的模块，位于 rt 之下、fair 之上；**基线是否启用需实测，本报告标「待核」**，仅记其存在与层级位置。
+ext 类（`sched_ext`，≥6.12，2024）是一个新特性，允许用 BPF 程序把调度策略写成可在运行时热插拔的模块，位于 rt 之下、fair 之上；它在基线上是否启用需实测，本报告标「待核」，仅记其存在与层级位置。
 
 本机实证——`chrt -m` 列出基线支持的策略与优先级范围（Linux 6.18.5 @2026-07-29）：
 
