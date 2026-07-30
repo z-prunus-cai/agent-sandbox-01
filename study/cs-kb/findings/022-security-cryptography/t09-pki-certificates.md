@@ -64,13 +64,13 @@ critical 标志决定了"验证方遇到一个它不认识的扩展时该怎么�
 
 RFC 5280 定义了一组标准扩展，实践中最要紧的几个是
 
-basicConstraints：标明该证书是否为 CA（CA:TRUE/FALSE），若为 CA 还可带 pathLenConstraint 限制其下还能再套几层 CA
-keyUsage：限定公钥的用途（如 digitalSignature、keyCertSign、cRLSign 等），CA 证书须含 keyCertSign
-extendedKeyUsage（EKU）：更细的用途（如 serverAuth 表示可用于 TLS 服务器认证、clientAuth 用于客户端认证）
-subjectAltName（SAN）：证书覆盖的身份列表，TLS 中放域名（DNS:）或 IP，**现代域名匹配只认这里**
-authorityKeyIdentifier（AKI）/ subjectKeyIdentifier（SKI）：分别标识"签我的那把 CA 公钥"和"我自己的公钥"，用来在一堆证书里快速找到父证书、加速路径构建
-authorityInfoAccess（AIA）：给出签发者证书的下载地址（caIssuers）和 OCSP 响应器地址
-cRLDistributionPoints（CDP）：给出该证书对应 CRL 的下载地址
+basicConstraints 标明该证书是否为 CA（CA:TRUE/FALSE），若为 CA 还可带 pathLenConstraint 限制其下还能再套几层 CA
+keyUsage 限定公钥的用途（如 digitalSignature、keyCertSign、cRLSign 等），CA 证书须含 keyCertSign
+extendedKeyUsage（EKU）给出更细的用途（如 serverAuth 表示可用于 TLS 服务器认证、clientAuth 用于客户端认证）
+subjectAltName（SAN）列出证书覆盖的身份，TLS 中放域名（DNS:）或 IP，**现代域名匹配只认这里**
+authorityKeyIdentifier（AKI）与 subjectKeyIdentifier（SKI）分别标识"签我的那把 CA 公钥"和"我自己的公钥"，用来在一堆证书里快速找到父证书、加速路径构建
+authorityInfoAccess（AIA）给出签发者证书的下载地址（caIssuers）和 OCSP 响应器地址
+cRLDistributionPoints（CDP）给出该证书对应 CRL 的下载地址
 
 其中 basicConstraints 与 keyUsage 是安全的承重扩展，务必设为 critical。一个反例能说明为什么：如果一张普通网站的叶证书没有把 basicConstraints 设为 CA:FALSE 并标关键，且客户端验证有缺陷，攻击者理论上就可能拿这张叶证书去反过来签发别的证书——把自己变成一个"影子 CA"。历史上著名的 2009 年 Moxie Marlinspike 攻击正是利用了老客户端不检查 basicConstraints 的缺陷。
 
