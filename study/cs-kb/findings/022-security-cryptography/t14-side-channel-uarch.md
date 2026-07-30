@@ -186,17 +186,17 @@ if (x < array1_size) { y = array2[array1[x] * 4096]; }
 
 Spectre/Meltdown 之后，瞬态执行攻击扩成一个大家族，广度上应知其名（细节与阈值随微架构变，此处只登记不作结论）：
 
-Spectre-v4 / Speculative Store Bypass（SSB，CVE-2018-3639）：推测性地绕过"存储-加载依赖"读到旧值
+Spectre-v4 / Speculative Store Bypass（SSB，CVE-2018-3639）—— 推测性地绕过"存储-加载依赖"读到旧值
 
-Foreshadow / L1TF（L1 Terminal Fault，2018）：从 L1 缓存推测泄露，可击穿 SGX enclave 与虚拟机隔离
+Foreshadow / L1TF（L1 Terminal Fault，2018）—— 从 L1 缓存推测泄露，可击穿 SGX enclave 与虚拟机隔离
 
-MDS 家族（RIDL/Fallout/ZombieLoad，2019）：从行填充缓冲、存储缓冲等微架构缓冲区采样他人数据
+MDS 家族（RIDL/Fallout/ZombieLoad，2019）—— 从行填充缓冲、存储缓冲等微架构缓冲区采样他人数据
 
-TAA（TSX Async Abort）、SRBDS、MMIO Stale Data、GDS（Gather Data Sampling，2023）：陆续发现的采样类变体
+TAA（TSX Async Abort）、SRBDS、MMIO Stale Data、GDS（Gather Data Sampling，2023）—— 陆续发现的采样类变体
 
-Retbleed（2022，CVE-2022-29900/29901）：绕过 retpoline，用 `ret` 指令做分支目标注入
+Retbleed（2022，CVE-2022-29900/29901）—— 绕过 retpoline，用 `ret` 指令做分支目标注入
 
-BHI（Branch History Injection，2022，CVE-2022-0001）：绕过 eIBRS 的 v2 后续变体
+BHI（Branch History Injection，2022，CVE-2022-0001）—— 绕过 eIBRS 的 v2 后续变体
 
 初学者不必记全，只需把握两点：其一，这些变体各自利用不同的微架构结构（不同缓冲区、不同预测器、不同推测源），但套路一致——瞬态窗口内违规取数 + 用缓存/缓冲把结果编码出来；其二，缓解与攻击是持续拉锯，每个缓解常带性能损失，且新变体不断出现。因此 Linux 内核用 `/sys/devices/system/cpu/vulnerabilities/` 逐项报告每台机器对每个变体的状态，运维需据此评估——下一节读的就是本机的真实状态。
 
@@ -274,11 +274,11 @@ DPA（Differential Power Analysis）比 SPA 强得多：即使单条曲线看不
 
 物理侧信道的防御分两大类，思想是"让功耗/辐射与秘密去相关"：
 
-隐藏（hiding）：降低信噪比——加噪声、随机化功耗（随机插入哑操作/乱序执行）、用功耗平衡的逻辑（如双轨预充电逻辑，使翻转 0→1 与 1→0 功耗相同）、加屏蔽层
+一是隐藏（hiding）—— 降低信噪比，加噪声、随机化功耗（随机插入哑操作/乱序执行）、用功耗平衡的逻辑（如双轨预充电逻辑，使翻转 0→1 与 1→0 功耗相同）、加屏蔽层
 
-掩码（masking）：从算法层把每个中间值随机拆成若干"份额"（share），使任何单个可观测量都与真实秘密独立，攻击者要同时测多个点才可能复原（提高 DPA 阶数门槛）——详见 14.5.3
+二是掩码（masking）—— 从算法层把每个中间值随机拆成若干"份额"（share），使任何单个可观测量都与真实秘密独立，攻击者要同时测多个点才可能复原（提高 DPA 阶数门槛），详见 14.5.3
 
-常时化操作序列：消灭 SPA 可见的秘密相关分支（如 Montgomery ladder 模幂）
+三是常时化操作序列 —— 消灭 SPA 可见的秘密相关分支（如 Montgomery ladder 模幂）
 
 初学者要理解一个重要区别：隐藏是"把信号埋进噪声"（提高攻击成本，但攻击者多采样仍可能突破），掩码是"从数学上让单点观测与秘密无关"（更根本，但实现难、有开销、且实现不当会因物理耦合而失效）。实践中高安全硬件（智能卡、安全芯片）往往多管齐下并接受严格的侧信道测评认证。这也是本报告把"掩码/盲化"统一放到 14.5 的原因——它们既防物理侧信道，也防微架构侧信道，是跨类的通用武器。
 
@@ -330,7 +330,7 @@ return diff == 0             // 无论在哪不同，都走完全程再判
 
 取随机数 r
 
-把秘密 s 表示为两份：(s ⊕ r, r)
+把秘密 s 拆成两份份额 (s ⊕ r, r)
 
 之后所有运算在这两份上分别/联合进行，绝不显式重构 s
 
