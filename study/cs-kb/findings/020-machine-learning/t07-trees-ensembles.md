@@ -1,6 +1,6 @@
 # L5-02·大主题7 树与集成方法
 
-> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：大主题1 监督学习框架与经验风险最小化（损失函数、ERM）、大主题6 偏差-方差·正则化·模型选择（偏差-方差分解、交叉验证、过拟合诊断）、L2-03 概率（熵、期望、伯努利/多项分布）、L1-03 线代（向量、内积）｜ 一手锚点：Stanford CS229 单元 U7「Decision Trees / Ensembling」（https://cs229.stanford.edu/ ，2026-07-30 复核在架）；ESL《The Elements of Statistical Learning》2nd ed 2009 §9.2（CART 决策树）、Ch10「Boosting and Additive Trees」（§10.1 AdaBoost、§10.2 前向分步、§10.10 GBM）、§15「Random Forests」；ISL《An Introduction to Statistical Learning》Ch8「Tree-Based Methods」（1st ed 2013 / 2nd ed 2021）；Breiman「Bagging Predictors」1996、「Random Forests」2001；Freund & Schapire「A Decision-Theoretic Generalization of On-Line Learning（AdaBoost）」1997；Friedman「Greedy Function Approximation: A Gradient Boosting Machine」2001；Chen & Guestrin「XGBoost: A Scalable Tree Boosting System」KDD 2016；Ke et al.「LightGBM」NeurIPS 2017；scikit-learn 1.9.0 官方文档（⚙演进快·锚版本 sklearn 1.9.0）；XGBoost 3.3.0 稳定版（2026-06-17）与 LightGBM 4.6.0 稳定版（⚙演进快·锚版本，见 7.4）｜ 成熟度：GA/稳定（CART、Bagging、随机森林、AdaBoost、Friedman 梯度提升的定义与公式均为数十年稳定的经典结果，不随版本漂移）；唯梯度提升的现代工业实现（XGBoost / LightGBM）硬标 `⚙演进快·锚版本`
+> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：大主题1 监督学习框架与经验风险最小化（损失函数、ERM）、大主题6 偏差-方差·正则化·模型选择（偏差-方差分解、交叉验证、过拟合诊断）、L2-03 概率（熵、期望、伯努利/多项分布）、L1-03 线代（向量、内积）｜ 一手锚点：Stanford CS229 单元 U7「Decision Trees / Ensembling」（https://cs229.stanford.edu/ ，2026-07-30 复核在架）；ESL《The Elements of Statistical Learning》2nd ed 2009 §9.2（CART 决策树）、Ch10「Boosting and Additive Trees」（§10.1 AdaBoost、§10.2 前向分步、§10.10 GBM）、§15「Random Forests」；ISL《An Introduction to Statistical Learning》Ch8「Tree-Based Methods」（1st ed 2013 / 2nd ed 2021）；Breiman「Bagging Predictors」1996、「Random Forests」2001；Freund & Schapire「A Decision-Theoretic Generalization of On-Line Learning（AdaBoost）」1997；Friedman「Greedy Function Approximation: A Gradient Boosting Machine」2001；Chen & Guestrin「XGBoost: A Scalable Tree Boosting System」KDD 2016；Ke et al.「LightGBM」NeurIPS 2017；scikit-learn 1.9.0 官方文档（⚙演进快·锚版本 sklearn 1.9.0）；XGBoost 3.3.0 稳定版（2026-06-17）与 LightGBM 4.7.0 稳定版（2026-07-18，⚙演进快·锚版本，见 7.4）｜ 成熟度：GA/稳定（CART、Bagging、随机森林、AdaBoost、Friedman 梯度提升的定义与公式均为数十年稳定的经典结果，不随版本漂移）；唯梯度提升的现代工业实现（XGBoost / LightGBM）硬标 `⚙演进快·锚版本`
 
 > 粒度判定：**1 份，不拆**。本大主题 4 个小主题（7.1–7.4）是一条从"单棵树 → 集成"的连续主线：决策树（7.1）是基学习器，随机森林（7.2）靠**并行 + 平均**降它的方差，AdaBoost（7.3）与 GBDT（7.4）靠**顺序 + 纠错**降它的偏差。四者机制同源（都以树为原子）、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
 
@@ -162,7 +162,7 @@ MDI（默认那个）**偏向高基数特征**（取值多的、连续的特征�
 
 #### 来源与时效（本小主题）
 - 一手锚点：Breiman「Bagging Predictors」Machine Learning 1996（自助聚合、降方差）；Breiman「Random Forests」Machine Learning 2001（特征子采样、OOB、变量重要性的原始出处）；ESL 2nd ed 2009 §15「Random Forests」（方差公式 Var=ρσ²+(1−ρ)σ²/B、m=√p 与 p/3 建议、§15.3.1 OOB）、§8.7（Bagging）；ISL Ch8（Bagging/RF 教学版，OOB 直觉）；CS229 U7（ensembling 讲义）。
-- 实现锚点：scikit-learn 1.9.0 `RandomForestClassifier/Regressor`、`BaggingClassifier` 文档（分类 `max_features='sqrt'`、回归默认用全部特征即 `1.0`；`n_estimators` 默认 100；`oob_score=False`；`bootstrap=True`；⚙演进快·锚版本 sklearn 1.9.0，2026-07-30 复核）；permutation_importance 官方文档关于 MDI 偏向高基数特征的警示。
+- 实现锚点：scikit-learn 1.9.0 `RandomForestClassifier/Regressor`、`BaggingClassifier` 文档（分类 `max_features='sqrt'`、回归默认用全部特征即 `1.0`；`n_estimators` 默认值随机森林为 100、而 `BaggingClassifier` 为 10（本机 sklearn 1.9.0 实测）；`oob_score=False`；`bootstrap=True`；⚙演进快·锚版本 sklearn 1.9.0，2026-07-30 复核）；permutation_importance 官方文档关于 MDI 偏向高基数特征的警示。
 - 实证：sklearn 1.9.0 5 折 acc — Bagging(100)≈0.916、RandomForest(100)≈0.918，均显著高于单树 0.853（见抬头实证说明 a）；(1−1/N)^N→1/e≈0.368 为解析事实。
 - 冲突/差异：`max_features` 分类默认在 sklearn 历史版本中曾标 `'auto'`（等价 `'sqrt'`），新版改为显式 `'sqrt'`——记为实现演进，非理论分歧。特征重要性两法（MDI vs 排列）给出的排序可能不一致，两边都记：MDI 快但偏高基数、排列更可靠但更慢，sklearn 文档推荐存疑时用排列法。
 
@@ -286,7 +286,7 @@ Friedman 2001 是数学骨架，真正让 GBDT 统治表格数据竞赛的是两
 
 这三者是"同一套数学的三代工程"——scikit-learn 的 `GradientBoostingClassifier` 是最贴近 Friedman 原版的教学级实现（较慢）；sklearn 后来又加了 `HistGradientBoostingClassifier`，借鉴 LightGBM 的直方图思路、快得多（本次实证里它 acc≈0.933，是所有方法里最高的）；XGBoost/LightGBM 则是工业界与竞赛的主力。level-wise（按层长，均衡但可能浪费）vs leaf-wise（按叶长，激进高效但更易过拟合、需 `num_leaves` 约束）是 XGBoost 早期与 LightGBM 的一个经典设计分歧，两边各有取舍，不存在绝对优劣。
 
-在版本与时效上（⚙演进快·锚版本，2026-07-30 核实），**XGBoost 稳定版为 3.3.0**（2026-06-17 发布，开发线 3.4.0-dev）；**LightGBM 稳定版 4.6.0**（开发线 4.7.0.99），且其代码仓库已于 2026-03 从 `microsoft/LightGBM` 迁至 `lightgbm-org/LightGBM`；**scikit-learn 1.9.0**。这些库演进快，具体默认超参（学习率、`num_leaves`、正则系数默认值等）随小版本可能变动，本报告不逐一钉死默认数值，需要精确默认值时以对应版本官方文档为准（标"待核 @当版本"）；机制层面（二阶展开、直方图、叶子生长、正则项）在近几个大版本内稳定。
+在版本与时效上（⚙演进快·锚版本，2026-07-30 核实），**XGBoost 稳定版为 3.3.0**（2026-06-17 发布，开发线 3.4.0-dev）；**LightGBM 稳定版 4.7.0**（2026-07-18 发布，开发线 4.7.0.99），且其代码仓库已于 2026-03 从 `microsoft/LightGBM` 迁至 `lightgbm-org/LightGBM`；**scikit-learn 1.9.0**。这些库演进快，具体默认超参（学习率、`num_leaves`、正则系数默认值等）随小版本可能变动，本报告不逐一钉死默认数值，需要精确默认值时以对应版本官方文档为准（标"待核 @当版本"）；机制层面（二阶展开、直方图、叶子生长、正则项）在近几个大版本内稳定。
 
 ### 7.4.7 为什么是表格数据主力 + 三法对比
 
@@ -302,6 +302,6 @@ Friedman 2001 是数学骨架，真正让 GBDT 统治表格数据竞赛的是两
 
 #### 来源与时效（本小主题）
 - 一手锚点：Friedman「Greedy Function Approximation: A Gradient Boosting Machine」Annals of Statistics 2001（梯度提升 = 函数空间梯度下降、负梯度/伪残差、shrinkage 学习率）；Friedman「Stochastic Gradient Boosting」2002（行子采样）；ESL 2nd ed 2009 Ch10（§10.9–10.13 GBM、损失函数选择、shrinkage §10.12、树复杂度）；Chen & Guestrin「XGBoost」KDD 2016（二阶泰勒、正则化目标、近似分裂）；Ke et al.「LightGBM」NeurIPS 2017（直方图、leaf-wise、GOSS/EFB）；CS229 U7。
-- 实现锚点（⚙演进快·锚版本，2026-07-30 复核）：XGBoost 3.3.0 稳定版（2026-06-17，开发 3.4.0-dev）；LightGBM 4.6.0 稳定版（开发 4.7.0.99，仓库 2026-03 迁至 lightgbm-org/LightGBM）；scikit-learn 1.9.0 `GradientBoostingClassifier`（默认 `learning_rate=0.1`、`n_estimators=100`、`max_depth=3`、`subsample=1.0`）与 `HistGradientBoostingClassifier`（直方图版，借鉴 LightGBM）。具体默认超参随小版本可能变，精确值以对应版本官方文档为准（标"待核 @当版本"）。
+- 实现锚点（⚙演进快·锚版本，2026-07-30 复核）：XGBoost 3.3.0 稳定版（2026-06-17，开发 3.4.0-dev）；LightGBM 4.7.0 稳定版（2026-07-18，开发 4.7.0.99，仓库 2026-03 迁至 lightgbm-org/LightGBM）；scikit-learn 1.9.0 `GradientBoostingClassifier`（默认 `learning_rate=0.1`、`n_estimators=100`、`max_depth=3`、`subsample=1.0`）与 `HistGradientBoostingClassifier`（直方图版，借鉴 LightGBM）。具体默认超参随小版本可能变，精确值以对应版本官方文档为准（标"待核 @当版本"）。
 - 实证：sklearn 1.9.0 5 折 acc — GBDT(100)≈0.915、HistGBDT≈0.933、RandomForest(100)≈0.918、单树≈0.853（见抬头实证说明 a）；此为单一合成集快照，不作跨数据集普适排名。
 - 冲突/差异：level-wise（XGBoost 早期默认）vs leaf-wise（LightGBM 默认）生长策略是实现层设计分歧，两边都记、各有取舍不定优劣；XGBoost 后续版本也支持直方图与 leaf-wise 选项，此处按"两实现的历史标志性差异"记述。库默认超参因版本而异，均标 `⚙演进快·锚版本`，未逐一钉死数值处标"待核 @当版本"。

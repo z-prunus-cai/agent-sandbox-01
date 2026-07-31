@@ -215,7 +215,7 @@ a = b  ∧  f(a) ≠ f(b)
 
 #### 来源与时效
 
-- 一手：SMT-LIB Standard v2.7（2025-02-05，理论定义 Ints/Reals/FixedSizeBitVectors/ArraysEx/Core 的官方语义）；⚠时效分歧：v2.6 最新修订为 2024-09-20，v2.7 于 2025-02-05 发布并新增多态与 map 理论——理论核心语义两版一致，本报告以 v2.7 为准。核实 2026-07-30。
+- 一手：SMT-LIB Standard v2.7（2025-02-05，理论定义 Ints/Reals/FixedSizeBitVectors/ArraysEx/Core 的官方语义）；⚠时效分歧：v2.6 最新修订为 2021-05-12，v2.7 于 2025-02-05 发布并新增多态与 map 理论——理论核心语义两版一致，本报告以 v2.7 为准。核实 2026-07-30。
 - 一手：de Moura & Bjørner, TACAS 2008（Z3 各理论求解器：simplex、bit-blasting、congruence closure）。核实 2026-07-30。
 - 教材交叉：Kroening & Strichman《Decision Procedures》2nd ed. 2016——§5 EUF/congruence closure、§7 位向量、§8 数组、§5–6 线性算术；McCarthy, "Towards a Mathematical Science of Computation", 1962（数组读写公理原始出处）。
 - 实证（z3-solver 5.0.0 @2026-07-30，真实输出）：LIA `x+2y=7 ∧ x−y=1` → sat `[y=2,x=3]`；LRA `a+b=1 ∧ a−b=1/3` → sat `[b=1/3,a=2/3]`；BV8 `bx+1==0` → sat `[bx=255]`（溢出回绕）；数组 `i=j ∧ select(store(A,i,10),j)≠10` → unsat；UF `a=b ∧ f(a)≠f(b)` → unsat。

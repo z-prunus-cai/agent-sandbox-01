@@ -128,7 +128,7 @@ TPU v1 用 **8 位整数量化（quantization）**做推理：把训练好的浮
 
 ### 8.2.6 TPU 代际演进（⚙演进快·锚版本·随时变）
 
-以下为产品代际快照，锚 2026-07，来自 Google 官方与公开报道；**DSA 硬件代际演进极快，具体数字随时变化，不作长期结论**。TPU v1（2015）仅推理、8 位整数、约 92 TOPS。TPU v2（2017）起支持训练，引入 bfloat16。此后 v3（2018，液冷）、v4（2021）、v5e/v5p（2023）逐代提升算力、HBM 容量与互连规模。第六代 Trillium（TPU v6e，2024 发布、2025 GA）单芯约 926 BF16 TFLOPS。第七代 Ironwood（TPU v7，2025 Cloud Next 发布、2025 年底 GA）单芯约 4614 FP8 TFLOPS、192 GB HBM3E、约 7.37 TB/s 显存带宽，单 pod 可达 9216 芯片。
+以下为产品代际快照，锚 2026-07，来自 Google 官方与公开报道；**DSA 硬件代际演进极快，具体数字随时变化，不作长期结论**。TPU v1（2015）仅推理、8 位整数、约 92 TOPS。TPU v2（2017）起支持训练，引入 bfloat16。此后 v3（2018，液冷）、v4（2021）、v5e/v5p（2023）逐代提升算力、HBM 容量与互连规模。第六代 Trillium（TPU v6e，2024 发布、2025 GA）单芯约 918 BF16 TFLOPS。第七代 Ironwood（TPU v7，2025 Cloud Next 发布、2025 年底 GA）单芯约 4614 FP8 TFLOPS、192 GB HBM3E、约 7.37 TB/s 显存带宽，单 pod 可达 9216 芯片。
 
 这些数字对初学者的价值不在死记，而在看清**趋势**：代际之间峰值算力约每代成倍增长，精度格式一路走低（8 位整数 → bfloat16 → FP8），片上/片外存储与互连带宽持续猛增，且重心从"纯推理"扩到"训练 + 推理"再到近年"面向推理时代"的再定制。凡是本报告出现的具体 TPU 数字，请一律回官方文档核对当代规格，切勿把某一代的数字当作"TPU 就是这样"。
 
@@ -136,7 +136,7 @@ TPU v1 用 **8 位整数量化（quantization）**做推理：把训练好的浮
 - 锚点：H&P《QA》6th ed, 2017, ch7 §7.3 *The Google Tensor Processing Unit*（TPU v1 结构、256×256 MXU、统一缓冲、CISC 指令、确定性执行、8 位量化）；核实 2026-07-30。
 - 佐证（一手）：Jouppi et al., *In-Datacenter Performance Analysis of a Tensor Processing Unit*, ISCA 2017（TPU v1 原始论文，65536 个 8 位 MAC、峰值约 92 TOPS、700 MHz、脉动阵列权重固定数据流）；Kung & Leiserson, *Systolic Arrays for VLSI*, 1978/1982（脉动阵列原始文献）。
 - 一致性：教材与 ISCA 论文对 v1 阵列规模、峰值 TOPS、确定性执行、8 位量化表述一致；教材数据源自该论文，无冲突。
-- ⚙演进快·代际快照（锚 2026-07，非一手承重）：Trillium(v6e) 约 926 BF16 TFLOPS、Ironwood(v7) 约 4614 FP8 TFLOPS/192 GB HBM3E/7.37 TB/s，来自 Google 官方博客与云文档及公开报道（introl.com、blog.google、docs.cloud.google.com/tpu）；**数值随代际变化，仅作趋势示意，不作现状结论**，精确规格以官方当代文档为准。
+- ⚙演进快·代际快照（锚 2026-07，非一手承重）：Trillium(v6e) 约 918 BF16 TFLOPS、Ironwood(v7) 约 4614 FP8 TFLOPS/192 GB HBM3E/7.37 TB/s，来自 Google 官方博客与云文档及公开报道（introl.com、blog.google、docs.cloud.google.com/tpu）；**数值随代际变化，仅作趋势示意，不作现状结论**，精确规格以官方当代文档为准。
 - 本机实证：不适用（无 TPU 硬件，标未取）。
 - 待核：TPU v1 统一缓冲容量各处记为 24 MiB 或 28 MiB（不同文献口径差异），此处标约 24–28 MiB，不取单一精确值。
 
