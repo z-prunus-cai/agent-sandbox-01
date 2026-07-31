@@ -88,7 +88,7 @@ RESTful API 的"动词"直接复用 HTTP 方法，其语义由 RFC 9110 §9.3 �
 503 Service Unavailable §15.6.4   暂时不可用，可配 Retry-After
 ```
 
-一个高频初学者坑：401 与 403。401 表示"我不知道你是谁（缺或坏的凭证）"，语义上还要求响应带 `WWW-Authenticate` 头说明该怎么认证；403 表示"我知道你是谁，但你不许做这事"。另一个坑：405 **必须**带 `Allow` 响应头（RFC 9110 §15.5.6 用 MUST），告诉客户端这个 URI 到底支持哪些方法。还要注意 422 在 RFC 9110 里已经从 WebDAV "转正"进核心 HTTP 语义（§15.5.21），可放心用于表达"字段校验没过"，无需再引 WebDAV。
+401 与 403。401 表示"我不知道你是谁（缺或坏的凭证）"，语义上还要求响应带 `WWW-Authenticate` 头说明该怎么认证；403 表示"我知道你是谁，但你不许做这事"。另一个坑：405 **必须**带 `Allow` 响应头（RFC 9110 §15.5.6 用 MUST），告诉客户端这个 URI 到底支持哪些方法。还要注意 422 在 RFC 9110 里已经从 WebDAV "转正"进核心 HTTP 语义（§15.5.21），可放心用于表达"字段校验没过"，无需再引 WebDAV。
 
 ### N11.1.7 Richardson 成熟度模型（教学辅助，二手）
 
@@ -249,7 +249,7 @@ components:                    # 可复用部件：schema、参数、响应、se
     Order: { ... }             # 见 N11.4.3
 ```
 
-要抓的结构直觉：`paths` 是"路径 → 方法 → 操作"的三层嵌套，每个操作声明它的 `parameters`（路径/查询/头参数）、`requestBody`、和按状态码分列的 `responses`；重复用到的结构提到 `components` 里用 `$ref` 引用（DRY）。`info.version` 是这份 API 文档自身的版本号，与 N11.3 的 API 大版本是两回事，别混。
+`paths` 是"路径 → 方法 → 操作"的三层嵌套，每个操作声明它的 `parameters`（路径/查询/头参数）、`requestBody`、和按状态码分列的 `responses`；重复用到的结构提到 `components` 里用 `$ref` 引用（DRY）。`info.version` 是这份 API 文档自身的版本号，与 N11.3 的 API 大版本是两回事，别混。
 
 ### N11.4.3 组件 schema 与 JSON Schema 2020-12
 
@@ -280,7 +280,7 @@ bad 样例   {"id":"3f..","status":"frozen","total":-1}
    → total  : -1 is less than the minimum of 0
 ```
 
-这段真实输出坐实了两点：一是 OpenAPI 3.1 的组件 schema 确实能被标准 JSON Schema 2020-12 校验器（`Draft202012Validator`）直接吃下并校验；二是 `enum`/`minimum`/`required`/`additionalProperties` 这些约束是**可执行的**——契约不只是文档，它能真正在运行时校验请求/响应是否合规（很多网关/框架据此自动做输入校验，非法请求直接回 422，见 N11.1.6）。
+一是 OpenAPI 3.1 的组件 schema 确实能被标准 JSON Schema 2020-12 校验器（`Draft202012Validator`）直接吃下并校验；二是 `enum`/`minimum`/`required`/`additionalProperties` 这些约束是**可执行的**——契约不只是文档，它能真正在运行时校验请求/响应是否合规（很多网关/框架据此自动做输入校验，非法请求直接回 422，见 N11.1.6）。
 
 ### N11.4.4 从契约派生代码、文档与 mock
 
@@ -336,7 +336,7 @@ RFC 6749 §1.1 定义四个角色。**资源所有者（resource owner）**：�
      |                  |<-------------------------------------------|
 ```
 
-两个初学者必抓的安全参数：**`state`** 是客户端生成的随机值，原样回传用来防 CSRF（校验回来的 state 与发出去的一致）。**`code_challenge`/`code_verifier`** 是 **PKCE**（RFC 7636）——客户端先发 `code_challenge`（verifier 的哈希），换令牌时再出示 `code_verifier`，防止授权码在重定向中被截获后被他人拿去换令牌。PKCE 原本为无后端的移动/SPA 客户端设计，OAuth 2.1 把它扩成对**所有**客户端强制（见 N11.5.9）。
+**`state`** 是客户端生成的随机值，原样回传用来防 CSRF（校验回来的 state 与发出去的一致）。**`code_challenge`/`code_verifier`** 是 **PKCE**（RFC 7636）——客户端先发 `code_challenge`（verifier 的哈希），换令牌时再出示 `code_verifier`，防止授权码在重定向中被截获后被他人拿去换令牌。PKCE 原本为无后端的移动/SPA 客户端设计，OAuth 2.1 把它扩成对**所有**客户端强制（见 N11.5.9）。
 
 ### N11.5.4 其他授权类型
 

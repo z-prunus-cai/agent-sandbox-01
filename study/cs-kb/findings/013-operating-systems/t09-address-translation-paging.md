@@ -302,13 +302,13 @@ TLB reach（2MB, 1024项）= 1024 × 2MB   = 2 GB   （放大 512 倍）
 
 x86-64 用 PTE 里的**页大小位**（PS，bit 7，见 9.2.3）实现大页：在页目录 PD 级把 PS 置 1，该项就不再指向下一级页表、而是直接映射一个 **2MB** 物理帧；在更高的 PDPT 级把 PS 置 1，则直接映射 **1GB** 物理帧。这两个尺寸不是随意取的，恰好等于"少走一级 / 少走两级"时那一级本可索引的整段大小（512 × 4KB = 2MB，512 × 2MB = 1GB）。
 
-本机实测印证了这两档：`/sys/kernel/mm/hugepages/` 下有 `hugepages-2048kB`（2MB）和 `hugepages-1048576kB`（1GB）两个目录；`/proc/meminfo` 的 `Hugepagesize` = 2048 kB（默认大页 2MB）；`/proc/cpuinfo` flags 含 `pdpe1gb`（CPU 支持 1GB 页）与 `pse`（支持 2MB/4MB 页）。1GB 页需要 CPU 有 `pdpe1gb` 能力，本机具备。
+`/sys/kernel/mm/hugepages/` 下有 `hugepages-2048kB`（2MB）和 `hugepages-1048576kB`（1GB）两个目录；`/proc/meminfo` 的 `Hugepagesize` = 2048 kB（默认大页 2MB）；`/proc/cpuinfo` flags 含 `pdpe1gb`（CPU 支持 1GB 页）与 `pse`（支持 2MB/4MB 页）。1GB 页需要 CPU 有 `pdpe1gb` 能力，本机具备。
 
 ### 9.5.3 Linux 的两条大页路径：hugetlbfs 与 THP
 
 Linux 提供两种用大页的方式，机制不同、比对要分清。其一是显式大页（HugeTLB / hugetlbfs）：管理员预先从内存里预留一批固定尺寸的大页（通过 `/proc/sys/vm/nr_hugepages` 或 `/sys/kernel/mm/hugepages/*`），应用经 `mmap(MAP_HUGETLB)` 或 hugetlbfs 文件系统显式申请，可靠但要手工配额。其二是透明大页（THP, Transparent Huge Pages）：内核在后台自动把符合条件的匿名内存合并（promote）成 2MB 大页、必要时再拆回，应用无需改代码。
 
-本机实测：`/proc/meminfo` 显示 `HugePages_Total: 0`（未预留任何显式大页）、`/proc/sys/vm/nr_hugepages` = 0、且 `/proc/mounts` 未挂载 hugetlbfs——即显式大页处于"支持但未配置"状态；而 THP 的 `/sys/kernel/mm/transparent_hugepage/enabled` = `always [madvise] never`，当前档位为 **madvise**（仅对显式 `madvise(MADV_HUGEPAGE)` 的区域启用 THP）。`/proc/meminfo` 里 `FileHugePages: 145408 kB` 表明确有文件页以大页形式在用（THP 对文件映射生效）。
+`/proc/meminfo` 显示 `HugePages_Total: 0`（未预留任何显式大页）、`/proc/sys/vm/nr_hugepages` = 0、且 `/proc/mounts` 未挂载 hugetlbfs——即显式大页处于"支持但未配置"状态；而 THP 的 `/sys/kernel/mm/transparent_hugepage/enabled` = `always [madvise] never`，当前档位为 **madvise**（仅对显式 `madvise(MADV_HUGEPAGE)` 的区域启用 THP）。`/proc/meminfo` 里 `FileHugePages: 145408 kB` 表明确有文件页以大页形式在用（THP 对文件映射生效）。
 
 初学者理解成"显式大页 = 你手动圈一块专用大页池、要自己申请"，"THP = 系统悄悄帮你合并，省心但不完全可控"。两者可同时存在，面向的场景不同：数据库常用显式大页求确定性，通用负载多靠 THP 自动获益。
 

@@ -22,7 +22,7 @@ fork-join 模型的好处是它**与具体多少个核心无关**——程序员
 
 ### 15.1.2 work、span 与并行度
 
-衡量并行算法有两个关键量：**work（工作量）** 和 **span（跨度，也叫 critical-path length 关键路径长度）**。
+**work（工作量）** 和 **span（跨度，也叫 critical-path length 关键路径长度）**。
 
 T₁ = work = 单核（串行）执行全部操作所需的总时间
 

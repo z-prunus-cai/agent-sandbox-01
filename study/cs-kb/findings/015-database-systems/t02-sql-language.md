@@ -48,7 +48,7 @@ CREATE TABLE c(n INTEGER CHECK (n>0));  INSERT INTO c VALUES (-1);
 -> IntegrityError  (SQLite 3.45.1 @2026-07-29)
 ```
 
-一个方言注意点：`CHECK` 约束里 SQL 标准允许引用子查询，但 PostgreSQL 和 SQLite 都**不支持** `CHECK` 中用子查询（只能引用本行的列），跨行/跨表的复杂规则要用触发器或断言（`ASSERTION` 标准里有但几乎没有数据库实现）。
+`CHECK` 约束里 SQL 标准允许引用子查询，但 PostgreSQL 和 SQLite 都**不支持** `CHECK` 中用子查询（只能引用本行的列），跨行/跨表的复杂规则要用触发器或断言（`ASSERTION` 标准里有但几乎没有数据库实现）。
 
 ### 03-2.1.4 外键与参照完整性（含 SQLite 默认不强制的陷阱）
 
@@ -159,7 +159,7 @@ FROM   student s
 JOIN   takes  t ON s.ID = t.ID;
 ```
 
-初学者先建立直觉：`INNER JOIN` 只留"两边都对得上"的行；`LEFT JOIN` 额外保留左表所有行（右表没匹配就填 NULL），常用来做"主表全保留、附信息可有可无"的查询（如"列出所有学生及其选课，没选课的也要列出来"）；`RIGHT JOIN` 是左右对调的 `LEFT JOIN`；`FULL OUTER JOIN` 两边不匹配的行都保留。**方言差异**：PostgreSQL 一直全支持这五类；SQLite 历史上只支持 `LEFT JOIN`，直到 **SQLite 3.39.0（2022）才加入 `RIGHT JOIN` 和 `FULL OUTER JOIN`**。本机 SQLite 3.45.1 实测 `FULL OUTER JOIN` 可用：
+`INNER JOIN` 只留"两边都对得上"的行；`LEFT JOIN` 额外保留左表所有行（右表没匹配就填 NULL），常用来做"主表全保留、附信息可有可无"的查询（如"列出所有学生及其选课，没选课的也要列出来"）；`RIGHT JOIN` 是左右对调的 `LEFT JOIN`；`FULL OUTER JOIN` 两边不匹配的行都保留。**方言差异**：PostgreSQL 一直全支持这五类；SQLite 历史上只支持 `LEFT JOIN`，直到 **SQLite 3.39.0（2022）才加入 `RIGHT JOIN` 和 `FULL OUTER JOIN`**。本机 SQLite 3.45.1 实测 `FULL OUTER JOIN` 可用：
 
 ```
 FULL OUTER JOIN 结果 -> [(None, 3), (1, None), (2, 2)]   (SQLite 3.45.1 @2026-07-29)
@@ -200,7 +200,7 @@ HAVING AVG(salary) > 42000   -- 再按组过滤（分组后）
 ORDER BY avg_sal DESC;
 ```
 
-对照逻辑处理顺序就清楚了：`WHERE`（分组前，不能含聚合）→ `GROUP BY`（分组）→ `HAVING`（分组后，可含聚合）→ `SELECT`。初学者最重要的一条硬规则：**`SELECT` 列表里，凡不在聚合函数内的列，必须都出现在 `GROUP BY` 里**（否则语义不明——一组里非分组列可能有多个不同值，不知道该显示哪个）。SQL 标准和 PostgreSQL 严格执行此规则并报错；SQLite 相对宽松、允许这种写法并从组内**任意**取一行的值（**方言差异**，且这种"任取"是不确定行为，别依赖）。另外 `GROUP BY` 把 NULL 归为同一组（与 `DISTINCT` 一致），本机实测（k 取值 NULL,NULL,1）：
+`WHERE`（分组前，不能含聚合）→ `GROUP BY`（分组）→ `HAVING`（分组后，可含聚合）→ `SELECT`。初学者最重要的一条硬规则：**`SELECT` 列表里，凡不在聚合函数内的列，必须都出现在 `GROUP BY` 里**（否则语义不明——一组里非分组列可能有多个不同值，不知道该显示哪个）。SQL 标准和 PostgreSQL 严格执行此规则并报错；SQLite 相对宽松、允许这种写法并从组内**任意**取一行的值（**方言差异**，且这种"任取"是不确定行为，别依赖）。另外 `GROUP BY` 把 NULL 归为同一组（与 `DISTINCT` 一致），本机实测（k 取值 NULL,NULL,1）：
 
 ```
 SELECT k, count(*) FROM g GROUP BY k;  -> [(None, 2), (1, 1)]   (两个 NULL 归一组)
@@ -241,7 +241,7 @@ FROM   instructor
 WHERE  salary > (SELECT AVG(salary) FROM instructor);
 ```
 
-初学者的直觉抓手：子查询就是"先算一个中间结果，再拿它去参与外层查询"。放在 `FROM` 里的子查询（派生表）相当于一张临时表，必须起别名才能被引用。一个易错点：标量子查询若实际返回了多行，会运行时报错（"more than one row"）——它要求你保证只返回一个值。
+子查询就是"先算一个中间结果，再拿它去参与外层查询"。放在 `FROM` 里的子查询（派生表）相当于一张临时表，必须起别名才能被引用。一个易错点：标量子查询若实际返回了多行，会运行时报错（"more than one row"）——它要求你保证只返回一个值。
 
 ### 03-2.4.2 相关子查询（correlated）vs 非相关子查询
 
@@ -382,7 +382,7 @@ SELECT name FROM instructor WHERE salary IS NULL;      -- 正确
 
 ### 03-2.5.5 NULL 在聚合、DISTINCT、GROUP BY、UNIQUE 中的"不一致"待遇
 
-一个让初学者困惑的点：NULL 在不同场景下的"是否相等"待遇看似矛盾，其实是标准的分场景规定，值得单独记清：
+NULL 在不同场景下的"是否相等"待遇看似矛盾，其实是标准的分场景规定，值得单独记清：
 
 聚合函数（除 `COUNT(*)`）**忽略** NULL——`COUNT(col)`/`SUM`/`AVG` 都跳过 NULL 行（本机实测 `COUNT(v)=2`、`AVG(v)=20`，见 03-2.3.3）。
 
@@ -419,7 +419,7 @@ INSERT INTO v VALUES (3);
 -> OperationalError: cannot modify v because it is a view   (SQLite 3.45.1 @2026-07-29)
 ```
 
-初学者记住结论即可：**视图默认是"只读的查询快捷方式"；能不能写、怎么写，强烈依赖数据库**（PG 简单视图能写、SQLite 一律要靠 `INSTEAD OF` 触发器）。另有"物化视图（materialized view）"把结果真正存下来、需刷新，PostgreSQL 支持、SQLite 不支持（**方言差异**）。
+**视图默认是"只读的查询快捷方式"；能不能写、怎么写，强烈依赖数据库**（PG 简单视图能写、SQLite 一律要靠 `INSTEAD OF` 触发器）。另有"物化视图（materialized view）"把结果真正存下来、需刷新，PostgreSQL 支持、SQLite 不支持（**方言差异**）。
 
 ### 03-2.6.2 触发器（TRIGGER）：BEFORE / AFTER / INSTEAD OF
 

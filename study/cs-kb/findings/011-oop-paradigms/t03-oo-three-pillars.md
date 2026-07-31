@@ -61,7 +61,7 @@ print(s._Safe__secret)             # 用改写后的名字仍能拿到
 42
 ```
 
-一个初学者易错点：把双下划线当成「真正的私有/加密」。它拦不住有意访问（`s._Safe__secret` 照样读到 42），只是把名字改掉以免误撞和子类覆盖。要做「读写受控」的封装，更常用的是 `property`（见 3.2.5）。
+把双下划线当成「真正的私有/加密」。它拦不住有意访问（`s._Safe__secret` 照样读到 42），只是把名字改掉以免误撞和子类覆盖。要做「读写受控」的封装，更常用的是 `property`（见 3.2.5）。
 
 #### 来源与时效（本小主题末集中列）
 - SICP 2nd ed §3.1、§3.1.1（Local State Variables、对象与银行账户、局部状态变量），https://sarabander.github.io/sicp/html/index.xhtml ，核实 2026-07-26。
@@ -360,7 +360,7 @@ pi*r^2 | s*s
 
 这段代码正是 SICP 那张「类型→实现」表格的 Python 版：`area` 是通用操作名，`register` 往表里登记每种类型的实现，调用时按第一个实参的类型分派。要加一种新形状（比如 `Triangle`），只需再 `@area.register` 一条，无需触碰 `Circle`/`Square` 的代码——可加性一目了然。
 
-一个易错点：`singledispatch` 是**单分派**——只看第一个参数的类型。如果你的操作要同时按两个参数的类型选实现（**多重分派 / multiple dispatch**，如 SICP §2.5.1 里 `add` 复数与有理数的跨类型运算），`singledispatch` 就不够用了，需要额外机制（如第三方 `multipledispatch` 库或手写按类型对查表）。方法名 `singledispatch` 里的 "single" 就是这个意思。
+`singledispatch` 是**单分派**——只看第一个参数的类型。如果你的操作要同时按两个参数的类型选实现（**多重分派 / multiple dispatch**，如 SICP §2.5.1 里 `add` 复数与有理数的跨类型运算），`singledispatch` 就不够用了，需要额外机制（如第三方 `multipledispatch` 库或手写按类型对查表）。方法名 `singledispatch` 里的 "single" 就是这个意思。
 
 #### 来源与时效（本小主题末集中列）
 - SICP 2nd ed §2.4（Multiple Representations for Abstract Data：复数直角/极坐标）、§2.5（Systems with Generic Operations：通用型操作、data-directed programming、类型标签与分派表、跨类型运算），https://sarabander.github.io/sicp/html/index.xhtml ，核实 2026-07-26。

@@ -44,7 +44,6 @@
 
 一个共享对象类型的 **consensus number**（共识数）定义为：用这种对象（可任意多个实例）外加任意多个 read/write 寄存器，能够 **wait-free 求解共识的最大线程数**。如果对任意大的 n 都能解，consensus number 就是 **∞**。
 
-用一句话记：
 
 consensus number(T) = 能被 T 类型对象 wait-free 求解共识的最多线程数（能解任意多则为 ∞）
 

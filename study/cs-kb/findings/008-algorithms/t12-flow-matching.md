@@ -8,7 +8,7 @@
 
 本报告的可选实测基于 Python 3.11.15、numpy 2.4.6、scipy 1.17.1、Linux 6.18.5 x86_64，对应上面的基线串。测试脚本仅存于仓库外 scratchpad，跑完即清；下文只贴真实输出。实测为可选补充，正确性仍以多来源比对为准。
 
-跨课边界：流的进阶（最小费用流、消负圈、Goldberg–Tarjan、push–relabel 预流推进）归 **L6-01 高级算法 #02「网络流进阶」**，本课止于 Ford–Fulkerson / Edmonds–Karp 与二部匹配，进阶只点名指路、不展开。一般图（非二部）匹配的 Edmonds「花树」算法也不在本课范围。
+流的进阶（最小费用流、消负圈、Goldberg–Tarjan、push–relabel 预流推进）归 **L6-01 高级算法 #02「网络流进阶」**，本课止于 Ford–Fulkerson / Edmonds–Karp 与二部匹配，进阶只点名指路、不展开。一般图（非二部）匹配的 Edmonds「花树」算法也不在本课范围。
 
 ---
 

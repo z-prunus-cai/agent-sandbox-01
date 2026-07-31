@@ -26,7 +26,7 @@ Dummy（哑对象）是传进去填满参数列表、但在这次测试里**根�
 
 Fowler 原文的定义是：「Dummy objects are passed around but never actually used. Usually they are just used to fill parameter lists.」（哑对象被传来传去但从不真正使用，通常只用来填参数列表。）
 
-最小例子：一个 `Order` 构造函数要求传一个 `Customer`，但你这次只想测「订单加一件商品后总数是否为 1」，压根用不到 customer 的任何行为。这时传 `Customer(null, null)` 甚至一个 `null`（如果语言允许）就是 dummy——它只是让对象能被造出来。初学者容易把 dummy 和 stub 搞混：区别在于 dummy **不会被调用**，一旦某个替身的方法真的被 SUT 调用并要返回点什么，它就升级成了 stub。
+一个 `Order` 构造函数要求传一个 `Customer`，但你这次只想测「订单加一件商品后总数是否为 1」，压根用不到 customer 的任何行为。这时传 `Customer(null, null)` 甚至一个 `null`（如果语言允许）就是 dummy——它只是让对象能被造出来。初学者容易把 dummy 和 stub 搞混：区别在于 dummy **不会被调用**，一旦某个替身的方法真的被 SUT 调用并要返回点什么，它就升级成了 stub。
 
 ### 6.10.1.3 Stub——提供预设的「罐头答案」
 
@@ -34,7 +34,7 @@ Stub（桩）为测试期间发生的调用提供**预先设定好的固定返�
 
 Fowler 原文：「Stubs provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.」
 
-最小例子：SUT 是「根据汇率把美元转成欧元」，它依赖一个 `RateService.getRate()`。真服务要联网、汇率还每秒变，没法写确定性断言。于是给一个 stub，让 `getRate()` **永远返回 0.9**，这样 `convert(100)` 就应恒等于 90，可写死断言。stub 的关键特征是：它只管**给答案**，你不会去核对「stub 被调用了几次、参数是什么」——那是 spy/mock 的事。stub 天然配套**状态验证**（见 6.10.2）：喂好输入，只看 SUT 吐出的结果对不对。
+SUT 是「根据汇率把美元转成欧元」，它依赖一个 `RateService.getRate()`。真服务要联网、汇率还每秒变，没法写确定性断言。于是给一个 stub，让 `getRate()` **永远返回 0.9**，这样 `convert(100)` 就应恒等于 90，可写死断言。stub 的关键特征是：它只管**给答案**，你不会去核对「stub 被调用了几次、参数是什么」——那是 spy/mock 的事。stub 天然配套**状态验证**（见 6.10.2）：喂好输入，只看 SUT 吐出的结果对不对。
 
 ### 6.10.1.4 Spy——会「偷偷记账」的 stub
 
@@ -238,7 +238,7 @@ $ python3 -c "from grade import grade; print('grade(75) =>', grade(75), '(spec s
 grade(75) => F (spec says C)
 ```
 
-关键在于：`grade` 里**根本没有** 70-79 对应的分支，覆盖率工具只能对「已存在的分支」要求你都走到，它无从要求你走一条不存在的分支——**缺失的逻辑天生在覆盖率的视野之外**。这就是为什么覆盖率再高也代替不了「按输入空间划分等价类、把边界值（79/80、69/70）都设成用例」的用例设计（回顾 MIT 6.031 的 partition/boundary 策略，见大主题06-9 用例选择）。覆盖率能告诉你「哪里还没测」，但不能告诉你「测得对不对、测全没测全」。
+`grade` 里**根本没有** 70-79 对应的分支，覆盖率工具只能对「已存在的分支」要求你都走到，它无从要求你走一条不存在的分支——**缺失的逻辑天生在覆盖率的视野之外**。这就是为什么覆盖率再高也代替不了「按输入空间划分等价类、把边界值（79/80、69/70）都设成用例」的用例设计（回顾 MIT 6.031 的 partition/boundary 策略，见大主题06-9 用例选择）。覆盖率能告诉你「哪里还没测」，但不能告诉你「测得对不对、测全没测全」。
 
 ### 6.10.3.7 覆盖率的正确用法——诊断工具，不是考核目标
 

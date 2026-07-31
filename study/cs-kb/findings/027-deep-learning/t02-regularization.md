@@ -204,11 +204,11 @@ LayerNorm（层归一化，Ba, Kiros & Hinton 2016）和 BN 公式几乎一样�
 
 （对特征维求和，D 为特征数；PyTorch `LayerNorm` 默认 ε=1e-5，无 momentum 参数，因为不需要累积跨 batch 的运行统计量。）本次 numpy 实证：同一 (8,4) 输入沿 feature 维归一化后，每个样本的 x̂ 均值≈0、标准差≈1，坐实「按样本跨特征」。
 
-对比要点：BN 依赖 batch，batch 太小（甚至为 1）时统计不可靠、性能骤降，且训练/推理需切换统计来源；LayerNorm 每个样本自给自足、**与 batch 大小无关**、训练推理行为一致，也天然适合序列长度可变、batch 里样本长度不一的场景。正因如此，**LayerNorm 是 Transformer 的标配**（BN 在变长序列 + 小 batch 的 NLP 场景水土不服），而 BN 在固定尺寸、大 batch 的 CNN 视觉任务里仍是主流。初学者记一句话即可：**BN 跨样本按通道、适合视觉大 batch；LN 跨特征按样本、适合序列/Transformer**。
+BN 依赖 batch，batch 太小（甚至为 1）时统计不可靠、性能骤降，且训练/推理需切换统计来源；LayerNorm 每个样本自给自足、**与 batch 大小无关**、训练推理行为一致，也天然适合序列长度可变、batch 里样本长度不一的场景。正因如此，**LayerNorm 是 Transformer 的标配**（BN 在变长序列 + 小 batch 的 NLP 场景水土不服），而 BN 在固定尺寸、大 batch 的 CNN 视觉任务里仍是主流。初学者记一句话即可：**BN 跨样本按通道、适合视觉大 batch；LN 跨特征按样本、适合序列/Transformer**。
 
 ### 2.5.5 易错点与关联
 
-几个高频坑：其一，训练/推理**模式切换**别忘（2.5.2）；其二，BN 层的 γ、β **不做 weight decay**（呼应 2.1.4，它们是归一化参数不是普通权重）；其三，BN 与 Dropout 同用易冲突（呼应 2.2.4），现代带 BN 的网络常省掉 Dropout；其四，小 batch 用 BN 要警惕统计噪声过大，此时可换 GroupNorm/LayerNorm 等 batch 无关的归一化。
+其一，训练/推理**模式切换**别忘（2.5.2）；其二，BN 层的 γ、β **不做 weight decay**（呼应 2.1.4，它们是归一化参数不是普通权重）；其三，BN 与 Dropout 同用易冲突（呼应 2.2.4），现代带 BN 的网络常省掉 Dropout；其四，小 batch 用 BN 要警惕统计噪声过大，此时可换 GroupNorm/LayerNorm 等 batch 无关的归一化。
 
 从关联上看，本节只从「正则副作用」这一侧切入 BN/LN；它们作为「让网络能训得更深」的核心优化工程件（与残差连接、参数初始化并列）的完整讲法归本课大主题3。Transformer 里把 LN 放在残差子层之前还是之后（Pre-LN vs Post-LN）会显著影响训练稳定性与是否需要 warmup，属架构工程取舍，归大主题6 与 L6-08，本报告只指路不展开。
 

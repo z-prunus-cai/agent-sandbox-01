@@ -24,7 +24,7 @@ A 的写 happens-before B 的读
 
 happens-before 由两块拼起来。第一块是**单线程内的程序序**（C++ 里叫 sequenced-before）：同一线程里写在前面的语句 hb 写在后面的。第二块是**跨线程的同步关系**（inter-thread happens-before）：某些成对的同步操作会在两个线程之间"架一座桥"——最典型的是"线程 A 的 release 写"与"线程 B 读到该值的 acquire 读"配对，一旦 B 的 acquire 读到了 A 的 release 写的值，就建立 `A 的 release 写 hb B 的 acquire 读`（这套 API 细节归 CP-06.3）。锁的 `unlock` hb 之后对同一锁的 `lock`、线程创建 hb 被创建线程的第一条语句、`thread::join` 之类也都是同步边。把程序序和同步边传递闭包起来，就得到整张 happens-before 图。
 
-初学者最该扭转的直觉是：**"时间上先发生"不等于 happens-before**。墙上时钟里 A 的写确实先于 B 的读，但只要它们之间没有一条同步边，`hb` 就不成立，B 就**可能读不到**A 的写（编译器/CPU 有权装作没看见）。所以并发正确性不能靠"我觉得它先跑"，只能靠显式建立 happens-before。这个概念源自 Lamport 1978 年对分布式系统"事件先后"的定义，被 C/C++/Java 内存模型搬进来做因果序的骨架。
+**"时间上先发生"不等于 happens-before**。墙上时钟里 A 的写确实先于 B 的读，但只要它们之间没有一条同步边，`hb` 就不成立，B 就**可能读不到**A 的写（编译器/CPU 有权装作没看见）。所以并发正确性不能靠"我觉得它先跑"，只能靠显式建立 happens-before。这个概念源自 Lamport 1978 年对分布式系统"事件先后"的定义，被 C/C++/Java 内存模型搬进来做因果序的骨架。
 
 ### CP-05.1.2 数据竞争的定义（本课只给内存模型视角，四要件精讲归 CP-07）
 
@@ -103,7 +103,7 @@ Store→Load：**放松**（唯一被允许的重排：后面的 load 可以越�
 
 从别的核的视角看，就成了"这个核的读跑到了它的写前面"，即 store→load 重排。而 Load→Load、Store→Store 之所以不乱，是因为 store buffer 是 **FIFO**（写按序排出），读也按序发射；写同一地址能被本核 load 直接从 store buffer 取回（store forwarding），所以自己总能读到自己最新的写，只有"别人何时看见我的写"被推迟了。
 
-一个最小心智画面：每个核面前放一个"待寄出的信件筐"（store buffer）。你写变量 = 把信投进自己的筐（别人还没收到）；你读变量 = 先翻自己筐里有没有（有就读自己的），没有才去公共信箱（内存）拿。于是"我刚写了 x（信在筐里），又去读 y（公共信箱里 y 还没被对方更新）"——在旁观者看来，就像我"先读了 y 再写 x"。这正是 SB litmus 里 `r1==r2==0` 能发生的物理原因。
+每个核面前放一个"待寄出的信件筐"（store buffer）。你写变量 = 把信投进自己的筐（别人还没收到）；你读变量 = 先翻自己筐里有没有（有就读自己的），没有才去公共信箱（内存）拿。于是"我刚写了 x（信在筐里），又去读 y（公共信箱里 y 还没被对方更新）"——在旁观者看来，就像我"先读了 y 再写 x"。这正是 SB litmus 里 `r1==r2==0` 能发生的物理原因。
 
 ### CP-05.3.3 用什么把 store→load 也摁住
 
@@ -129,7 +129,7 @@ x86-64 上 `atomic_load(seq_cst)` 通常就是一条普通 `mov`（无需屏障�
 
 ARM（AArch64）与 POWER（PowerPC）采用**弱序**（weakly-ordered / relaxed）内存模型：相比 x86-TSO 只放 store→load 一项，它们默认**四种重排都可能发生**（Load→Load、Load→Store、Store→Store、Store→Load 都不保证按程序序对外可见），除非你插入显式屏障或用带序的原子指令。
 
-直觉是：这些架构为省电与吞吐，给编译器/硬件更大的重排自由，把"要不要保证顺序"的决定权更多地交回给程序员。代价是裸并发代码的行为更反直觉——在 x86 上"碰巧能跑对"的许多无屏障写法，搬到 ARM/POWER 上会真的坏掉。这也是"不能靠机器恰好是 x86 来保证正确性、要靠 happens-before"（CP-05.1.1）的现实理由。
+这些架构为省电与吞吐，给编译器/硬件更大的重排自由，把"要不要保证顺序"的决定权更多地交回给程序员。代价是裸并发代码的行为更反直觉——在 x86 上"碰巧能跑对"的许多无屏障写法，搬到 ARM/POWER 上会真的坏掉。这也是"不能靠机器恰好是 x86 来保证正确性、要靠 happens-before"（CP-05.1.1）的现实理由。
 
 ### CP-05.4.2 屏障与依赖：弱序机器上的顺序工具
 
@@ -181,9 +181,9 @@ C/C++ 的 `volatile` 常被初学者误当成"线程安全"关键字，这是危
 
 不建立跨线程 happens-before（所以两个线程用 volatile 通信仍是数据竞争、仍是 UB）
 
-一句话总结：`volatile` 是给"内存映射 I/O 寄存器 / `sigatomic` / setjmp 局部"这类**编译器别乱动它**的场景用的，**不是**并发同步工具。要在线程间安全共享，必须用 `_Atomic`/`std::atomic`（CP-06）或锁。这里有一个著名的平台差异陷阱：微软的 MSVC 曾给 `volatile` 附加 acquire/release 语义（`/volatile:ms`），于是有人误以为 `volatile` 能跨平台做同步——那是**编译器扩展、非标准语义**，标准 C/C++ 的 `volatile` 绝无此保证，不可移植。
+`volatile` 是给"内存映射 I/O 寄存器 / `sigatomic` / setjmp 局部"这类**编译器别乱动它**的场景用的，**不是**并发同步工具。要在线程间安全共享，必须用 `_Atomic`/`std::atomic`（CP-06）或锁。这里有一个著名的平台差异陷阱：微软的 MSVC 曾给 `volatile` 附加 acquire/release 语义（`/volatile:ms`），于是有人误以为 `volatile` 能跨平台做同步——那是**编译器扩展、非标准语义**，标准 C/C++ 的 `volatile` 绝无此保证，不可移植。
 
-一个最小易错例子：两线程用 `volatile int flag` 做"生产者置位、消费者轮询"的消息传递，且数据 `data` 是普通变量。即便加了 `volatile`，`data` 的写与读之间没有 happens-before，消费者可能看见 `flag==1` 却读到 `data` 的旧值（编译器/硬件把 `data` 写重排到 `flag` 写之后）。正确写法是把 `flag` 换成 release-store / acquire-load 的原子，靠配对建立 happens-before（MP 惯用法，CP-06.3）。
+两线程用 `volatile int flag` 做"生产者置位、消费者轮询"的消息传递，且数据 `data` 是普通变量。即便加了 `volatile`，`data` 的写与读之间没有 happens-before，消费者可能看见 `flag==1` 却读到 `data` 的旧值（编译器/硬件把 `data` 写重排到 `flag` 写之后）。正确写法是把 `flag` 换成 release-store / acquire-load 的原子，靠配对建立 happens-before（MP 惯用法，CP-06.3）。
 
 #### 来源与时效
 - ISO C++ `[intro.races]` 与 `[dcl.type.cv]`（volatile 语义）、ISO/IEC 9899:2024 §6.7.4「Type qualifiers」与 §5.1.2.4（核实 2026-07-30）：volatile 只约束抽象机的 volatile 访问、不提供原子性/屏障/同步；跨线程共享须用原子对象或有序同步。

@@ -276,7 +276,7 @@ $ find .git/refs -type f | sort
 .git/refs/remotes/origin/HEAD
 ```
 
-对初学者最关键的澄清：`origin/master` **不是你的分支**，你不能"切到它上面提交"（真去 `checkout origin/master` 会进入 detached HEAD，见 06-5.2.3）——它是"origin 那边 master 长啥样"的本地记录。你自己的工作在本地分支（`refs/heads/master`）上；远程跟踪引用只是让你能离线看到、并比较"我和远端差了几个提交"。git 之所以能在断网时告诉你"ahead 2, behind 1"，靠的就是这份本地缓存。
+`origin/master` **不是你的分支**，你不能"切到它上面提交"（真去 `checkout origin/master` 会进入 detached HEAD，见 06-5.2.3）——它是"origin 那边 master 长啥样"的本地记录。你自己的工作在本地分支（`refs/heads/master`）上；远程跟踪引用只是让你能离线看到、并比较"我和远端差了几个提交"。git 之所以能在断网时告诉你"ahead 2, behind 1"，靠的就是这份本地缓存。
 
 ### 6.5.5.2 远程跟踪引用如何更新：fetch 按 refspec 映射
 

@@ -63,7 +63,7 @@ C    atomic_load_explicit(const volatile A *object, memory_order order);
 
 标准规定（N3220 §7.17.1p6）：不带 `_explicit` 的函数，其语义等同于以 `memory_order_seq_cst` 作为内存序参数的 `_explicit` 版本。也就是说 `atomic_store(&x, 1)` 就是"最强也最保守"的 seq_cst 写；想要更弱更快的语义，就得显式写 `_explicit` 版本并挑一档更弱的序。此外标准还约束了哪些序对某操作**非法**：`atomic_store` 的 order 不得为 acquire/consume/acq_rel；`atomic_load` 的 order 不得为 release/acq_rel（§7.17.7.1–.2）——直觉上"纯写"不该带 acquire、"纯读"不该带 release，配错方向没有意义。
 
-本机实证：`gcc 13.3.0` 以 `-std=c11` 编译一个最小原子程序通过，确认工具链支持 C11 原子。
+`gcc 13.3.0` 以 `-std=c11` 编译一个最小原子程序通过，确认工具链支持 C11 原子。
 
 ```
 $ cat macros.c   # 片段
@@ -112,7 +112,7 @@ memory_order_seq_cst
 
 `memory_order_consume` 用于读侧，本意是一种比 acquire 更弱、更省的顺序：它只保证与被读值存在**数据依赖**（dependency）的后续访问不被重排到该读之前，而不像 acquire 那样约束该读之后的**所有**访问。这对 RCU 这类"读一个指针、再顺着它解引用"的模式在 ARM/POWER 等弱序机器上本可省下屏障。
 
-**时效现状（务必知晓）**：consume 虽在标准里，但自 C++17 起被官方"暂时劝退"。提案 **P0371（"Temporarily discourage memory_order_consume"）** 指出其现行定义"无法被正确使用"，因此**所有主流编译器实际上都把 consume 直接当 acquire 实现**（即悄悄升级为更强的一档，语义仍安全、只是没省到）。后续 C++20 对定义做了微调、2025 年又有 P3475（"Defang and deprecate memory_order::consume"）推动进一步弱化/弃用。C 侧 N3220 仍保留该枚举常量与 `kill_dependency` 宏（§7.17.3.1，用于手动切断依赖链）。初学者的实用结论：**现在别用 consume，需要读侧顺序就用 acquire**；遇到它按 acquire 理解即可。这是本报告唯一的时效红旗项。
+consume 虽在标准里，但自 C++17 起被官方"暂时劝退"。提案 **P0371（"Temporarily discourage memory_order_consume"）** 指出其现行定义"无法被正确使用"，因此**所有主流编译器实际上都把 consume 直接当 acquire 实现**（即悄悄升级为更强的一档，语义仍安全、只是没省到）。后续 C++20 对定义做了微调、2025 年又有 P3475（"Defang and deprecate memory_order::consume"）推动进一步弱化/弃用。C 侧 N3220 仍保留该枚举常量与 `kill_dependency` 宏（§7.17.3.1，用于手动切断依赖链）。初学者的实用结论：**现在别用 consume，需要读侧顺序就用 acquire**；遇到它按 acquire 理解即可。这是本报告唯一的时效红旗项。
 
 ### 6.2.4 acquire 与 release：读侧/写侧配对的半栅栏
 
@@ -139,7 +139,7 @@ $ gcc -std=c11 -O2 -c gen.c -o gen.o && objdump -d gen.o --no-show-raw-insn
 <load_acquire>:   mov    0x0(%rip),%eax     # acquire 读 = 普通 mov（x86 load 本就 acquire）
 ```
 
-由此也看清一件事：**同一段源码在不同内存序下生成的机器码不同**，内存序不是"注释"，是实打实影响编译产物与硬件屏障的。x86 只在 store→load 一处放松，故 acquire/release 几乎不花额外指令、只花编译期不重排；seq_cst 的额外成本集中在写侧——这是 x86 特有，ARM/POWER 上代价分布不同（本机无 ARM 硬件，未取跨平台实测）。
+**同一段源码在不同内存序下生成的机器码不同**，内存序不是"注释"，是实打实影响编译产物与硬件屏障的。x86 只在 store→load 一处放松，故 acquire/release 几乎不花额外指令、只花编译期不重排；seq_cst 的额外成本集中在写侧——这是 x86 特有，ARM/POWER 上代价分布不同（本机无 ARM 硬件，未取跨平台实测）。
 
 #### 来源与时效
 - N3220 §7.17.3「Order and consistency」p1–14（一手，2024，读 PDF 原文核实 2026-07-30）：六个枚举常量的确切名字与顺序、relaxed「no operation orders memory」及 NOTE 2/NOTE 3、release/acquire/acq_rel/seq_cst 各自在 store/load 上的语义、seq_cst 单一全序 S 与其一致性条件、consume 执行 consume 操作。§7.17.3.1 `kill_dependency`（consume 依赖链切断）。
@@ -163,7 +163,7 @@ $ gcc -std=c11 -O2 -c gen.c -o gen.o && objdump -d gen.o --no-show-raw-insn
 
 结果是"T1 备好数据的写" happens-before "T2 读取数据"，因此 T2 **保证**看得见 T1 备的数据，且不构成数据竞争。这就是把两个线程的局部程序序，通过一对原子操作"焊接"成一条全局因果链。
 
-初学者要抓的关键：**光有 release 或光有 acquire 都没用，必须配成对、且 acquire 那侧真的读到了 release 那侧写的值**，桥才算搭上。如果 T2 的 acquire-load 读到的是标志位的旧值（还没被 T1 翻牌），那就没有 synchronizes-with，也就不保证看见数据——这正是要用 `while` 循环重读标志的原因之一。
+**光有 release 或光有 acquire 都没用，必须配成对、且 acquire 那侧真的读到了 release 那侧写的值**，桥才算搭上。如果 T2 的 acquire-load 读到的是标志位的旧值（还没被 T1 翻牌），那就没有 synchronizes-with，也就不保证看见数据——这正是要用 `while` 循环重读标志的原因之一。
 
 ### 6.3.2 MP（message passing）惯用法最小例
 
@@ -186,7 +186,7 @@ x86 上 acquire-load 与 release-store 都编成普通 `mov`（见 6.2.6），�
 
 ### 6.3.3 release sequence 与常见易错点
 
-一个补充概念：release sequence。若一个 release-store 之后，同一原子对象上跟着一串该线程的写或**任意线程的 RMW**，acquire 侧读到这串里任一个值，同样能与最初那个 release 建立 synchronizes-with（N3220 §7.17.4 对 fence 版本有对应表述）。直觉上，RMW 不打断这条 release 传递链，这让"多个消费者靠 CAS 接力"的模式仍能保持因果。
+release sequence。若一个 release-store 之后，同一原子对象上跟着一串该线程的写或**任意线程的 RMW**，acquire 侧读到这串里任一个值，同样能与最初那个 release 建立 synchronizes-with（N3220 §7.17.4 对 fence 版本有对应表述）。直觉上，RMW 不打断这条 release 传递链，这让"多个消费者靠 CAS 接力"的模式仍能保持因果。
 
 三个高频易错点值得初学者记牢：其一，配对必须落在**同一个原子对象**上——T1 release 对象 X、T2 acquire 对象 Y，不建立任何关系。其二，方向不能反——写用 release、读用 acquire，写用 acquire 或读用 release 是无意义/非法的。其三，happens-before **不具"传递给无关第三方"的全局性**：release/acquire 只保证这一对参与线程间的因果，不像 seq_cst 那样给全体一个统一总序；需要多个线程对多个变量的先后达成全局共识时（如 IRIW 型样式），acquire/release 可能不够，得上 seq_cst。
 
