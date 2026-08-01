@@ -102,7 +102,7 @@ m_new = max(m_old, m_blk)
 
 其中 `exp(m_old − m_new)` 就是"发现了更大的最大值后，把之前基于旧最大值累加的和重新缩放到新基准"的修正因子。FlashAttention 把这套递推同时套在分母 ℓ 和输出累加器 O 上：每来一块 K、V，就把该块贡献的 P·V 按同样的因子缩放后累加进 O。于是扫完所有 K、V 块时，O 恰好等于对整行做标准 softmax 再乘 V 的结果[^fa1][^online]。
 
-这一步的正确性可以在本机纯用 numpy 验证（不需要 GPU）：把一行分数切成几块，用上面的递推增量算出 softmax，再和 `np.exp(x-x.max())/sum` 的一次性结果对比，两者在浮点误差内完全相等。round3b 也把此项标为 `[验✓]`（在线/分块 softmax 与朴素 softmax 数值等价）。这类等价验证是"分块不改变数学结果"的直接佐证。
+这一步的正确性可以在本机纯用 numpy 验证（不需要 GPU）：把一行分数切成几块，用上面的递推增量算出 softmax，再和 `np.exp(x-x.max())/sum` 的一次性结果对比，两者在浮点误差内完全相等。本库编排清单 也把此项标为 `[验✓]`（在线/分块 softmax 与朴素 softmax 数值等价）。这类等价验证是"分块不改变数学结果"的直接佐证。
 
 ### 不落 N×N 矩阵 + 反向重算 + 精确非近似
 
@@ -120,7 +120,7 @@ m_new = max(m_old, m_blk)
 - 锚点：在线 softmax 原始出处 Milakov & Gimelshein「Online normalizer calculation for softmax」（arXiv:1805.02867, 2018），运行最大值 + 运行归一化和的单遍递推。核实日期 2026-08-01。[^online]
 - 锚点：CS336 Spring 2026 L6，FlashAttention 分块 + 在线 softmax 的讲解与 v1 论文一致。核实日期 2026-08-01。[^cs336]
 - 前沿标注：⚙演进快·锚版本 FlashAttention v1（2022）。此处加速数字硬锚 v1；v2/v3 的数字见 08S-6.5，不可混用。
-- 本机可验证：在线/分块 softmax 与朴素 softmax 数值等价（round3b `[验✓]`），纯 numpy 即可坐实"分块不改变数学结果"，不需 GPU。
+- 本机可验证：在线/分块 softmax 与朴素 softmax 数值等价（本库编排清单 `[验✓]`），纯 numpy 即可坐实"分块不改变数学结果"，不需 GPU。
 - 交叉核对：递推公式在 FA v1 §3 与在线 softmax 原论文两处独立成立，口径一致，互为佐证。
 
 ---
@@ -150,7 +150,7 @@ Triton kernel 用 `@triton.jit` 装饰一个 Python 函数，函数体里用 `tr
 
 `mask` 参数值得单独点一下，因为初学者最容易在这里踩坑：块大小固定（2 的幂），但真实数据长度往往不是块大小的整数倍，末尾那一块会越界，必须用 `mask` 把越界位置屏蔽掉，否则读到脏数据或越界崩溃。这套 API 的具体签名/新增算子随 Triton 版本演进，写代码时应对照当前版本官方文档，本节只锚定"块级 + program_id + load/store + mask"这一稳定骨架，具体版本号与新算子标「待核」。
 
-FlashAttention 的分块思想（08S-6.3）用 Triton 表达起来非常自然——`program_id` 决定这个实例处理哪一块 Q，循环里用 `tl.load` 逐块搬入 K、V，在片上跑在线 softmax 递推，最后 `tl.store` 写出 O。这也是 CS336 L6 用 Triton 作为教学载体来讲 kernel 的原因：它让"分块 + 融合 + 省访存"这套思想以可读的 Python 呈现[^cs336]。本项需要 GPU 才能真跑（round3b 标 `[验—]`），本报告只讲清编程模型，不要求实机验证。
+FlashAttention 的分块思想（08S-6.3）用 Triton 表达起来非常自然——`program_id` 决定这个实例处理哪一块 Q，循环里用 `tl.load` 逐块搬入 K、V，在片上跑在线 softmax 递推，最后 `tl.store` 写出 O。这也是 CS336 L6 用 Triton 作为教学载体来讲 kernel 的原因：它让"分块 + 融合 + 省访存"这套思想以可读的 Python 呈现[^cs336]。本项需要 GPU 才能真跑（本库编排清单 标 `[验—]`），本报告只讲清编程模型，不要求实机验证。
 
 #### 来源与时效
 
@@ -158,7 +158,7 @@ FlashAttention 的分块思想（08S-6.3）用 Triton 表达起来非常自然�
 - 锚点：OpenAI「Introducing Triton」发布说明（2021 年发布、块级抽象对比 SIMT、由 Philippe Tillet 开发），https://openai.com/index/triton/ 。核实日期 2026-08-01。[^tritonintro]
 - 锚点：CS336 Spring 2026 L6，用 Triton 讲 kernel 的教学定位。核实日期 2026-08-01。[^cs336]
 - 前沿标注：⚙演进快·锚版本。Triton API 具体签名/新增算子随版本演进，当前版本号与新算子标「待核」；本节只锚稳定骨架。
-- 本机限制：Triton kernel 需 GPU，本机不实证（round3b `[验—]`），仅讲清编程模型。
+- 本机限制：Triton kernel 需 GPU，本机不实证（本库编排清单 `[验—]`），仅讲清编程模型。
 - 交叉核对：Triton 官方文档与 OpenAI 发布说明对"块级 vs SIMT""编译器自动管理线程/共享内存/访存合并"口径一致。
 
 ---
