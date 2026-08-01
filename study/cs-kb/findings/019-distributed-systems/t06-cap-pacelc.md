@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课大主题5（一致性模型谱系：线性一致 / 顺序一致 / 因果一致 / 最终一致；一致性代价谱系）、大主题3（读写 Quorum 与 W+R>N）、大主题1（异步 vs 部分同步系统模型、不可靠信道）｜ 一手锚点：Gilbert & Lynch, "Brewer's Conjecture and the Feasibility of Consistent, Available, Partition-Tolerant Web Services", ACM SIGACT News 33(2):51–59, 2002（承重一手，CAP 证明）；Abadi, "Consistency Tradeoffs in Modern Distributed Database System Design: CAP is Only Part of the Story", IEEE Computer 45(2):37–42, 2012（承重一手，PACELC）；Brewer, "CAP Twelve Years Later: How the 'Rules' Have Changed", IEEE Computer 45(2):23–29, 2012（承重一手，作者本人的误读校正）；Brewer PODC 2000 keynote（CAP 原始猜想）；MIT 6.5840 Spring 2026 schedule；DDIA 2E ch9（交叉印证）｜ 成熟度：GA/稳定（CAP 形式化自 2002、PACELC 自 2012 为分布式领域定论，表述稳定；系统归类的具体标签随实现版本演进，见 §6.4）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（6.1–6.4）是同一条轴上的层层推进——先把 CAP 定理的精确表述与证明讲清（6.1），再逐条拆掉围绕它的通俗误读（6.2），然后指出 CAP 只覆盖了"有分区"这半张图、补上"无分区时延迟 vs 一致"的另一半（6.3），最后把两框架合起来当作一套给系统贴标签的分类方法（6.4）。篇幅适中、高度同源，按 report-format v3 §一默认「1 大主题 = 1 报告」，不拆 `-a/-b`。
-
 > 一条主线心智模型：分布式数据服务里，只要网络**可能**把节点切成互不通信的几块（分区），你就被逼到一个墙角——分区期间，要么让每一块都继续应答请求（保**可用 A**）、代价是不同块可能读到过时/冲突的数据（丢**线性一致 C**）；要么坚持让所有应答都反映最新写（保 C）、代价是至少有一块必须拒绝服务或阻塞（丢 A）。**这就是 CAP：分区（P）发生时，C 与 A 只能二选一。** 但 CAP 只谈"分区期间"这一种情形；Abadi 的 PACELC 补上另一半：**即便没有分区（E, else），只要你为了容错做了数据复制，你仍要在"低延迟 L"和"强一致 C"之间选**——因为让每次写都同步等所有副本确认（强一致）必然比不等（低延迟）慢。合起来：分区时选 A 还是 C，平时选 L 还是 C。
 
 > 分账（本课不外扩，只在交界处一句指路）：本主题只讲两框架的**精确表述、误读辨析与"给系统贴标签的分类方法"**。具体系统"为什么这样选、内部怎么实现"——Dynamo 的 sloppy quorum / hinted handoff、Spanner 用 TrueTime + commit-wait 造外部一致——归 L6-05（C1、C3），本报告在 §6.4 只给分类方法与轻量示例，不深挖任一系统机制。线性一致性的完整语义、与顺序/因果/最终一致的关系归大主题5，本报告直接引用其结论（CAP 的 C = 线性一致）而不重讲。Quorum 的 W+R>N 交集原理归大主题3，本报告在 §6.3/§6.4 只把它当作"调一致 vs 延迟旋钮"引用。

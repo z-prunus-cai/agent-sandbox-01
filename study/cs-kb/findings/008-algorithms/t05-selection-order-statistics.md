@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐进记号 O/Ω/Θ、最坏/平均情形、增长量级）、大主题3（随机化算法、指示器随机变量、期望线性性）、大主题4（快速排序的 PARTITION 与 RANDOMIZED-PARTITION）、L1-02 离散数学（数学归纳法、期望与求和） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch9「Medians and Order Statistics」（§9.1 最小值与最大值、§9.2 期望线性时间选择、§9.3 最坏线性时间选择）；MIT 6.046J Design & Analysis of Algorithms syllabus / Lecture「Divide and Conquer: Median Finding」 ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-25 最新版，无更晚版本）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题仅 3 个小主题（5.1–5.3），全部落在 CLRS 4e 同一章 Ch9，是一条单一机制、层层递进的主线——「先用『同时求最小最大值』热身，看清楚怎样靠成对比较省下比较次数（5.1）→ 引出一般的选择问题，先给期望线性时间的随机化算法 RANDOMIZED-SELECT（5.2）→ 再给最坏也线性的确定性算法『中位数的中位数』（5.3）」。篇幅短、机制单一（都是『选第 i 小的元素』这一个问题），远不触及 report-format v3 §一「小主题多/跨机制/过长」的拆分线，故 1 份。跨课边界：本章直接复用大主题4 的 PARTITION/RANDOMIZED-PARTITION 与大主题3 的指示器随机变量分析，那些机制本报告只引用、不重讲；顺序统计树（用平衡树支持动态 rank/select 查询）属大主题6 §Ch17，本课点名即可。
 
 本报告中的实测基于 Python 3.11.15、numpy 2.4.6、sympy 1.14.0、scipy 1.17.1、Linux 6.18.5 x86_64，对应上面的基线串。测试脚本仅存于仓库外 scratchpad，跑完即清；下文只贴真实输出。实测为可选补充，正确性仍以多来源比对为准。
 

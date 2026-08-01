@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：G-01（点/向量/仿射空间、叉积求法线、重心坐标）、G-02（仿射与投影变换、仿射不变性直觉）、G-03（三角形是唯一填充图元、重心坐标插值）｜ 一手锚点：CMU 15-462/662 Computer Graphics（Spring 2024, Nancy Pollard）的 Curves & Surfaces / The Geometry of Meshes / Digital Geometry Processing / Spatial Data Structures lecture，http://15462.courses.cs.cmu.edu/spring2024/lectures ；Marschner/Shirley《Fundamentals of Computer Graphics》4th ed（2016, FCG4）曲线曲面章与数据结构章；Akenine-Möller/Haines/Hoffman《Real-Time Rendering》4th ed（2018, RTR4）曲线曲面章与加速结构章；Pharr/Jakob/Humphreys《Physically Based Rendering》（PBRT, 在线 4th ed）几何图元与加速结构章 ｜ 成熟度：GA/稳定（Bézier/B 样条、半边结构、Loop/Catmull-Clark 细分、BVH/kd-tree/八叉树/均匀网格都是数十年成熟经典，定义稳定；仅 BVH 构建启发式与硬件光追遍历的工程细节随平台演进，且光追遍历本身归 G-08）
 
-> 粒度判定：1 份，不拆。prompt 提示可考虑拆 `-a`（曲线曲面+网格细分）与 `-b`（空间数据结构），我认真评估后仍判 1 份。理由：本大主题六个小主题共享同一根主线——"计算机内部如何表示一块几何"，只是沿"连续参数表示（曲线 7.1 / 曲面 7.2）→ 离散网格表示（网格与半边 7.3 / 细分 7.4 / 网格化 7.5）→ 为查询而组织几何的空间索引（7.6）"层层递进；在 v3 教辅"讲到初学者懂、不做专家纵深"的深度下，每块篇幅适中，合成一份读起来是一条完整的"表示"故事线，拆开反而割裂"连续↔离散↔索引"的对照。故按 report-format v3 §一默认「1 大主题 = 1 报告」，落一个文件 `t07-geometry-representation.md`。跨课分账：空间层次同时是光追加速结构，本报告只讲"作为几何数据结构"的组织与查询视角，光线-盒/图元的遍历与求交剔除放大主题 G-08。
-
 > 一条主线心智模型：几何表示要回答"用什么数据把一个形状装进内存，好让我们求值、编辑、遍历、查询"。有两大流派。连续流派用参数函数把形状写成公式——给一个参数就吐一个点，曲线是 C(t)、曲面是 S(u,v)，控制点像"提线木偶"的线，Bézier/B 样条就属此类（7.1、7.2）。离散流派把形状拆成一堆平面小面片拼起来，就是多边形网格；网格光有"面顶点表"不够，要高效回答"这条边旁边是哪两个面""这个顶点周围一圈邻居是谁"，于是有了半边这种把邻接关系显式存好的结构（7.3），有了从粗网格反复细分逼近光滑面的细分曲面（7.4），有了造网格与改网格的网格化/重网格化（7.5）。最后，无论连续还是离散，当几何体量巨大时，直接线性扫描太慢，于是用 BVH/kd-tree/八叉树/均匀网格把空间或物体分层组织，把"查询"从 O(n) 降到接近 O(log n)（7.6）。
 
 > 本主题多处可就地实证，已用 numpy/Python 做了 6 处可选加固：de Casteljau 递推与 Bernstein 展开数值一致（差 ~4e-16）、张量积 Bézier 曲面四角插值到角控制点、四面体验证 Euler 公式 V−E+F=2、原始 Loop 权重 β(n) 与 Warren 简化式在 n=3/6 处吻合、Catmull-Clark 新顶点三项权重和为 1、二维均匀网格分桶与 BVH 中位数分裂的桶计数。脚本与真实输出贴在对应节内。这些仅为补充，正确性主承重仍是多来源比对（CMU 15-462 × FCG4 × RTR4 × PBRT）；细分权重等系数以教材/lecture 原文为准，不凭记忆填。
@@ -257,7 +255,7 @@ Loop 吃三角、出三角，用于三角建模；Catmull-Clark 吃任意多边�
 
 - 锚点：CMU 15-462/662（Spring 2024）Digital Geometry Processing lecture（remeshing、simplification/QEM、edge flip/collapse/split、Delaunay、isotropic remeshing），http://15462.courses.cs.cmu.edu/spring2024/lectures ，核实 2026-07-30。
 - 锚点：FCG4 网格/隐式曲面章（Marching Cubes、Delaunay 三角化、mesh simplification）；RTR4 网格简化/LOD 章（decimation、QEM、LOD 生成）。核实 2026-07-30。
-- 无实质冲突；本小主题为概念条目（round3b 标「— 概念」），未做数值实证，Marching Cubes 模板表与 QEM 推导按教辅深度点到不深挖。
+- 无实质冲突；本小主题为概念条目（本库编排清单标「— 概念」），未做数值实证，Marching Cubes 模板表与 QEM 推导按教辅深度点到不深挖。
 
 ## G-07.6 空间层次：BVH / kd-tree / 八叉树 / 均匀网格
 

@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐近分析与均摊分析）、大主题2（动态数组）、大主题3（链表） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed(2022) Ch11（Hash Tables，§11.2 链地址 / §11.3 哈希函数 / §11.4 开放定址）；Berkeley CS61B Spring 2024（Hashing 讲次，sp24.datastructur.es）；CPython 源码 Objects/dictobject.c（v3.11.15 标签）；Pat Morin《Open Data Structures》（ChainedHashTable / LinearHashTable） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（4.1–4.5）构成一条完整机制主线——「怎么把键映射到槽（哈希函数）→ 冲突不可避免时怎么办（链地址 / 开放定址两条路线）→ 表满了怎么办（负载因子与再散列）→ 保证会失效时会怎样（最坏 O(n) 退化）」，环环相扣、无跨机制断层；篇幅属常规单元，未达拆分阈值。工程化深挖（一致性哈希、布隆过滤器、分布式哈希）不属本入门单元。
 
 本报告的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串；CPython 实现细节引自 `Objects/dictobject.c`（v3.11.15 源码标签），未在本机克隆完整仓库，源码常量经官方仓库该标签文件核对（见各节「来源与时效」）。
 

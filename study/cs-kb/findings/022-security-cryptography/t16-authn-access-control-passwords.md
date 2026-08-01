@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：G11-05（哈希函数与 MAC：抗原像/抗碰撞、生日界、HMAC）；软 L4-02（HTTP/cookie、会话）｜ 一手锚点：UC Berkeley CS161 (Fall 2025)「Passwords」https://fa25.cs161.org/ ；Stanford CS155「Authentication / User auth」https://cs155.stanford.edu/ ；OWASP Top 10:2025 A07「Authentication Failures」https://owasp.org/Top10/2025/ ；OWASP Cheat Sheets（Password Storage / Session Management / Authentication）；NIST SP 800-63B-4 (2025)；IETF RFC 4226 (HOTP)/RFC 6238 (TOTP)/RFC 6749 (OAuth 2.0)/RFC 7519 (JWT)/RFC 9700 (OAuth 2.0 Security BCP)；W3C WebAuthn Level 2 (Rec) / Level 3 (CR)；NIST SP 800-162 (ABAC)、INCITS 359 (RBAC) ｜ 成熟度：访问控制模型/口令慢哈希为 GA；口令策略(NIST 800-63B-4)、passkey/WebAuthn L3、OAuth 2.1 ⚙演进快·锚 2026-07-30
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（16.1–16.6）是一条完整的"你是谁 → 你能做什么 → 怎么安全地证明与记住这件事"的叙事：先分清认证与授权（16.1），再讲授权侧的访问控制模型（16.2），然后回到认证侧最古老的凭据——口令怎么存（16.3）、登录后如何维持状态（16.4）、如何加第二道因素（16.5），最后如何把认证外包给第三方（16.6）。六块前后咬合、单篇即可覆盖，按 v3 默认不拆 `-a/-b`。
-
 **认证回答"你是谁"，授权回答"你能干什么"，其余四节都是围绕这两个问题把凭据管牢、把会话看住、把因素加够、把信任外包好**。初学者最该先记住的是：这两个问题必须分开设计——把它们混在一起（例如"能登录就等于是管理员"）是绝大多数认证类漏洞的根源，OWASP Top 10:2025 把这一类整体排在 A07。
 
 本报告的口令慢哈希（`hashlib.pbkdf2_hmac`）与 TOTP（RFC 6238 测试向量）均可在基线 Python 内置库上做教学级实证；`bcrypt`/`argon2` 第三方库不随容器持久，故以内置 `pbkdf2`/`hmac` 演示同一原理。本次以多来源交叉核对为主，已就地核对的 TOTP 测试向量在 16.5 标出真实输出，实证不替代多来源比对。

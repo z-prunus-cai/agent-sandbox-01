@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐近分析与均摊分析）、大主题2（数组）、大主题5（树与森林术语） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed(2022) Ch19（Data Structures for Disjoint Sets，§19.1 操作 / §19.2 链表表示 / §19.3 森林表示 / §19.4 反阿克曼分析）；Berkeley CS61B Spring 2024（Disjoint Sets 讲次，sp24.datastructur.es，Java）；Sedgewick & Wayne《Algorithms》4th ed §1.5（Union-Find）；Tarjan(1975) 紧界原始论文（旁证） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（8.1–8.4）是一条单一、连贯的优化叙事——「先定义要支持的操作（ADT）→ 选一种表示（父指针森林）→ 加第一个启发式压树高（按秩/按大小合并）→ 加第二个启发式压路径（路径压缩），最终达到近常数均摊」。四节环环相扣、无跨机制断层，篇幅属小型单元，远未达拆分阈值。反阿克曼界的完整证明属专家级纵深，按 v3 只给直觉、不展开。
 
 本报告的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串。所有复杂度与公式系数均取自下列一手来源的交叉核对（见各节「来源与时效」），未凭记忆填数。需要特别说明的一处来源情况：Pat Morin《Open Data Structures》并无专门的并查集章节，故本报告以 CLRS Ch19 与 CS61B 为两个独立一手主源，并以 Sedgewick & Wayne《Algorithms》4th 与 Tarjan(1975) 作交叉源。
 
@@ -223,7 +222,6 @@ for rank, pc in [(False,False),(True,False),(False,True),(True,True)]:
     s = run(n, trials, rank, pc)
     print(f"union_by_rank={rank!s:5} path_compression={pc!s:5} -> total hops={s:>9}  avg={s/trials:.3f}")
 ```
-
 
 ```
 n=100000, FIND trials=100000

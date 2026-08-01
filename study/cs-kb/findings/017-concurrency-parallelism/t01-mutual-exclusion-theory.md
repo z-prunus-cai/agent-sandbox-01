@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：L4-01 大主题04（线程与共享地址空间）、大主题06（锁的接口与目标，机制层）｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 2 章「Mutual Exclusion」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；交叉源：Peterson「Myths About the Mutual Exclusion Problem」Information Processing Letters 12(3):115–116, 1981；Lamport「A New Solution of Dijkstra's Concurrent Programming Problem」CACM 17(8):453–455, 1974（https://lamport.azurewebsites.net/pubs/bakery.pdf ）；Burns & Lynch「Bounds on Shared Memory for Mutual Exclusion」Information and Computation 107(2):171–184, 1993；OSTEP 网页版 Ch28（工程视角印证，https://pages.cs.wisc.edu/~remzi/OSTEP/ ）｜ 成熟度：GA/理论稳定（这些算法与定理是 1970s–1990s 的经典结果，数十年未变）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-01.1–01.5）共享一条单线——先把"互斥到底要满足什么（01.1）"精确定义清楚，再看两线程（01.2）、N 线程（01.3）如何用**只读写共享变量**造出满足这些性质的锁，接着从理论上说清"纯软件互斥要付多大空间代价、为何最终离不开硬件原语（01.4）"，最后回到"公平/有界等待到底能不能、以什么参照系定义（01.5）"。五节层层递进、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**互斥不是"实现一把锁"，而是"精确定义'一次只有一个人进'这件事要满足哪些性质，再证明某段只用读写共享变量的代码确实满足它们、以及不用硬件帮忙最多能做到多好"**。这是一门讲**问题本质与正确性证明**的课，不是讲内核 mutex 怎么写。
 
 > 下游边界（本课不外扩，交界处一句指路）：**内核 mutex/futex/自旋锁的具体实现与代价**归 L4-01·OS-06；**这些纯软件算法在真实弱内存模型上为何需要内存屏障才成立**（Peterson 在 x86/ARM 上必须加 fence）归 L4-05·CP-05；**自旋锁的可扩展性（TTAS/MCS/false sharing）**归 CP-08。本报告只在这些点指路，不做专家纵深。

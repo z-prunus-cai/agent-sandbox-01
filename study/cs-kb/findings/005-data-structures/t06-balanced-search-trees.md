@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题5（树与二叉搜索树）、大主题1（ADT 与渐近分析） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed(2022) Ch13（红黑树）、Ch18（B 树）；Berkeley CS61B（sp24.datastructur.es，B-Trees / Red-Black Trees / LLRBs 讲次，Java）；Robert Sedgewick & Kevin Wayne《Algorithms》4th ed（左倾红黑树 LLRB 一手来源）；Pat Morin《Open Data Structures》（ScapegoatTree/RedBlackTree/BTree 旁证） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（6.1–6.5）共享同一条主线——「如何在动态增删下强制维持 O(log n) 高度」，只是采用了不同的平衡机制（旋转维持的二叉树 6.2/6.3/6.4 vs 结点分裂维持的多路树 6.5）。prompt 提示可按「6.1–6.4 内存平衡二叉树 / 6.5 多路 B 树」拆两份，但四类结构存在强递进关系：2-3 树（6.5 的低阶特例）正是理解 LLRB（6.4）与红黑树（6.3）的桥梁，B 树只是把「结点里放多个键、满了就分裂」的思想从二叉推广到多路；拆开反而切断了「2-3 树 ↔ LLRB ↔ 红黑树 ↔ B 树」这条教学链。按 v3「讲清直觉即止、不做完整正确性证明」的广度取向，5 节合为一份、篇幅可控，故不拆。跨课边界：磁盘 B+ 树、索引页布局、缓存/IO 代价等工程化深挖归 L4-03/L6-04，本报告只讲内存版结构直觉。
 
 本报告中的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串。旋转/变色/分裂按 v3 要求只讲直觉与最小示例，不做完整正确性证明。
 

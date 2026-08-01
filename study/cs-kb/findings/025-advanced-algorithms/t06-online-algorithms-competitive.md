@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 大主题15（在线算法引入——只作引子，竞争比框架在本报告，边界 B2）、L3-01 大主题09（摊还分析与势能法——本报告证竞争比要用，只用不重讲）、L3-01 大主题08（离线缓存 / Belady 最优离线替换 LFD——本报告分页的离线最优 OPT 用它）、L2-03 概率（随机变量、期望、期望线性性——随机化在线与 Yao 原理要用）、L1-02 离散数学（调和数 H_k = Σ 1/i ≈ ln k——随机化分页界要用）｜ 一手锚点：Borodin–El-Yaniv《Online Computation and Competitive Analysis》(Cambridge Univ. Press, 1998, ISBN 9780521563925) 本大主题主教材（框架 Ch1；分页 Ch3–4；随机化 Ch4）；原始论文 Sleator–Tarjan《Amortized Efficiency of List Update and Paging Rules》(CACM 28(2), 1985)、Fiat–Karp–Luby–McGeoch–Sleator–Young《Competitive Paging Algorithms》(J. Algorithms 12, 1991)、Ben-David–Borodin–Karloff–Wigderson–Saks《On the Power of Randomization in On-line Algorithms》(Algorithmica 11, 1994)；讲义 MIT 6.854J Advanced Algorithms (Fall 2008, OCW) / MIT 6.046 online-algorithms 讲义 (S9)；可交叉 Roughgarden CS261/CS264、CLRS 4e Ch27（在线先修视角）｜ 成熟度：GA/稳定（1985–1998 奠基的经典理论；确定性界完全定型，随机化分页最优常数 H_k 亦已定型，个别推广问题仍为研究前沿，正文以「⚙演进快」硬标）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（6.1–6.4）共享唯一主线——「面对看不到未来的输入，用竞争比这把统一的尺子（自己的代价 / 事后诸葛的离线最优）度量在线策略的最坏损失，并在滑雪租赁、分页两个样板问题上把这把尺子用满，最后用随机化把确定性下界打穿」。四个小主题是「框架 → 最简样板（ski-rental）→ 核心样板（paging）→ 随机化升级」的递进，共用同一套竞争比定义、同一套对手模型、同一批证明工具（势能法 / 分阶段计费 / Yao 原理），拆开会割裂「同一把尺子在不同问题上的量法」这层核心对照。篇幅可控，故合为 1 份。**边界 B2**：竞争比的定义与完整框架在本报告；L3-01 大主题15 只作在线引入，本报告不重复引子而直接建框架。**势能法为先修**（L3-01 大主题09），本报告只把它当现成工具用于证 LRU/FIFO 的 k-竞争，不重讲势函数原理。
-
 > 本报告的可选实测基于 Python 3.11.15、numpy 2.4.6、Linux 6.18.5 x86_64（对应基线串），仅用于加固「ski-rental 最坏比 ≤ 2」「LRU 在人造坏序列上缺页比逼近 k」两处经验数值；脚本仅存仓库外 scratchpad、跑完即清，正文只贴真实结论。实测为可选补充、非替代；所有竞争比与定理以多来源文本比对（Borodin–El-Yaniv / Sleator–Tarjan 原论文 / Fiat et al. / MIT 讲义）为准，未实证处如实标注。
 
 ---

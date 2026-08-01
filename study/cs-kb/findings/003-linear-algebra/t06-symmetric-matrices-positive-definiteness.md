@@ -1,8 +1,6 @@
 # L1-03·大主题6 对称矩阵与正定性（谱定理/二次型）
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L1-03·大主题2（四大子空间/秩）、大主题3（正交性、投影、正交矩阵）、大主题5（特征值/特征向量/对角化 A=SΛS⁻¹） ｜ 一手锚点：Gilbert Strang《Introduction to Linear Algebra》第6章「Eigenvalues and Eigenvectors」§6.4 Symmetric Matrices · §6.5 Positive Definite Matrices；MIT 18.06 / 18.06SC Unit III「Positive Definite Matrices and Applications」（syllabus https://www.ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/pages/syllabus 核实 2026-07-25）；交叉锚 Sheldon Axler《Linear Algebra Done Right》第7章「Operators on Inner Product Spaces」（自伴算子/谱定理） ｜ 成熟度：GA/稳定（古典理论，无版本演进）
 
-> 粒度判定：**1 份**（不拆）。本大主题 3 个小主题（6.1 对称矩阵与谱定理 → 6.2 正定矩阵 → 6.3 二次型与最小化）是**一条收束的主线**：先给对称矩阵这类"最好的矩阵"一个完整的谱结构（实特征值、正交特征向量、正交对角化），再在这个结构上加"特征值全正"这一条得到正定矩阵，最后把正定性翻译成一个看得见摸得着的函数——二次型 xᵀAx 的"碗形"最小化。三节机制同源、层层加码、篇幅适中、不跨机制，故不拆 `-a/-b`。
-
 **对称矩阵是线性代数里"最听话"的矩阵，正定矩阵是其中"最听话的一档"**。大主题5 讲一般方阵能不能对角化、要用可能是斜的特征向量矩阵 S；本大主题告诉你：只要矩阵对称，特征向量一定能取成**互相垂直**的，于是对角化里的 S 升级成正交矩阵 Q，公式从 A=SΛS⁻¹ 干净成 A=QΛQᵀ。而"正定"就是在这个漂亮结构上追加一句"所有特征值都大于零"，它等价于一个纯几何事实——函数 xᵀAx 在原点是一个开口向上的碗，有唯一最低点。这条几何图像，正是后续机器学习里 Hessian（判极小值）、协方差矩阵（判有效分布）的地基。
 
 ---
@@ -326,7 +324,6 @@ A=RᵀR 意味着二次型 xᵀAx = xᵀRᵀRx = ‖Rx‖² 是某个向量的�
     x = np.array([1.,1.,1.]); print(x @ A @ x)          # 期望 >0
     B = np.array([[1.,2.],[2.,1.]])                     # 不定
     y = np.array([1.,-1.]); print(y @ B @ y)            # 期望 <0
-
 
     10.0
     -2.0

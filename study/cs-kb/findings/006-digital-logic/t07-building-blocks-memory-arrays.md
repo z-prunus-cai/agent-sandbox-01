@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：DL-1（数制/补码/移位的算术含义）、DL-2（布尔代数/SOP）、DL-3（加法器/MUX/译码器）、DL-4（触发器/寄存器）｜ 一手锚点：Harris & Harris《Digital Design and Computer Architecture》RISC-V Edition, 1st ed, 2021, ISBN 9780128200643, ch5 Digital Building Blocks / ch4 Hardware Description Languages（shop.elsevier.com/books/.../978-0-12-820064-3）｜ 交叉锚：Patterson & Hennessy《COD》RISC-V 2nd ed（附录 A / ch5）；M. Morris Mano & Ciletti《Digital Design》；Wakerly《Digital Design: Principles and Practices》；Weste & Harris《CMOS VLSI Design》；IEEE Std 1800-2017 SystemVerilog LRM ｜ 成熟度：门级构件 GA/稳定；FPGA/LUT 代际参数与 HDL 工具链标「⚙演进快·锚版本」
 
-> 粒度判定：**1 份，不拆**。DL-7 有 5 个小主题，prompt 提示"跨『运算构件（移位/乘除）』与『存储阵列+可编程逻辑+HDL』两簇、可拆"。这里判为不拆，理由有三：（1）五节共享同一条主线——**都是 H&H ch5「Digital Building Blocks」里"规整、可平铺复用的大块结构"**：移位器/乘除法器是把 DL-3 的加法器/MUX 阵列化，存储阵列是把 DL-4 的位存储单元阵列化，可编程逻辑是把 SRAM 阵列 + LUT 组织成"可重构的逻辑织物"，HDL 则是描述以上全部的统一语言；"阵列化 / 规整结构"这个词贯穿始终，拆开反而割裂。（2）教辅体量适中——广度优先、不做专家纵深，合并后篇幅仍可控。（3）DL-7.5（HDL）虽单列，但它恰是把 7.1–7.4 的结构用代码写出来的收束节，与前四节强耦合。故合为一份。
-
 **当同一种小单元要成千上万次重复时，就不再一个个连线，而是"造一个单元 + 定义如何平铺成阵列/结构" **。移位器是"每一位一个 MUX 的阵列"，乘法器是"部分积的加法器阵列"，SRAM/DRAM 是"存储位单元的二维阵列 + 行列译码"，FPGA 是"LUT+触发器的可配置阵列"，而 HDL 是描述这一切的语言。抓两句话贯穿全篇：（1）规整结构让"设计一次、复制多份"成为可能，这是超大规模集成电路（VLSI）能做大的根本；（2）本章的存储阵列正是 L3-02 CO-6（cache/主存）的物理底座——先在这里把"一个 bit 怎么存、怎么按地址选出来"讲清。
 
 > DL-7.5（HDL）取证状态：prompt 标【待核·仿真器是否可本机装】。**已坐实可装可跑**——本机 `apt-get install iverilog` 装上 Icarus Verilog 12.0（stable），编译并仿真了一段 SystemVerilog 计数器，真实输出见 7.5。故 7.5 按"已取"产出，非"未取"。

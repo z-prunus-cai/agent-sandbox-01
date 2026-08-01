@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题02（进程抽象、PCB/`task_struct`、就绪/运行/阻塞状态机）、大主题03（时钟中断作为抢占点、上下文切换机制）、大主题04（线程是内核实际调度的实体、并发≠并行）｜ 一手锚点：OSTEP 网页版 Ch7「Scheduling: Introduction」、Ch8「Scheduling: The Multi-Level Feedback Queue」、Ch9「Scheduling: Proportional Share」、Ch10「Multiprocessor Scheduling」（https://pages.cs.wisc.edu/~remzi/OSTEP/ ，核实 2026-07-25）；Berkeley CS162 现行 L10–12「Scheduling」（https://cs162.org/）；Linux 内核文档「EEVDF Scheduler」（https://docs.kernel.org/scheduler/sched-eevdf.html ，核实 2026-07-29）、`sched(7)` man page（man7.org，核实 2026-07-29）｜ 成熟度：经典算法（FCFS/SJF/RR/MLFQ/lottery/stride）GA·稳定；**Linux 通用调度器 ⚙演进快·锚版本**——基线 6.18.5 上为 EEVDF（≥6.6，2023 取代 CFS），细节以内核文档为准、未证实标「待核」
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（5.1–5.6）是一条连贯的教学主线——先立"用什么指标衡量一个调度器好不好、面对什么工作负载"（5.1），再从最朴素的 FCFS 一路推到 RR，看每一步在修哪个指标的短板（5.2），接着用 MLFQ 把"不预知未来还要兼顾响应与周转"这个矛盾解开（5.3），再换一条"按份额公平"的思路（lottery/stride/CFS，5.4），然后落到基线机器上当前真正在跑的实现 EEVDF 与调度类体系（5.5），最后补上"多个 CPU 时怎么放任务"（5.6）。六节层层递进、互相引用，篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**调度器 = 在"就绪队列里这么多可运行线程、CPU 只有几个"时，决定此刻让谁上、上多久的那段内核代码**。它没有免费的午餐——让交互任务响应快，往往就牺牲了批处理任务的吞吐；让绝对公平，就难做绝对优先。整部调度史就是在"不知道每个任务要跑多久"的前提下，用队列、反馈、份额票、虚拟时间这些手段，去逼近几个彼此打架的指标。
 
 > 教材 vs 当前实现分账（本报告贯穿始终）：OSTEP/CS162 讲的 FCFS/SJF/RR/MLFQ/lottery/stride/CFS 是**教材主线与心智地基**，其中 CFS 曾是 Linux 十余年的默认实现；但**基线 6.18.5 的默认通用调度器已是 EEVDF**（Earliest Eligible Virtual Deadline First，≥6.6 于 2023 取代 CFS）。凡涉及"Linux 当前怎么做"，一律以内核文档/`/proc` 实测为准并硬标版本；凡教材算法与当前实现有出入，两账都记、点明差异。

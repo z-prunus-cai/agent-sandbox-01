@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题3（对象=状态+行为、局部状态与封装）、大主题7（一等/高阶函数、闭包与自由变量、不可变性与纯函数、引用透明）；L1-01（函数、作用域与 LEGB、别名与身份） ｜ 一手锚点：SICP（Abelson & Sussman，*Structure and Interpretation of Computer Programs*, 2nd ed）Ch3 §3.1 赋值与局部状态、§3.2 环境模型、§3.3 可变数据建模、§3.5 流，https://sarabander.github.io/sicp/html/index.xhtml ；CMU 15-150《Principles of Functional Programming》(Fall 2015) 流/惰性/记忆化讲义；Python 3.11 官方文档 The Python Language Reference §4 Execution model（naming & binding）、§6.2.9 Yield expressions、Data Model §3；PEP 255（Simple Generators） ｜ 成熟度：GA/稳定（求值模型与可变性语义为经典机制，无版本漂移；Python 生成器自 2.2/PEP 255 起为标准）
 
-> 粒度判定：**1 份**（不拆）。理由：4 个小主题（8.1–8.4）沿一条单一主线展开——"一旦允许赋值、把可变状态引入语言，求值该怎么解释、会付出什么代价、又能换来什么"。8.1 说明引入赋值破坏了引用透明与替换模型；8.2 正是"替换模型失效后拿什么代替"的答案（环境模型）；8.3 是可变性在共享/别名场景下的直接恶果；8.4 则是"用延迟求值把状态换个方式管理"的引申。四者互为因果、篇幅适中，拆开会割裂"代价—模型—风险—对冲"的教学链条，故合为 1 份。跨课边界：可变共享状态在并发下的深挖（数据竞争、锁、内存模型）显式归 L4-05，本报告不重复立项；λ 演算/求值策略的形式化归 L5-06。
-
 本报告中所有 Python 代码块均在基线环境（Python 3.11.15、Linux 6.18.5 x86_64）下真实运行，输出随节以 `# =>` 注释贴出，命令可直接复现。SICP 原文用 Scheme，本报告按 v3 教辅取向以等价 Python 示例佐证同一概念，涉及 Scheme 特有语义处显式标注。
 
 ---

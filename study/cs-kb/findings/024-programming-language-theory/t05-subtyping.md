@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课大主题T3（STLC：函数类型、类型环境 Γ、typing rule、Progress+Preservation）、大主题T4（记录/积/和/引用与存储）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002, ISBN 9780262162098) Part III，Ch.15（子类型）、Ch.16（子类型的元理论：算法化）、Ch.17（子类型的 ML 实现）、Ch.18（案例：命令式对象）、Ch.19（案例：Featherweight Java），作者页 https://www.cis.upenn.edu/~bcpierce/tapl/ （2002 版为唯一版本，核实 2026-07-25）｜ 交叉一手：Harper《Practical Foundations for Programming Languages》(PFPL, Cambridge 2nd ed. 2016) 结构子类型相关章；Igarashi, Pierce & Wadler《Featherweight Java: A Minimal Core Calculus for Java and GJ》(ACM TOPLAS 23(3), 2001；会议版 OOPSLA'99)；Java Language Specification (JLS, SE 21, 2023) §10.10 与 §4.10.3（数组协变与 ArrayStoreException）｜ 成熟度：GA/稳定（子类型的核心规则与元理论数十年无变动；FJ 为 2001 年成型的经典形式化）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（T5.1–T5.5）围绕同一主线——"给类型定一个'可安全替换'的偏序，让一个类型的值能顶替另一个类型的值使用"——层层递进：先立子类型关系本身与 subsumption 规则，并给出记录/函数两种最重要的构造子类型及 Top/Bot（T5.1）；再讨论加入子类型后类型系统仍安全、且怎样把"到处能用 subsumption"的声明式系统改写成机器可判定的算法式系统（T5.2）；随后专门拆解可变引用/数组的变型陷阱（T5.3）；最后两节是把前面机制用于真实语言的两个案例——对象在 λ 中的编码（T5.4）与 Java 核心的形式化 Featherweight Java（T5.5）。五节机制彼此咬合、篇幅适中，按 v3 默认 1 大主题 = 1 报告。
-
 > 本报告一条主线心智模型：**子类型 S <: T 读作"S 是 T 的子类型"，意思是"凡是需要 T 的地方，都可以安全地塞一个 S 进去"（Liskov 替换原则的类型论版本）**。方向要背牢——子类型是"信息更多、约束更强、更专门"的那一个，超类型是"信息更少、更宽松、更通用"的那一个。子类型系统的全部技术都在回答两个问题：这个替换在什么规则下成立（T5.1、T5.3），以及机器怎么可判定地检查它（T5.2）。
 
 > 本报告 Python 结论在如下环境实跑取证：Python 3.11.15 @2026-07-30，仅用标准库（把子类型关系实现成一个判定函数，直接对照 TAPL 算法式规则）；代码仅存 scratchpad、不入库，正文贴真实输出。实证为多来源比对之补充，非替代；纯理论命题（保型定理、join/meet 存在性、FJ 可靠性）以文本比对为准，未实证处如实标注。

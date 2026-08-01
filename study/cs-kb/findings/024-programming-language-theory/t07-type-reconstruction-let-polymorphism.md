@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：T2（无类型 λ 演算：抽象/应用、自由变量、代换 [x↦s]t）、T3（STLC：函数类型 T₁→T₂、类型环境 Γ、类型规则 T-Var/T-Abs/T-App、语法制导的类型检查）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002) **Part V（Polymorphism），Ch.22 "Type Reconstruction"**（§22.1 Type Variables and Substitutions、§22.2 Two Views of Type Variables、§22.3 Constraint-Based Typing、§22.4 Unification、§22.5 Principal Types、§22.6 Implicit Type Annotations、§22.7 Let-Polymorphism）；交叉核对 Harper《Practical Foundations for Programming Languages》2nd ed（Cambridge 2016）关于类型推断/主类型的处理；算法原始出处 Hindley《The Principal Type-Scheme of an Object in Combinatory Logic》(Trans. AMS 146, 1969)、Milner《A Theory of Type Polymorphism in Programming》(JCSS 17(3), 1978)、Damas & Milner《Principal Type-Schemes for Functional Programs》(POPL '82, pp.207–212, DOI 10.1145/582153.582176)；合一算法 Robinson《A Machine-Oriented Logic Based on the Resolution Principle》(JACM 12(1), 1965) ｜ 成熟度：经典理论 GA/稳定（非演进快对象；仅 value restriction 一项标注 ML 实现约定）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（T7.1–T7.4）是一条严丝合缝的单链——先建立"用类型变量占位、用代换求解"的语言（T7.1），再把"求解"精确化为约束合一（T7.2 Robinson 合一），合一给出的最一般解正是"主类型"，落成可执行的 Algorithm W（T7.3），最后在 let 绑定处加一层"泛化/实例化"得到 ML 的 let-多态（T7.4）。同一套 Hindley-Milner 机制贯穿，无跨机制断裂，篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 先给一句话心智模型——**类型重建就是"把 STLC 里必须由程序员手写的类型标注，改成先填未知数、再解方程解出来"**。T3 的 STLC 是 Church 风格——每个 λ 参数都得显式标注 `λx:T. t`，类型检查器只需照着标注核对。本篇要回答的是反问题：**如果什么标注都不写（Curry 风格），编译器能不能自己算出每个子项该是什么类型？** 答案是能，且能算出一个"最一般"的类型；实现它的机器就是 Hindley-Milner（HM）类型推断，由类型变量、代换、约束合一、泛化四件零件拼成。
 
 两个下游在此点名、不展开：本篇是 **L4-04 编译原理 C5 语义分析/类型检查** 里"无标注语言怎么推类型"的理论根，也是 **L5-14 Rust 与内存安全 R6 泛型/局部类型推导** 的祖型（Rust 的局部推断是 HM 的受限工程化，非全程 HM）。

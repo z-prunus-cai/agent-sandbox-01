@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题01（互斥问题与理论：临界区、无死锁/无饥饿的精确定义）｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd/Revised ch3「Concurrent Objects」为主一手；Herlihy & Wing, "Linearizability: A Correctness Condition for Concurrent Objects", ACM TOPLAS 12(3):463–492, 1990（线性一致性原论文）；进展性条件交叉锚点 Herlihy & Shavit, "On the Nature of Progress", OPODIS 2011；ISO C++ `[intro.races]` happens-before 措辞作印证（cppreference 指路、结论回落 ISO）｜ 成熟度：GA/稳定（linearizability 自 1990、进展性条件层级数十年为并发理论基础，定义稳定）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（2.1–2.5）以概念为主、篇幅适中，且共享一条单一主线——"并发对象的正确性怎么定义（2.1 用顺序规约）、最基础的一致性怎么说（2.2 SC）、更强也更好用的一致性怎么说（2.3 线性一致性）、为什么它好用（2.4 可组合）、以及一个对象'能不能保证有人前进'怎么分级（2.5 进展性）"。五节层层递进，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：并发对象的正确性有两个正交的维度。**安全性**（一致性）问"这些交错的操作，整体看起来像不像一个合法的、一次一个的顺序执行"——顺序一致性（SC）只要求"看起来像某个合法顺序"，线性一致性再加一条"这个顺序还得尊重真实时间先后"，故更强、且**可组合**（各对象各自线性 ⇒ 整体线性），这正是它成为并发对象事实标准的原因。**活性**（进展性）问的是另一件事："保证会不会有线程永远卡住"——从最强的 wait-free（人人都在有限步内完成）到最弱的 obstruction-free，再到基于锁的 deadlock-free / starvation-free，构成一张分级表。一致性说"做出来的结果对不对"，进展性说"到底做不做得完"，两者互不蕴含、必须分开谈。
 
 > 分账（本课不外扩，只在交界处一句指路）：本主题讲**并发对象正确性的定义框架**（一致性 + 进展性）。互斥性/无死锁/无饥饿的**互斥算法层**精确定义与 Peterson/bakery 证明归大主题01（CP-01）；happens-before 的**内存模型层**因果序、DRF 定理、硬件重排归 CP-05；原语的**共识能力**（consensus number、CAS 通用性、wait-free 同步层级为何不可跨层）归 CP-04；具体**无锁数据结构**如何选一个线性化点、ABA、安全内存回收归 CP-10。本报告只把 wait-free/lock-free 等作为"进展性条件的定义"讲清，不深挖某个具体结构的证明。

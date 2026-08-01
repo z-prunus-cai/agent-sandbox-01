@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：矩阵乘法与逆、高斯消元与主元（大主题1）、可选了解转置与置换 ｜ 一手锚点：Gilbert Strang《Introduction to Linear Algebra》第 5 章"Determinants"（§5.1 性质、§5.2 余子式公式、§5.3 Cramer 法则/逆/体积）；MIT 18.06/18.06SC Linear Algebra (Fall 2011) 官方 syllabus，Unit II（"Properties of Determinants"/"Determinant Formulas and Cofactors"/"Cramer's Rule, Inverse Matrix and Volume" 三课），https://www.ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/pages/syllabus ｜ 成熟度：GA/稳定（经典数学内容，无演进快项）
 
-> 粒度判定：**1 份，不拆**。本大主题仅 3 个小主题（4.1 行列式性质 → 4.2 余子式展开 → 4.3 Cramer 法则与体积），且 round3a 已标注"行列式在 CS 中承重较低、可压缩、可与特征值合并教学"，篇幅偏小；三块又是同一条主线（先立规则、再给算子公式、最后落到应用与几何），不跨机制，故按 v3 默认 1 大主题 = 1 报告，不拆 `-a/-b`。本报告相对精简，但三个内容项均查全、讲到初学者能懂。
-
 **行列式 det(A) 是给每个方阵 A 打的一个"标量分数"，它一口气回答了三个问题**——A 可不可逆（det=0 就是奇异、不可逆）、A 把空间的"体积"放大或缩小了多少倍（|det| 就是体积缩放因子）、以及方向有没有被翻转（det 的正负号）。全章围绕这一个数展开：4.1 先用少数几条"游戏规则"把这个数唯一地定下来（三条定义性质 + 七条推论，共十条）；4.2 给出按余子式一层层拆算它的通用公式；4.3 把它用回到解方程（Cramer 法则）、求逆（伴随矩阵）和几何（体积/面积）。理解了"det 是可逆性与体积的度量"这根钉子，行列式的一切性质都能挂上去。
 
 ---
@@ -265,7 +263,6 @@ print("adj/det == inv:", sp.simplify(M.adjugate()/detM - M.inv())==sp.zeros(3)) 
 V = sp.Matrix([[3,0,0],[0,2,0],[0,0,5]])
 print("volume box det:", V.det())                          # 30
 ```
-
 
     det(A) numpy: -16.0
     det(A) sympy exact: -16

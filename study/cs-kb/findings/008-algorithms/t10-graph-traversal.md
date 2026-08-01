@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐进记号 O/Θ、O(V+E) 之类多变量界、聚合计数）、大主题9（可选，摊还/聚合分析的求和技巧）、L1-02 离散数学（图论基础：顶点/边、有向与无向、路径、连通、度、DAG） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch20「Elementary Graph Algorithms」——§20.1 Representations of graphs (p549)、§20.2 Breadth-first search (p554)、§20.3 Depth-first search (p563)、§20.4 Topological sort (p573)、§20.5 Strongly connected components (p576)；MIT 6.046J Design & Analysis of Algorithms (Spring 2015) syllabus「Graph Algorithms」模块 ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-25 最新版，无更晚版本）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（10.1–10.5）全部落在 CLRS 4e 同一章 Ch20，且构成一条严密咬合的主线——「先定两种图的表示（10.1）→ 在此之上装两台遍历引擎：按层扩展的 BFS（10.2）与按深度回溯的 DFS（10.3）→ 再把 DFS 的时间戳工具直接复用出两个应用：拓扑排序（10.4）与强连通分量（10.5）」。四台算法机制同源（都是 O(V+E) 的邻接表遍历），篇幅适中，不触及 report-format v3 §一「小主题多/跨机制/过长」的拆分线，故单篇。
 >
 > 章号提示（务必用 4e 章号）：CLRS **4e 把图算法整体前移**，「基本图算法」在 **Ch20**；3e 中同一内容是 Ch22。市面上大量二手资料（含部分搜索结果）仍按 3e 写「Ch22.1–22.5」，本报告一律以 4e 官方目录的 **Ch20.1–20.5** 为准（见文末「来源与时效」冲突项）。
 >

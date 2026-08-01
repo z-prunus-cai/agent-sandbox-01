@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课大主题T5（子类型：subsumption、<: 预序、记录/函数子类型、变型、Top/Bot）、大主题T8（System F：类型抽象 λX.t 与类型应用 t [T]、全称类型 ∀X.T、存在类型 ∃X.T 与数据抽象 pack/open）、大主题T3（Progress+Preservation 的证明骨架）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002, ISBN 9780262162098) Part V「Polymorphism」，Ch.26 有界量化（§26.1 Motivation、§26.2 Definitions、§26.3 Examples、§26.4 Safety、§26.5 Bounded Existential Types、§26.6 Notes）、Ch.27 Case Study: Imperative Objects, Redux、Ch.28 有界量化的元理论（§28.1 Exposure、§28.2 Minimal Typing、§28.3 Subtyping in Kernel F<:、§28.4 Subtyping in Full F<:、§28.5 Undecidability of Full F<:、§28.6 Joins and Meets、§28.7 Bounded Existentials、§28.8 Bounded Quantification and the Bottom Type），章节页码经官方目录 https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf 核对（核实 2026-07-30）｜ 交叉一手：Cardelli & Wegner《On Understanding Types, Data Abstraction, and Polymorphism》(ACM Computing Surveys 17(4), 1985，语言 Fun / kernel 有界量化之源)；Curien & Ghelli（Full F<: 的逆变界规则，1992）；Pierce《Bounded Quantification Is Undecidable》(POPL'92；期刊版 Information and Computation 112(1):131–165, 1994) ｜ 成熟度：GA/稳定（kernel F<: 与 Full F<: 的定义、kernel 可判定、Full 不可判定这三条结论 1990 年代初即定型、此后无变动）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（T9.1–T9.4）围绕同一条主线——"把 System F 的多态量化 ∀X 加上一个上界 T，写成 ∀X<:T，让泛型既能约束参数、又不像纯子类型那样丢失类型信息"。T9.1 立系统（界、语法、规则、kernel/full 之分），T9.2 讲它仍安全且 kernel 版怎样可判定地检查，T9.3 专拆 Full 版子类型判定为何不终止乃至不可判定，T9.4 把量化换成存在量词得到有界存在、用于部分数据抽象与对象案例。四节机制咬合、篇幅适中，按 v3 默认 1 大主题 = 1 报告。
-
 > 本报告一条主线心智模型：**有界量化 = "带上界的泛型"**。纯 System F 的 ∀X 说"对任意类型都成立"，太宽，函数体里对 X 什么也不能做；纯子类型 + subsumption 能约束参数却会把"实参其实是更全的类型"这件事忘掉。有界量化 ∀X<:T 取两者之长：类型参数 X 被限制为 T 的某个子类型（所以函数体可以安全使用 T 提供的一切操作），同时 X 仍是一个类型变量（所以调用点传进来的具体类型不会在结果里被抹平）。一句话——"参数必须至少是个 T，但到底是哪个 T 的子类型，由调用方决定并被完整记住"。
 
 > 本大主题以文本多来源比对为主，本机实证机会少（F<: 的核心命题——安全性、kernel 可判定、Full 不可判定——都是证明论/可判定性命题，无法靠一次运行"证明"）。本报告未做本机实证，如实标注；所有规则与结论以 TAPL 一手 + 上述交叉一手比对为准。
@@ -267,5 +265,5 @@ kernel 可判定且高效（T9.2.4）→ Full 的朴素算法在某些输入上�
 #### 来源与时效（本小主题）
 - 一手：TAPL §26.5（Bounded Existential Types：{∃X<:T,T}、T-Pack/T-Unpack、部分数据抽象、编码进有界全称）、§28.7（Bounded Existentials：元理论/由编码继承性质）、Ch.27（Case Study: Imperative Objects, Redux：用有界量化重做对象模型、self 类型），2002 版，页码经官方目录核对，核实 2026-07-30。
 - 交叉一手：TAPL Ch.24（普通存在类型 ∃X.T 与全数据抽象、存在→全称编码）作为"部分 vs 全抽象"对照的一手基准；Cardelli & Wegner 1985 对"有界量化用于抽象数据类型/对象"的早期论述与此方向一致。F-bounded quantification（自指界，用于 OO self 类型）原始出处 Canning, Cook, Hill, Olthoff & Mitchell《F-bounded polymorphism for object-oriented programming》FPCA'89——点名以对齐 Ch.27 的 OO 用法，本报告不展开其形式系统。
-- 冲突项：无实质分歧。口径提示——round3b 分解曾把"有界存在/部分抽象"整体系于 Ch.27，经官方目录核对，有界存在类型的**定义**实际在 §26.5、其**元理论**在 §28.7，Ch.27 是把有界量化用于命令式对象的**案例研究**；本报告按此三处分别锚定，未沿用"全在 Ch.27"的粗略归属。
+- 冲突项：无实质分歧。口径提示——本库编排清单分解曾把"有界存在/部分抽象"整体系于 Ch.27，经官方目录核对，有界存在类型的**定义**实际在 §26.5、其**元理论**在 §28.7，Ch.27 是把有界量化用于命令式对象的**案例研究**；本报告按此三处分别锚定，未沿用"全在 Ch.27"的粗略归属。
 - 实证：pack/open 与编码可在带存在类型的求值/类型检查器上复现，本报告未单独实跑（可选，未取；结论以 TAPL §26.5/§28.7/Ch.27 与 Ch.24 文本比对为准）。对象完整机制交 L3-04，本节点名不展开。

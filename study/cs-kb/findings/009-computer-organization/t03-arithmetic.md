@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L2-02 DL-1（补码/符号扩展）、DL-3（半加器/全加器/行波进位加法器、MUX、比较器）｜ 一手锚点：Patterson & Hennessy《Computer Organization and Design》RISC-V Edition, 2nd ed, 2020（ISBN 9780128203316）ch3 *Arithmetic for Computers*；规范 IEEE 754-2019 *Standard for Floating-Point Arithmetic*；佐证 CSAPP 3rd ed（Bryant & O'Hallaron, 2016）ch2 *Representing and Manipulating Information*；各小主题末集中列锚点 ｜ 成熟度：GA/稳定（补码算术、IEEE-754 二进制格式为经典且标准化内容；754 最新版为 2019，相对 2008 主要为澄清与十进制细化，二进制字段/偏置/默认舍入未变）
 >
-> 粒度判定：**1 份（不拆）**。理由：CO-3 的 6 个小主题是一条完整的"机器如何算数"主线——先讲整数（加减/溢出→乘→除），再讲浮点（IEEE-754 表示→运算与舍入），最后收束到把这些运算装进一块 ALU。虽然 prompt 允许在"整数/浮点跨度过大"时拆两份，但本报告为广度优先的入门教辅，浮点只讲到"字段布局 + 运算流程 + 舍入直觉"这一初学者层，不下沉到 FMA 硬件、非规格化性能惩罚等纵深；整数与浮点共享"有限位宽下如何表示与近似"这一根线，合为一份更能体现"从整数到浮点再到 ALU"的连贯性，量也可控，故不拆。
 
 本报告的 Python 实测在 Python 3.11.15、Linux 6.18.5 x86_64（对应上面的基线串）上真跑取得；实测仅用于加固补码溢出、IEEE-754 位模式与浮点舍入误差的结论，不替代多来源比对。教学以 RISC-V/通式为主；具体机器标志位命名（如 x86 的 CF/OF）在需要时单独标注实现差异。
 

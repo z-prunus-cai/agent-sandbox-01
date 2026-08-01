@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：L4-03·03-9 事务与 ACID（可串行化、冲突可串行化、优先图、隔离级别谱、脏读/不可重复读/幻读/写偏斜）、03-5 物理存储（页/块）、03-6 索引与 B+树；L4 操作系统方向的死锁四条件（互斥/占有并等待/不可抢占/循环等待）｜ 一手锚点：《Database System Concepts》7th ed.（Silberschatz/Korth/Sudarshan, 2019，简称 DBSC 7e）ch18「Concurrency Control」；《Database Management Systems》3rd ed.（Ramakrishnan/Gehrke, 2003，简称 R&G）ch17；CMU 15-445 Spring 2026 L18「Two-Phase Locking」、L19「Timestamp Ordering / OCC」、L20「Multi-Version Concurrency Control」、L21「Concurrency Control Recap」（schedule 已核 2026-07-29，讲次编号随学期变，标 ⚙）；PostgreSQL 16 官方文档 ch13「Concurrency Control」、MySQL 8.0 InnoDB Locking 文档、SQLite「File Locking And Concurrency」文档 ｜ 成熟度：GA/稳定（2PL/时间戳/OCC 为 1970–80 年代经典结论；MVCC/SSI 为现行主流实现，具体引擎行为标注版本）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（03-10.1–03-10.5）围绕同一问题——「多个事务并发跑时，如何在保证可串行化（03-9 定的正确性标准）的同时尽量放行并发」——展开的四大类方法（锁 / 时间戳 / 乐观 / 多版本）加上锁方法附带的死锁处理与多粒度扩展，环环相扣。按 report-format v3 §一「默认 1 大主题 = 1 报告」，展开后篇幅可控，不产 `-a/-b`。
-
 > 边界申明：本报告只到**单机、入门级**。MVCC 的**实现内幕**——版本链的物理存储（append-only 堆 vs undo/delta）、可见性判定的 xid/commit-timestamp 细则、版本清理（VACUUM/purge、GC、表膨胀）、HOT 更新与二级索引回查——属内核级主题，留 **L6-04 §04-9「MVCC 实现内幕」**，本报告在 03-10.5 只讲「快照读 + 可见性」的直觉并显式点到为止。分布式并发/2PC 留 L6-04 §04-10 与 L6-09。
 
 > 实机实证状态：**已取**。本环境自带 PostgreSQL 16.13 服务端二进制（`/usr/lib/postgresql/16/bin`），无常驻服务，故临时 `initdb` 起了一个本地 cluster（以 `postgres` 系统用户运行，`unix_socket` 于 `/tmp/pgs`、端口 5433、`trust` 认证），跑完即弃。下文的 `pg_locks` 观测、**服务端自动死锁检测与 abort**、REPEATABLE READ 快照、SERIALIZABLE 写偏斜 SSI abort 均为**真实机器输出**，环境串同抬头。SQLite 侧无 `sqlite3` CLI，故 SQLite 的「库级锁、基本不产生行级死锁」为**文档级说明**，未贴机器输出，如实标注。所有协议语义（wait-die/wound-wait、时间戳规则、OCC 三阶段）来自 DBSC 7e / R&G 一手核对，非凭记忆。

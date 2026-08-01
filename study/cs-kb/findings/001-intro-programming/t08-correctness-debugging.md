@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题3（函数、作用域与调用约定）、大主题4（递归与栈） ｜ 一手锚点：CMU 15-122《Principles of Imperative Computation》（C0 契约：requires/ensures/loop_invariant/assert）；Berkeley CS61A（Efficiency / Orders of Growth 讲次，cs61a.org）；ISO/IEC 9899:2011 (C11) §7.2 Diagnostics `<assert.h>`；Python 3.11 官方文档（Language Reference §7.3 assert 语句；`pdb`/`timeit` 库）；CLRS《Introduction to Algorithms》Ch2（循环不变式三性质） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（8.1–8.5）沿一条「怎么知道程序对不对、错了怎么找、跑得快不快」的入门主线展开——断言 → 契约（前后置条件）→ 循环不变式 → 调试工具 → 效率直觉，环环相扣、无跨机制断层；篇幅属常规单元，不触发拆分。跨课边界：渐近分析（Big-O/Θ/Ω）的正式定义与证明归 L2-01（数据结构）/ L3-01（算法），本报告 8.5 只给「计数操作 + 粗略增长阶 + 规模曲线」的入门直觉，不做形式化。
 
 本报告中的 Python 实测基于 Python 3.11.15、C 实测基于 gcc 13.3.0（`-std=c11`）、gdb 15.1、Linux 6.18.5 x86_64，均对应上面的基线串。所有实证脚本只在仓库外临时目录运行，不入库。
 

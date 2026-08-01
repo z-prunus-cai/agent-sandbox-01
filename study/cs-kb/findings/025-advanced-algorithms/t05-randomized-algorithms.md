@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 #03 概率分析与随机快排（期望分析、指示器随机变量，本报告只用不重讲）、L2-03 概率论（期望线性性、方差、独立性，属 B7 先修只用不重证）、L3-01 #12 网络流与最小割的图论视角 ｜ 一手锚点：Motwani–Raghavan《Randomized Algorithms》(Cambridge University Press, 1995；Karger 最小割 Ch1/10、指纹 Ch7、集中不等式 Ch3–4)；Mitzenmacher–Upfal《Probability and Computing》(2nd ed. 2017, Cambridge)；Karger《Global Min-cuts in RNC…》(SODA 1993) 与 Karger–Stein《A New Approach to the Minimum Cut Problem》(JACM 43(4):601–640, 1996)；Freivalds《Probabilistic Machines Can Use Less Running Time》(IFIP 1977)；MIT 6.854J Advanced Algorithms (Fall 2008, OCW) 随机化贯穿讲义 ｜ 成熟度：GA/稳定（1977–1996 奠基，尾界与成功概率数十年无变动）
 
-> 粒度判定：**1 份，不拆**。四个小主题（Las Vegas/Monte Carlo 分类、Karger 最小割、指纹验证、集中不等式）内聚且相互支撑——集中不等式（5.4）是分析 Karger 重复放大（5.2）与指纹重复检测（5.3）误差衰减的公共工具，Las Vegas/Monte Carlo 的划分（5.1）又统摄后三者的误差刻画。按 v3 默认 1 大主题 = 1 报告更利于读者把"分类→具体算法→分析工具"串成一条线，故不拆。
-
 > 本报告一条主线心智模型：**随机化用"抛硬币"换掉最坏情形输入的敌意——要么保证结果永远对、只让运行时间变成随机变量（Las Vegas），要么固定运行时间、只让答案以小概率出错（Monte Carlo）；而"错的概率有多小"和"如何靠重复把它压到任意小"这两件事，全靠 5.4 的集中不等式来量化。**
 
 > 本报告三处经验结论在如下环境实跑取证：Python 3.11.15 + numpy 2.4.6 @2026-07-30。一处验证 Karger 单次收缩成功率不低于 2/(n(n−1)) 且重复后失败率落在 1/n 之内，一处验证 Freivalds 对错误乘积的单次检出率 ≥ 1/2，一处对比伯努利和的经验上尾概率与 Chernoff 界。实证为多来源比对之补充，非替代；具体概率界以一手文本比对为准。

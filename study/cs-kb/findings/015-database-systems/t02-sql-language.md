@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题03-1（关系模型：关系/元组/属性/域、键与参照完整性、关系代数 σ/π/⋈/ρ、关系的集合语义 vs SQL 多集语义）｜ 一手锚点：《Database System Concepts》7th ed（Silberschatz/Korth/Sudarshan, 2019，简称 DBSC 7e）ch3「Introduction to SQL」、ch4「Intermediate SQL」、ch5「Advanced SQL」；CMU 15-445 Spring 2026 L02「Modern SQL」（https://15445.courses.cs.cmu.edu/spring2026/）；SQL 标准 ISO/IEC 9075（现行版 SQL:2023，历史里程碑 SQL-92/SQL:1999/SQL:2003 按内容项标注）；实现侧 PostgreSQL 官方文档（以 PostgreSQL 17 为基线，17 为本报告核实时的最新 GA 大版本）与 SQLite 官方文档（本机 sqlite3 库版本 3.45.1）｜ 成熟度：GA/稳定（SQL 核心语法数十年稳定；窗口函数/CTE/JSON 等高级特性引入版本单独标注；方言差异逐项分账）
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（03-2.1–03-2.6）沿一条主线层层递进——先用 DDL 把表和约束立起来（2.1），再用最基础的单表 SELECT-FROM-WHERE 取数（2.2），然后横向连表与纵向聚合（2.3），接着把查询嵌进查询、用 CTE 组织复杂查询（2.4），再补上贯穿所有前面章节的 NULL 三值逻辑这块"暗礁"（2.5），最后收束到视图/触发器/授权/窗口这组高级特性（2.6）。六节咬合紧密、共享一套小样例表，合为一份可读性更好；虽然内容项密集，但每项讲解浅（教辅口径），总篇幅可控，故按 report-format v3 §一不拆 `-a/-b`。
-
 > 一条主线心智模型：**SQL 是一门声明式语言——你描述"想要什么结果"，而不是"怎么一步步算"**。DDL 定义数据长什么样（结构与约束），DML 描述要什么数据（查询与增删改），DCL 管谁能碰数据（授权）。所有查询在概念上都按同一套逻辑处理顺序求值（FROM→WHERE→GROUP BY→HAVING→SELECT→DISTINCT→ORDER BY→LIMIT），记住这个顺序几乎能解释本报告一半的"为什么"。
 
 > 规范 vs 实现总纲（本大主题反复用到）：SQL 标准（ISO/IEC 9075）规定语义，但**没有一个数据库完整实现标准，且各家在关键点上互相打架**。本报告把标准语义、PostgreSQL 行为、SQLite 行为**分账记录**，冲突处两边都写、点明偏离。最典型的四处分歧是：SQLite 的动态类型亲和性 vs 标准/PostgreSQL 的静态强类型；SQLite 默认**不强制**外键 vs PostgreSQL 默认强制；SQLite 视图**一律只读** vs PostgreSQL 简单视图自动可更新；SQLite **无用户/权限体系**（无 GRANT）vs PostgreSQL 完整的角色授权。

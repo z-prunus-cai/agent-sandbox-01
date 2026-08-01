@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L6-02 V2 数据流分析（格、偏序、升链条件 ACC、单调框架、传递函数 f_ℓ、方向 forward/backward、汇合 may/must、MFP vs MOP——本篇是"如何把 V2 的方程真正解出来"的算法层）、L6-02 V3 约束式分析（约束生成 → 图闭包求最小解，本篇把它和数据流统一到同一台迭代引擎上）、L6-02 V4 抽象解释（不动点、widening/narrowing，用于打破无穷高格上的迭代不终止）、L4-03 图论（有向图、可达、后序/逆后序遍历、强连通分量、回边）、L4-02 序理论（偏序、最小上界 ⊔、格、最小不动点）｜ 一手锚点：《Principles of Program Analysis》(Nielson/Nielson/Hankin)，Springer 1999（corrected printing 2005），本大主题锚 Ch.6「Algorithms」，其中 worklist 算法与复杂度界在 §2.4「Solving the Constraints: MFP」已给出、Ch.6 推广到任意约束系统与高效遍历策略（https://link.springer.com/book/10.1007/978-3-662-03811-6 ）；第二锚点《Compilers: Principles, Techniques, and Tools》(Aho/Lam/Sethi/Ullman，"龙书" 2nd ed, 2006) Ch.9「Machine-Independent Optimizations」§9.3（迭代数据流算法/worklist）、§9.6.7（逆后序收敛步数）｜ 交叉核对：Kam & Ullman《Global Data Flow Analysis and Iterative Algorithms》JACM 23(1), 1976（收敛步数 d+2/d+3 一手）、Cousot & Cousot POPL'77（chaotic iteration 的抽象解释出处）｜ 成熟度：GA/稳定（worklist、chaotic iteration、复杂度界均为 1970s–1990s 定型的经典机制，无版本演进风险）
 
-> 粒度判定：**1 份，不拆**。本大主题 3 个小主题（V6.1–V6.3，为本课最少者）是一条单线故事——先给出通用的 worklist 不动点迭代引擎本身（V6.1），再讨论"把方程/约束喂进引擎时，用什么顺序解、chaotic iteration 为何总收敛到同一答案、顺序如何只影响快慢不影响结果"（V6.2），最后回收 V2–V5，说明各种分析其实都归约到同一套求解骨架并给出复杂度界（V6.3）。三节共享同一台"格 + 单调传递函数 + 迭代到最小不动点"的引擎，篇幅适中，符合 report-format v3「默认 1 大主题 = 1 报告」，故不产 `-a/-b`。
-
 **一份静态分析做完两件事——先"写方程"（V2 数据流的 Analysis 方程 / V3 的 ⊆ 约束 / V4 抽象域上的方程），再"解方程"。V6 讲的就是"解"这一半：把所有这些方程看成同一种东西——每个程序点挂一个未知量，未知量取值于一个格，彼此由单调函数关联；解法永远是"从最小猜测（⊥）出发，反复用方程把信息往上推，推到不再变化（不动点）为止"。worklist 算法就是这台迭代引擎的高效实现：它不傻乎乎地每轮重算所有点，而是维护一张"待办清单"，只重算那些"上游刚变过、可能受影响"的点。** 关键的安心感来自序理论：因为格满足升链条件（不能无限往上升）、传递函数单调（输入变大输出不变小），这个"只升不降"的迭代必然停在最小不动点上——它就是我们要的 MFP 解。
 
 ---

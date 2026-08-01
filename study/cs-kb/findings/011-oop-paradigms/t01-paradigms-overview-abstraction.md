@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L1-01 程序设计入门（值/变量、控制流、函数、递归、可变性入门） ｜ 一手锚点：SICP《Structure and Interpretation of Computer Programs》(Abelson & Sussman, 2nd ed, MIT Press) — §1.1（Building Abstractions with Procedures / 声明性 vs 命令性知识）、§1.3（高阶过程）、§2.4.3 与 §3.1（对象、局部状态、消息传递）、§4.4（逻辑编程）；Robert W. Floyd《The Paradigms of Programming》(1978 图灵奖演讲, CACM 22:8, Aug 1979)；Peter Van Roy《Programming Paradigms for Dummies》(2009)；CMU 15-150《Principles of Functional Programming》(Fall 2015, SML) 作 FP 旁证 ｜ 成熟度：GA/稳定（经典范式理论，无版本漂移；具体示例锚 Python 3.11）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（1.1–1.5）是同一条主线——「先逐个认识四大范式的写法（命令式→OO→函数式→声明/逻辑式），再回过头理解抽象为什么是贯穿它们的复杂度管理工具、范式为什么是风格而非语言」，属"范式总览"型、跨机制少、篇幅适中，不足以触发拆分。跨课边界：OO 三支柱/派发/泛型的细节分别归本课大主题 3/4/6；函数式与状态的深挖归大主题 7/8；声明式与逻辑编程的机制深挖显式归 L5-06，本报告只作范式广度概览。
 
 本报告中的 Python 示例基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串；四范式对照示例的真实输出一并贴在 1.5 节。
 

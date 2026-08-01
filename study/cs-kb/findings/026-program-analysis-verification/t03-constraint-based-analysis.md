@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L6-02 V1 不可判定性与近似框架（sound/over-approximation 的世界观）、V2 数据流分析（格、单调框架、不动点求解——本篇是同一套"保守传播到稳定"思想在函数式语言上的另一种包装）、L5-06 T2 λ 演算（fn/应用/绑定变量）、L5-06 T7 合一与约束式类型（约束生成→求解的范式，本篇复用）、L4-03 图论（有向图、可达/传递闭包）｜ 一手锚点：《Principles of Program Analysis》(Nielson/Nielson/Hankin)，Springer 1999（corrected printing 2005），本大主题锚 Ch.3「Constraint Based Analysis」（https://link.springer.com/book/10.1007/978-3-662-03811-6 ）；第二锚点 Olin Shivers《Control-Flow Analysis of Higher-Order Languages, or Taming Lambda》CMU PhD thesis, 1991（k-CFA 一手，https://www.ccs.neu.edu/home/shivers/papers/diss.pdf ）；交叉核对 Jan Midtgaard《Control-flow analysis of functional programs》ACM Computing Surveys 2012 综述、Palsberg「Closure analysis in constraint form」TOPLAS 1995、Van Horn & Mairson「Deciding kCFA is complete for EXPTIME」ICFP'08 ｜ 成熟度：GA/稳定（0-CFA、集合约束、k-CFA 均为 1990s 定型的经典机制，复杂度结论 2008 才补齐）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V3.1–V3.4）是一条单线故事——先说清"函数式/高阶语言为什么需要一种新的控制流分析（CFA）"（V3.1），再给出最基础的 0-CFA 及其约束生成规则（V3.2），接着讲这些约束（含条件约束）如何用图闭包机械求解（V3.3），最后把精度旋钮拧到上下文敏感的 k-CFA（V3.4）。四节共享同一套"约束生成 → 最小解"骨架、篇幅适中，符合 report-format v3「默认 1 大主题 = 1 报告」，故不产 `-a/-b`。
-
 **约束式分析 = 先"读程序、写下一堆包含关系（⊆）约束"，再"解这组约束求最小解"，把分析拆成互相解耦的两半。** 数据流分析（V2）是"在控制流图上直接迭代传播"；而对函数式/高阶语言，控制流图本身还不知道——因为"哪个函数在哪里被调用"要分析完才知道，是先有鸡还是先有蛋。约束式分析绕开这个死结：它不预设控制流图，而是对每个子表达式引入一个未知集合（"这里可能求值出哪些函数？"），用程序结构生成一组 ⊆ 约束把这些未知量关联起来，最后求满足全部约束的**最小解**。这套"生成约束 / 求解约束"的分工，恰恰是 L5-06 T7 里 Hindley-Milner 类型推断"生成方程 → 合一求解"的同款范式，只是这里的解不是类型代换而是集合的最小不动点。
 
 ---

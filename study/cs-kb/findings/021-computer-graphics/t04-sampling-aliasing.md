@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：G-03 光栅化与可见性（像素采样）、L1-04 微积分（积分/傅里叶直觉）、L2-03 概率（可选，用于抖动采样直觉）｜ 一手锚点：CMU 15-462/662 Computer Graphics（Spring 2024, Nancy Pollard）Sampling & Aliasing / Filtering, Convolution / Compositing lectures（http://15462.courses.cs.cmu.edu/spring2024/lectures ，2026-07-25 复核在架）；*Real-Time Rendering, 4th ed*（Akenine-Möller et al., 2018）抗锯齿章与图像合成章；*Fundamentals of Computer Graphics*（Marschner & Shirley）采样与信号处理章；Porter & Duff, "Compositing Digital Images", SIGGRAPH 1984（over 运算符原始出处）｜ 成熟度：GA/稳定（采样定理、卷积、over 合成为数十年基石；后处理抗锯齿 FXAA/TAA 一类为 ⚙演进快·锚版本）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（G-04.1～G-04.5）串在同一条主线上——"渲染就是对连续图像信号做采样，采样不当就走样，走样靠信号处理（滤波/卷积/合成）来治"。从"什么时候采样会丢信息"（4.1 采样定理）→"图形里它具体长什么样"（4.2 混叠成因）→"用什么数学工具治"（4.3 滤波与卷积）→"落到渲染里的抗锯齿手段"（4.4 SSAA/MSAA/预滤波）→"半透明像素怎么正确叠加"（4.5 alpha 合成）。机制同源、篇幅适中，按 report-format v3 §一默认「1 大主题 = 1 报告」，不拆 `-a/-b`。
-
 > 一条主线心智模型：一幅"真实"的图像是定义在连续屏幕平面上的函数，几何边缘、细密纹理让它含有**任意高的频率**；显示器只有有限个像素，渲染就是在这些像素位置上对该函数**采样**。采样率不够高就无法区分高频与某个低频——高频"伪装"成低频显示出来，这就是走样（aliasing）。治理有两条路，殊途同归：要么**先低通滤波再采样**（预滤波，把采不到的高频先抹掉），要么**采得更密再合并**（超采样）。滤波的数学工具是卷积；把带透明度的多层结果正确叠起来则是 alpha 合成。
 
 > 验证说明：本报告已用 numpy 2.4.6 / scipy 1.17.1 就地做了四处**可选**数值加固——正弦频率折叠、盒式核卷积平滑边缘、over 合成与预乘 alpha 的等价性、亚像素边缘的点采样 vs 4× 超采样覆盖。真实输出贴在对应节内。这些仅为补充直觉，**正确性主承重仍是多来源比对**（CMU 15-462 × Real-Time Rendering 4th × Fundamentals of CG，over 运算符另比对 Porter-Duff 原文）；未做实证的条目如实标注。

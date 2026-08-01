@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐进记号 O/Θ、最坏情形分析）、大主题8（贪心选择性质与交换论证）、大主题7（动态规划、最优子结构）、大主题10（图的表示、BFS/DFS、拓扑排序）、大主题6（优先队列/堆、并查集）、L1-02 离散数学（图论基础、松弛/归纳） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch21「Minimum Spanning Trees」（§21.1–21.2）、Ch22「Single-Source Shortest Paths」（§22.1–22.5）、Ch23「All-Pairs Shortest Paths」（§23.1–23.3）；MIT 6.046J Design & Analysis of Algorithms (Spring 2015) syllabus「Graph Algorithms」模块 ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-25 最新版，无更晚版本）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（11.1–11.4）落在 CLRS 4e 相邻的 Ch21–23，串成一条咬合的主线——都是「在带权图上做优化」，共用两把工具：**贪心 + 安全边**（MST）与**松弛（relaxation）**（最短路）。差分约束（11.3）本身就是单源最短路（11.2 的 Bellman–Ford）的一个直接应用，篇幅短；全对最短路（11.4）的 Johnson 算法又把 Bellman–Ford（11.2.2）和 Dijkstra（11.2.4）当零件复用。四节机制同源、互相调用，拆开反而割裂调用链，且总篇幅与同课已产报告（如 t04 排序横跨 Ch6–8 为单篇）相当，未触及 report-format v3 §一「小主题多/跨机制/过长」的拆分线，故单篇。跨课边界：用 Fibonacci 堆把 Dijkstra/Prim 的优先队列操作加速到 O(E + V lg V) 属 L6-01 #01（高级数据结构与摊还加速），本报告点名指路、不展开实现。
-
 本报告正文的复杂度界、松弛正确性条件、章节号均来自 CLRS 4e 与至少一个独立来源交叉核对（见各章末「来源与时效」），未凭记忆填。可选的本机实测基于 Python 3.11.15、numpy 2.4.6、scipy 1.17.1、sympy 1.14.0、Linux 6.18.5 x86_64（对应基线串）；测试脚本仅存于仓库外 scratchpad，跑完即清，下文只贴真实输出。实测是补充，正确性仍以多来源比对为准。
 
 伪代码沿用 CLRS 风格；正文里图的顶点数记 V、边数记 E（也写作 |V|、|E|），`lg` 表以 2 为底的对数。
@@ -303,7 +301,6 @@ O(V² lg V + V·E)
 环境：Python 3.11.15 / numpy 2.4.6 / scipy 1.17.1 / sympy 1.14.0 / Linux 6.18.5 x86_64（基线串 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25）。脚本仅存于仓库外 scratchpad，跑完即清。以下为真实输出。
 
 对拍要点（完整脚本已清理，关键逻辑）：MST 用并查集实现 Kruskal、二叉堆实现 Prim；单源最短路自实现 Bellman–Ford（含第 |V| 轮负环检测）、DAG 松弛、二叉堆 Dijkstra；差分约束按约束图 + 超级源点 + Bellman–Ford 求解并代回验证；全对最短路自实现 Floyd–Warshall（k 在最外层）与 Johnson（Bellman–Ford 求 h → 重赋权 → 逐点 Dijkstra）。独立对拍基准为 scipy.sparse.csgraph 的 `minimum_spanning_tree`、`dijkstra`、`shortest_path(method='J')`。随机图构造时对同一 (u,v) 只保留最小权边（与「取最小平行边」的最短路/ MST 语义一致，避免 scipy 对重复坐标求和造成的伪差异）。
-
 
 ```
 [MST] Kruskal==Prim==scipy over 300 random graphs: True

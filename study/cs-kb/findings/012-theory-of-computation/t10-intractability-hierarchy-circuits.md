@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题04（图灵机、时间/空间的度量）、大主题05（对角化）、大主题08（P/NP、Cook–Levin、多项式归约）、大主题09（空间复杂度、PSPACE、Savitch、L/NL）｜ 一手锚点：Sipser《Introduction to the Theory of Computation》3rd ed.(2012, Cengage) Ch9「Intractability」§9.1–9.3（作者页 https://math.mit.edu/~sipser/book.html ，3rd/2012 为当前最新版，核实 2026-07-26；定理号逐条对读该版正文，另据官方勘误页 itoc-derrs3.1.html 核对 Theorem 9.20 的更正）｜ 交叉一手：Arora–Barak《Computational Complexity: A Modern Approach》(2009)、Papadimitriou《Computational Complexity》(1994)、Hopcroft–Motwani–Ullman《Introduction to Automata Theory, Languages, and Computation》3rd ed.｜ 官方大纲交叉：MIT 6.045J syllabus ｜ 成熟度：GA/稳定（经典理论，无演进）
 
-> 粒度判定：**1 份**（不拆）。理由：4 个小主题（10.1–10.4）同落 Sipser 3e 单章 Ch9，篇幅中等；层级定理（10.1/10.2）共享同一对角化技术，相对化（10.3）与电路（10.4）各自独立但都短，report-format v3 §一的拆分线（小主题过多/跨机制/过长）均未触及，故合为 1 份。
-
 > 定位：本章回答"**确实存在更难的问题吗**"。前面几章讲的是 P、NP、PSPACE 之间**猜测**的分隔（P vs NP 未解），本章给出**能被严格证明**的分隔——层级定理保证"多给资源就能判定更多语言"，于是像 P ⊊ EXPTIME、NL ⊊ PSPACE 这类真包含是**定理而非猜想**。相对化（§9.2）则反过来说明：为什么同样的对角化技术**证不出** P vs NP。电路复杂度（§9.3）是绕开图灵机、从另一角度逼近下界的模型。
 
 > 跨课边界：本章的电路复杂度与 P/poly、下界研究是 L6-01（高级算法/复杂度深化）与研究前沿的入口；本报告只给 Sipser 3e 的**理论定义与经典定理**，P/poly、Karp–Lipton、自然证明屏障等只在 §10.4 末**点名**，不展开。

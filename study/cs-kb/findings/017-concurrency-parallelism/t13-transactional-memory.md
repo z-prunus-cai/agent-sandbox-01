@@ -2,11 +2,9 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课大主题01（互斥的正确性性质：互斥/无死锁/无饥饿）、大主题02（并发对象、线性一致性、进展性条件 wait-free/lock-free/obstruction-free）、大主题06（原子操作与 CAS）、大主题08–09（自旋锁与阻塞同步：理解"锁"这个基线对手）、L4-01·OS-06（锁与条件变量的内核实现）｜ 一手锚点：Herlihy & Shavit《The Art of Multiprocessor Programming》(AMP) Revised 1st / 2nd ed. 第 18 章「Transactional Memory」为主一手；Herlihy & Moss「Transactional Memory: Architectural Support for Lock-Free Data Structures」ISCA 1993, pp. 289–300, DOI 10.1109/ISCA.1993.698569（HTM 概念原始来源）；Shavit & Touitou「Software Transactional Memory」PODC 1995（STM 原始来源）；Dice, Shalev & Shavit「Transactional Locking II (TL2)」DISC 2006（现代 STM 提交算法）；Intel® 64 and IA-32 Architectures Software Developer's Manual (SDM) Vol.1 ch16「Intel® Transactional Synchronization Extensions (Intel® TSX)」及 Vol.2 指令 XBEGIN/XEND/XABORT/XTEST/XACQUIRE/XRELEASE ｜ 成熟度：TM 编程模型与 STM 概念 GA/稳定；**HTM（Intel TSX）⚙演进快·锚版本·随时变**——多平台已被微码禁用，务必看下文平台可用性硬标与本机实证
 
-> 粒度判定：**1 份，不拆**。四个小主题（CP-13.1–13.4）是一条单线：先立"用原子块表达'这段代码原子执行'、底层乐观地跑、冲突就回滚重试"的**编程模型**（13.1），再分别讲两种落地——**软件实现 STM**（13.2，靠读写集记录 + 版本管理 + 提交时校验）与**硬件实现 HTM**（13.3，靠缓存 + 一致性协议侦测冲突，Intel TSX 为代表），最后把 TM 与它要替代的老对手**锁**正面对比（13.4，可组合性优势 vs 回滚代价）。四节共享同一套"乐观并发 + 回滚"心智模型，拆开会割裂"模型→软/硬实现→与锁权衡"的教学链，篇幅可控，故合为一份。
-
 > 一条主线心智模型：**把"我要原子地完成这一串读写"这个意图直接说出来，让底层去乐观地实现它**。用锁时你写的是"怎么做"——先抢哪把锁、按什么顺序、临界区多大，全是手艺活，错一步就死锁或数据竞争。事务内存让你只写"做什么"：把一串内存操作圈进一个 `atomic { … }` 块，声明"这些操作要么整体生效、要么整体不生效，中间别人看不到半成品"。底层（软件库或 CPU）**乐观地假设没人跟你冲突**，先猜着往下跑、悄悄记下你读了什么写了什么；跑到块末尾再检查这段时间有没有别人动过你读过的数据——没冲突就一次性提交（commit），有冲突就把你这次的改动**全部丢弃、回滚到起点、重来一遍**（abort + retry）。整份报告就是把这套模型、它的软/硬两种实现、以及相对锁的得失讲清。
 
-> 本机实证坐实（关键，解决 round3b 标注的「CP-13.3 TSX 本机是否可用 待核」）：本机为 KVM 虚拟化的 Intel Xeon（`Model name: Intel(R) Xeon(R) Processor @ 2.10GHz`，特性含 `amx_tile`/`avx512_fp16` → 第 4 代至强 Sapphire Rapids 一族），`/proc/cpuinfo` 通告 `hle rtm tsx tsxldtrk`，且**无** `rtm_always_abort` 标志、`tsx_async_abort` 漏洞状态为 `Not affected`。用 `gcc -mrtm` 编译 RTM 内建函数并真跑：1000 次空事务 `committed=1000 aborted=0`（全部提交成功）；显式 `_xabort(0xAB)` 返回状态 `0x AB000001`、`_XABORT_EXPLICIT` 位置 1、中止码 `0xAB`；写满 1 MiB 的大事务 `aborts=50/50`（容量溢出必中止）。**结论：本机 RTM/TSX 硬件事务确实可用且行为正确**——这与"TSX 在众多平台已被禁用"的大叙事并不矛盾，见 CP-13.3.4 的平台分账（本机是少数仍启用 TSX 的服务器部件 + 虚拟化透传）。软件侧另测：`gcc -fgnu-tm` 可编译链接 `__transaction_atomic { … }` 块（GNU TM TS + libitm），最小例返回值正确，作为 STM 落地的本机腿。
+> 本机实证坐实（关键，解决 本库编排清单标注的「CP-13.3 TSX 本机是否可用 待核」）：本机为 KVM 虚拟化的 Intel Xeon（`Model name: Intel(R) Xeon(R) Processor @ 2.10GHz`，特性含 `amx_tile`/`avx512_fp16` → 第 4 代至强 Sapphire Rapids 一族），`/proc/cpuinfo` 通告 `hle rtm tsx tsxldtrk`，且**无** `rtm_always_abort` 标志、`tsx_async_abort` 漏洞状态为 `Not affected`。用 `gcc -mrtm` 编译 RTM 内建函数并真跑：1000 次空事务 `committed=1000 aborted=0`（全部提交成功）；显式 `_xabort(0xAB)` 返回状态 `0x AB000001`、`_XABORT_EXPLICIT` 位置 1、中止码 `0xAB`；写满 1 MiB 的大事务 `aborts=50/50`（容量溢出必中止）。**结论：本机 RTM/TSX 硬件事务确实可用且行为正确**——这与"TSX 在众多平台已被禁用"的大叙事并不矛盾，见 CP-13.3.4 的平台分账（本机是少数仍启用 TSX 的服务器部件 + 虚拟化透传）。软件侧另测：`gcc -fgnu-tm` 可编译链接 `__transaction_atomic { … }` 块（GNU TM TS + libitm），最小例返回值正确，作为 STM 落地的本机腿。
 
 ---
 
@@ -145,7 +143,7 @@ TSX 的历史是一部"反复被禁用"史，务必分账、不作跨平台结�
 - **2022**：Linux 内核补丁在启动时**关闭 TSX "开发者模式"**，进一步收紧。
 - **现状（截至 2026-07 核实）**：TSX 在多数客户端平台已不可用；**部分服务器至强（含 Sapphire Rapids 一族）仍保留可用的 TSX**，但 Intel 明确**不建议在生产中重新启用**——因为启用后 TAA 的 MD_CLEAR 缓解可能失效。整体上 HTM 硬件支持有限、且方向是收缩。
 
-**本机实测坐实（解决 round3b「CP-13.3 待核」）**：本机为 KVM 虚拟化的 Sapphire Rapids 一族至强，`/proc/cpuinfo` 有 `hle rtm tsx`、**无** `rtm_always_abort`、`tsx_async_abort` = `Not affected`；RTM 事务真跑可提交（1000/1000）、显式/容量中止行为正确（见抬头）。**结论：本机 TSX 可用且功能正常**——这是"少数仍启用 TSX 的服务器部件 + 虚拟化透传"的情形，**不能外推为"TSX 普遍可用"**。任何其他机器都须以其 `/proc/cpuinfo`（是否有 `rtm`、是否有 `rtm_always_abort`）+ 实测为准。
+**本机实测坐实（解决 本库编排清单「CP-13.3 待核」）**：本机为 KVM 虚拟化的 Sapphire Rapids 一族至强，`/proc/cpuinfo` 有 `hle rtm tsx`、**无** `rtm_always_abort`、`tsx_async_abort` = `Not affected`；RTM 事务真跑可提交（1000/1000）、显式/容量中止行为正确（见抬头）。**结论：本机 TSX 可用且功能正常**——这是"少数仍启用 TSX 的服务器部件 + 虚拟化透传"的情形，**不能外推为"TSX 普遍可用"**。任何其他机器都须以其 `/proc/cpuinfo`（是否有 `rtm`、是否有 `rtm_always_abort`）+ 实测为准。
 
 主流技术叙事是"TSX 已被广泛禁用/弃用"（The Register 2021、KitGuru、Phoronix 等二手报道 + Intel 官方安全公告），而本机实测 TSX 确实在跑。两者不矛盾——前者讲的是客户端与"默认"状态的大趋势，后者是特定服务器部件在特定虚拟化环境下的实况。凡遇 TSX 可用性问题，**以目标机器实测 + 该机对应的 Intel SDM/勘误为准**，不凭机型名下结论。
 

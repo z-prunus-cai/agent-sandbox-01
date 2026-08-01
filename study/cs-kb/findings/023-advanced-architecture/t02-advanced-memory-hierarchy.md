@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-02 CO-6（内存层次与缓存基础：局部性、tag|index|offset、直接/组相联、写策略、AMAT、分页与 TLB 入门），本大主题为其深化 ｜ 一手锚点：Hennessy & Patterson《Computer Architecture: A Quantitative Approach》6th ed, 2017（ISBN 9780128119051）ch2 *Memory Hierarchy Design* + 印刷附录 B *Review of Memory Hierarchy* ｜ 佐证：Patterson & Hennessy《COD》RISC-V 2nd ed, 2020 ch5、Bryant & O'Hallaron《CSAPP》3rd ed ch6/ch9、JEDEC DDR/HBM 规范 ｜ 成熟度：概念（3C、AMAT、MSHR、多级页表、TLB）GA/稳定；主存代际（DDR5/HBM3/闪存密度）标「⚙演进快·锚版本·随时变」
 
-> 粒度判定：**1 份（不拆）**。理由：AA-2 的 5 个小主题是"如何把 CO-6 那套基础缓存/分页机制推向高性能"的一条主线——先在 AMAT 框架下系统化 cache 优化（2.1），再把其中"用并行/预判掩盖延迟"两支单独展开成预取（2.2）与非阻塞 cache（2.3），随后把同一套"减少访问代价"的思想搬到地址转换（2.4）与最底层的主存介质（2.5）。彼此环环相扣、共用 AMAT 与"延迟 vs 带宽"两把尺子，硬拆会切断这条贯穿线。虚拟内存的 OS 侧机制（缺页处理、页面置换）留 L3-02/L4-01；SIMD/GPU 对带宽的进一步压榨留 AA-5；本报告只做硬件内存层次的广度。
-
 本报告的公式与结构来自 QA 6th ed ch2 与附录 B 两处一手交叉核对，虚拟内存部分再与 CSAPP ch9、DDR/HBM 代际数据与 JEDEC 规范交叉核对；来源打架处两边都记、点明分歧。术语首次出现中英并给。凡 QA 6th ed（2017 出版）之后才定型的对象（DDR5、HBM3、最新闪存密度）一律标「⚙演进快」并锚出规范版本，不以教材旧数字作现状结论。
 
 本机环境锚点（用于把教材通式落到具体值，核实 2026-07-30）：

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课 V1（不可判定性、over-/under-approximation、sound vs complete）、建议了解 V10（SMT 求解，本报告点名接入不展开）｜ 一手锚点：King, "Symbolic Execution and Program Testing", CACM 19(7):385–394, 1976（EFFIGY 系统，符号执行原论文）；Cadar, Dunbar, Engler, "KLEE: Unassisted and Automatic Generation of High-Coverage Tests for Complex Systems Programs", OSDI'08（https://klee-se.org/ ，源码 https://github.com/klee/klee ，核实 2026-07-30）｜ 交叉一手：Godefroid, Klarlund, Sen, "DART: Directed Automated Random Testing", PLDI'05；Sen, Marinov, Agha, "CUTE: A Concolic Unit Testing Engine for C", ESEC/FSE'05（"concolic"一词出处）；Godefroid, Levin, Molnar, "SAGE: Whitebox Fuzzing for Security Testing", CACM 55(3), 2012；综述 Baldoni et al., "A Survey of Symbolic Execution Techniques", ACM Computing Surveys 51(3), 2018 ｜ 后端实证：z3-solver 5.0.0（本机 pip 装，真跑取证）｜ 成熟度：GA/经典稳定（1976 奠基；2005–2008 的 concolic/KLEE 复兴后进入工业界，工具层仍活跃演进）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V7.1–V7.4）是同一条主线的自然推进——先把"符号状态 + 路径条件"这套基本机制钉死（V7.1），再面对它最要命的工程难题"路径爆炸"及其剪枝对策（V7.2），接着讲工业界让符号执行真正落地的关键转折"混合执行 concolic"（V7.3），最后把每一步都依赖的"路径是否可达 = 路径条件是否可满足"交给 SMT 后端（V7.4，接 V10）。单一主线、机制层层咬合、篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 符号执行是这门课"验证半场"里最贴近测试实践的一种技术。它的一句话心智模型是：**不给程序喂具体输入（比如 x = 7），而是喂一个符号（x 就是"任意的 x"），让程序照常跑，只不过所有中间值都变成关于这些符号的公式；每遇到一个 if 分支就把执行"劈成两半"，各自记下"要走这条分支，输入必须满足什么条件"，这个不断累积的条件叫路径条件。** 跑到某个程序点时，只要它的路径条件是"可满足的"，就说明存在一组真实输入能走到这里——把这组输入解出来，就得到一个能精确触发该路径的测试用例。
 
 King 1976 的原始洞察是：**一次符号执行覆盖的不是一条具体执行，而是一整类走同一条路径的执行**。这就是为什么符号执行能自动生成高覆盖测试、能证明某条危险路径不可达、能定位触发崩溃的确切输入。抓住两件事就抓住了全部内核：一是"符号状态 + 路径条件"如何随执行积累（V7.1），二是"路径条件可满足性"如何决定可达并生成输入（V7.4）；中间两节（V7.2、V7.3）都在解决同一个敌人——路径数量爆炸导致朴素做法跑不动。

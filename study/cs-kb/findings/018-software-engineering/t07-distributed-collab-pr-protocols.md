@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25（本组实证工具链含 git 2.43.0；本篇实机佐证全部用本机 git 2.43.0 + `file://` 本地协议）｜ 核实日期：2026-07-30 ｜ 先修：06-4 Git 对象模型（内容寻址 DAG、commit/tree/blob）、06-5 引用/分支/HEAD（refs/heads、refs/remotes 远程跟踪引用）、06-6 三向合并与 merge-base（fast-forward vs 真合并、rebase 黄金规则）；L4-02 计算机网络（HTTP、SSH、TCP，本篇传输协议建于其上）｜ 一手锚点：Pro Git 2nd ed（https://git-scm.com/book/en/v2 ，正文核实 2026-07-30）—— ch5 Distributed Git（Distributed Workflows / Contributing / Maintaining）、ch6 GitHub、§10.5 The Refspec、§10.6 Transfer Protocols；准一手 MIT 6.031 Software Construction sp22 Reading 04 Code Review（https://web.mit.edu/6.031/www/sp22/classes/04-code-review/ ，核实 2026-07-30）｜ 成熟度：git 侧机制（分布式模型/refspec/传输协议）GA/稳定；平台侧（PR/MR、保护分支/rulesets）⚙演进快·锚版本·随时变
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（06-7.1~06-7.5）虽横跨"协作拓扑 + 传输机制 + 评审"，但都挂在同一条主线上——先建立"每个仓库都是一份完整历史"的分布式模型（06-7.1），再看这些完整仓库之间怎么按不同拓扑组织协作（06-7.2），然后下沉到"引用如何在两个仓库间对应"的 refspec（06-7.3）与"字节如何在网络上流动"的传输协议（06-7.4），最后回到人这一层：变更进主干前的评审门禁（06-7.5）。refspec 与传输协议虽是本篇最"重"的机制，但停在教辅深度（讲清语法与握手骨架、不逐字节展开协议），篇幅可控，故按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 **在 Git 里，"远程"不是一台高你一等的服务器，而只是"另一份和你结构完全相同的仓库"。** 集中式版本控制（SVN、CVS）里，服务器是唯一的真相来源、你的工作副本只是它的一个残缺快照；而 Git 每次 clone 都把对方仓库的**全部历史**搬到本地，于是每个仓库地位对等——协作因此变成"两份完整仓库之间，按某条 refspec、走某种传输协议，交换彼此缺的对象和引用"。理解了这一层，06-7 后面所有内容（工作流拓扑、refspec、传输协议）都只是这句话的不同侧面。
 
 需要一开始就立清的一条**分账边界**：本篇里 git 侧机制（分布式模型、refspec、传输协议）由 Pro Git 一手承重，稳定、可实证；而"Pull Request / Merge Request"是 **GitHub、GitLab 等平台**造出来的概念，**不是 git 内核的东西**——git 本身只有"把提交从一个仓库搬到另一个"和一个近亲命令 `git request-pull`，并没有"PR"这个对象。所以凡涉及 PR/MR 的评审流程、保护分支、required reviews 这些，一律标 **⚠平台特性 / ⚙演进快·锚版本·随时变**，仅指路、不作一手承重结论；评审背后的**原则**（为什么要评审、评审看什么）则锚 MIT 6.031（准一手）。

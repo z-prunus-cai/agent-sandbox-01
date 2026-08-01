@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：大主题1（同步/异步模型、崩溃-停止失败、故障检测器 completeness/accuracy）、大主题3（复制状态机 RSM、多数派 quorum）｜ 一手锚点：FLP（Fischer, Lynch & Paterson, JACM 32(2):374–382, 1985）；Paxos（Lamport「The Part-Time Parliament」TOCS 16(2):133–169, 1998 与「Paxos Made Simple」ACM SIGACT News 32(4), 2001）；Raft（Ongaro & Ousterhout「In Search of an Understandable Consensus Algorithm」USENIX ATC 2014，Best Paper；扩展版 raft.pdf）；MIT 6.5840 Spring 2026 schedule（LEC4 Paxos、LEC6-7 Raft，https://pdos.csail.mit.edu/6.824/schedule.html ）｜ 成熟度：GA/稳定（三篇论文均为分布式共识数十年基石；FLP 1985 与 Paxos/Raft 定义稳定，无版本漂移）
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（4.1–4.6）虽横跨 FLP/Paxos/Raft 三套对象，但被一条主线串成一个整体——"异步下确定性共识不可能保证终止（4.2），所以真实协议（Paxos 4.3、Raft 4.4-4.5）把 safety 做成永不违反、把 liveness 做成'条件好时才保证'（4.6）"。拆成两份会切断"不可能性→如何绕过"这条因果链，教辅可读性反而受损。篇幅偏重但仍在单份可容纳范围，按 report-format v3 §一，保持 1 份，仅在小主题内用足够多的 `###` 内容项保证广度查全。
-
 > 本报告一条主线心智模型：**共识 = 一群可能崩溃、只能靠不可靠消息沟通的节点，就"某一个值是多少"达成所有人都认可、且一旦认可就永不反悔的一致决定**。它是复制状态机（大主题3）达成"各副本按同一顺序执行同一批命令"的核心手段。这件事有一个天生的硬边界（FLP，4.2）：在纯异步 + 哪怕只死一个节点的假设下，没有确定性算法能同时保证"永不给出矛盾结论"和"一定在有限步内出结论"。于是所有实用协议都做同一件事——**死守 safety（agreement/validity 永不违反），把 termination 降级为"网络够稳定时才保证"**。Paxos 用"两阶段 + 多数派交集"从数学上锁死 safety；Raft 用"强领导者 + 任期 + 随机化超时"把同一套 safety 包装得更好懂、并顺便把 liveness 恢复得更快（4.6）。
 
 > 分账（本课不外扩，只在交界处一句指路）：本报告只讲**选举 / 日志复制 / 安全性论证 / 不可能性**——即"为什么这样才对"。快照与日志压缩、集群成员变更（joint consensus）、分片 KV、线性一致读（ReadIndex/租约读）等**工程实现**归 L6-05（C2）；共识达成的"顺序执行同一日志⇒副本收敛"这一 RSM 目标本身归大主题3；一致性模型（线性一致 vs 顺序一致）归大主题5。safety/liveness 只讲直觉与结论，不做 FLP 完整形式化证明或 Raft 安全性的逐引理推导。

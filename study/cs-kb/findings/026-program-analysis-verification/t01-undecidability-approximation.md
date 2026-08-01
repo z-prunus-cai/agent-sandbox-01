@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-05 计算理论（停机问题、可判定/不可判定、归约）、L5-06 T1（操作语义与"卡住/行为"的形式刻画）｜ 一手锚点：PPA《Principles of Program Analysis》(Nielson/Nielson/Hankin, Springer 1999, corrected 2005) Ch.1（Introduction）；Rice 定理原始出处 Rice 1953《Classes of Recursively Enumerable Sets and Their Decision Problems》(Trans. AMS)，陈述另用 Sipser《Introduction to the Theory of Computation》交叉核对；sound/complete 与近似方向另用 Livshits et al.《In Defense of Soundiness》(CACM 2015) 交叉核对 ｜ 成熟度：经典理论 GA/稳定（非演进快对象）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V1.1–V1.4）是全课的"世界观钉子"，构成一条单一逻辑链——先证明"精确回答语义问题在图灵完备语言上根本不可能"（V1.1），由此说明为什么一切静态分析都只能给近似答案并交代分析发生在什么语言上（V1.2），接着把"近似"精确化为过/欠近似两个方向及其可靠/完备取舍（V1.3），最后说明一个近似分析凭什么被称作"正确"（V1.4，相对语义证明可靠）。四节紧扣、无跨机制断裂，篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 **任何"看程序文本、不真跑就精确判断程序会不会做某坏事"的愿望，在图灵完备语言上是数学上不可能的（Rice 定理）；程序分析的全部艺术，就是退而求其次，用一个安全方向的"近似"来换取可判定与可终止——宁可多报一些不会发生的坏事（假阳），也绝不漏掉真会发生的（可靠）。** 这四节把"为什么必须近似""在什么语言上近似""近似往哪个方向""近似凭什么算对"一次讲透，是理解后续 V2–V11（数据流、抽象解释、类型效果、符号执行、模型检验、演绎验证……）全部技术的地基：它们无一例外都是这套"安全近似"世界观的不同具体实现。
 
 ---
@@ -103,7 +101,7 @@ PPA 的核心贡献是指出：看似五花八门的程序分析，其实归结�
 #### 来源与时效（本小主题）
 - 锚点（一手承重）：PPA Ch.1（Introduction）——静态分析定义（"reliable approximate information about the dynamic behaviour of programs"）、WHILE 示例语言与标号约定、贯穿全书的求幂示例程序、四大方法（Data Flow / Constraint Based / Abstract Interpretation / Type and Effect Systems）＋Algorithms 的导览；Springer 1999/2005，核实 2026-07-30。四大方法即 Ch.2–Ch.5 章题、Ch.6 为 Algorithms，与 Springer 官方目录一致（https://link.springer.com/book/10.1007/978-3-662-03811-6 ，核实 2026-07-30）。
 - 交叉印证（一手）：龙书《Compilers: Principles, Techniques, and Tools》2nd ed 2006 Ch.9 对静态/数据流分析的定位与 WHILE 式流图建模一致（同数学、构造视角，交 L4-04 C9）；Springer 图书简介独立复述"four major approaches to program analysis"，与 Ch.1 一致。
-- 待核/注记：round3b 小主题表将 V1.2 记为"五类分析导览"；核对 PPA 原书为**四大方法**（Ch.2–5）＋**求解算法**（Ch.6），本报告按原书如实记为"四大方法＋算法"，五之数即含 Ch.6 算法一章。
+- 待核/注记：本库编排清单小主题表将 V1.2 记为"五类分析导览"；核对 PPA 原书为**四大方法**（Ch.2–5）＋**求解算法**（Ch.6），本报告按原书如实记为"四大方法＋算法"，五之数即含 Ch.6 算法一章。
 - 冲突/待核：无实质分歧。
 
 ---

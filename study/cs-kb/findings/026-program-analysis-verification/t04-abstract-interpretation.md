@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课 V1（不可判定性、over-/under-approximation、可靠 sound）、V2（格论基础、单调框架、MFP、Kleene 不动点）；建议已修 L1 离散数学（偏序/格）｜ 一手锚点：PPA《Principles of Program Analysis》(Nielson/Nielson/Hankin, Springer 1999, corrected 2nd printing 2005) Ch.4 "Abstract Interpretation"（https://link.springer.com/book/10.1007/978-3-662-03811-6 ，核实 2026-07-30）；Cousot & Cousot, POPL'77《Abstract Interpretation: A Unified Lattice Model for Static Analysis of Programs by Construction or Approximation of Fixpoints》（Galois 连接框架一手出处）｜ 交叉一手：Cousot & Cousot 1976 ISOP《Static Determination of Dynamic Properties of Programs》（区间域与 widening 原始出处）、Cousot & Cousot POPL'79《Systematic Design of Program Analysis Frameworks》、Rival & Yi《Introduction to Static Analysis: An Abstract Interpretation Perspective》(MIT Press 2020) ｜ 成熟度：GA/经典稳定（1977 奠基、40+ 年定型；抽象域与工具层仍在演进，硬标处见正文）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V4.1–V4.4）是同一条主线的自然展开——先用 Galois 连接把"抽象域怎样才算正确地近似具体语义"钉死（V4.1），再横向铺开常见抽象域及其精度-代价谱系（V4.2），接着解决"抽象域可能无穷高、不动点迭代不终止"这个核心工程难题（widening/narrowing，V4.3），最后回头说明抽象解释框架如何把 V2 的数据流分析收编为一个特例（V4.4）。单一主线、机制彼此咬合、篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 本大主题给整门课换了一副更高的"眼镜"。V2 讲数据流分析时，格、传递函数、不动点都是**直接摆出来**的，你只能默认"这套抽象是对的"。抽象解释回答的是更根本的问题：**给定程序的真实（具体）语义，一个抽象要满足什么条件，才能保证由它算出的结论对真实执行永远成立（sound）**。Cousot 夫妇 1977 年的答案是：用一对函数 α（抽象化）和 γ（具体化）把具体世界和抽象世界连起来，只要这对函数构成 **Galois 连接**，抽象计算的结果就自动是可靠的近似——正确性不再靠人工逐条论证，而是"按构造即正确"。
 
 一条贯穿全大主题的心智模型：**抽象解释 = 在一个"看不太清但算得动"的抽象世界里，重演程序的执行；Galois 连接保证这个抽象世界忠实地包住真实世界，widening 保证重演能在有限步内停下来**。抓住"忠实包住（soundness）"和"有限步停下（termination）"这两件事，就抓住了抽象解释的全部工程内核。

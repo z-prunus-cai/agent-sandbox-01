@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课 V7（符号执行，路径条件交 SMT 判可达）、V9（演绎验证，VC 交求解器）、L4-04 命题/一阶逻辑基础 ｜ 一手锚点：de Moura & Bjørner, "Z3: An Efficient SMT Solver", TACAS 2008（https://github.com/Z3Prover/z3 ）；Kroening & Strichman《Decision Procedures: An Algorithmic Point of View》(2nd ed., Springer 2016)；SMT-LIB Standard v2.7（2025-02-05，https://smt-lib.org ）｜ 交叉一手：Davis-Putnam 1960 与 Davis-Logemann-Loveland 1962（DPLL 原论文）；Nieuwenhuis-Oliveras-Tinelli, "Solving SAT and SAT Modulo Theories", JACM 53(6), 2006（DPLL(T) 抽象框架）；Nelson & Oppen, "Simplification by Cooperating Decision Procedures", ACM TOPLAS 1(2), 1979（理论组合）；Z3 官方文档 https://microsoft.github.io/z3guide/ ｜ 后端实证：z3-solver 5.0.0（本机 pip 装，真跑取证）｜ 成熟度：GA/内核稳定、工具层演进快（Z3 自 2008 起工业级；SMT-LIB 输入格式活跃演进）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（V10.1–V10.5）是同一条自底向上的主线：命题 SAT 内核（V10.1）→ 把 SAT 骨架接上理论求解器的 DPLL(T) 框架（V10.2）→ 各具体理论求解器（V10.3）→ 多理论如何拼在一起的 Nelson-Oppen 组合（V10.4）→ 最后把求解器吐出的四种结果讲清怎么用（V10.5）。层层咬合、单一主线、篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 SMT（Satisfiability Modulo Theories，模理论可满足性）求解引擎是这门课"验证半场"的**共享后端**——符号执行（V7）问"这条路径可不可达"、演绎验证（V9）问"这个验证条件成不成立"，最后都归结为一句话：**把一个逻辑公式交给 SMT 求解器，问它"有没有一组取值让公式为真"**。一句话心智模型是：SMT = SAT（命题可满足性）+ 一批"理论"（算术、位向量、数组、未解释函数……），它在纯布尔逻辑的"真/假"之上，额外理解"x + 2y = 7""数组第 i 位存了 10""a = b 就必须 f(a) = f(b)"这类**带含义的约束**。
 
 抓住一条主线就抓住了整个引擎：SAT 求解器（V10.1）负责把公式的布尔骨架搜个遍，理论求解器（V10.3）负责判断每一组布尔赋值在具体理论里到底成不成立，两者的协作协议就是 DPLL(T)（V10.2）；当一个公式同时用了好几种理论，Nelson-Oppen（V10.4）规定它们怎么交换信息合作；求解结束后引擎给出 sat / unsat / model / unsat-core 四类产物（V10.5），这正是上层验证工具真正消费的东西。

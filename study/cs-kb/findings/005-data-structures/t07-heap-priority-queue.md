@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐近分析与均摊）、大主题5（树术语与二叉树表示）、大主题2（动态数组） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed(2022) Ch6（Heapsort：§6.1 堆、§6.2 MAX-HEAPIFY、§6.3 BUILD-MAX-HEAP、§6.5 优先队列）；Berkeley CS61B（sp24.datastructur.es，Heaps & PQs 讲次，Java）；Pat Morin《Open Data Structures》§10.1 BinaryHeap；CPython 源码 Lib/heapq.py @tag v3.11.15（`heapq` 二叉最小堆） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题仅 4 个小主题（7.1–7.4），且共享同一条主线——「用完全二叉树的数组表示 + 两个 O(log n) 的调整操作（上浮/下沉），把优先队列这个 ADT 落地」。7.1 是表示、7.2–7.3 是操作、7.4 是它支撑的 ADT 与应用，环环相扣、无跨机制断层，篇幅属常规单元，不足以触发拆分。跨课边界：堆排序（就地建堆 + 反复取极值）与图算法里的优先队列应用（Dijkstra、Prim、Huffman）深挖归 L3-01 算法课，本报告只讲「堆这个结构本身的表示与操作、以及优先队列 ADT 的接口」到初学者能懂即止。
 
 本报告中的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，均对应上面的基线串；CPython 实现细节引用自源码标签 v3.11.15。一个术语约定要先讲清：教材 CLRS 讲的是**最大堆**（root 是最大值，用于堆排序），而 Python `heapq`、CS61B、Open Data Structures 多用**最小堆**（root 是最小值，更贴合优先队列「先取最小优先级」的用法）。二者互为镜像——把所有比较反向即可相互转换，本报告以最小堆为主叙述、需要时点明最大堆的对偶写法。
 

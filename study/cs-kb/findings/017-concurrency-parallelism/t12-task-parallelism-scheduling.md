@@ -2,13 +2,11 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题08（自旋锁与竞争：MCS/CLH 队列锁、局部自旋、缓存一致性代价）、大主题06（原子操作与 memory_order：CAS/`fetch_add`、acquire/release）、大主题05（内存一致性与重排序）、L4-01 大主题04–05（线程 API 与 CPU 调度）、数据结构课的分治与双端队列 ｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 16 章「Futures, Scheduling, and Work Distribution」与第 17 章「Barriers」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；work-stealing 理论回落 Blumofe & Leiserson「Scheduling Multithreaded Computations by Work Stealing」JACM 46(5):720–748, 1999（原始论文，核实 2026-07-30）；OpenMP 语义回落 OpenMP API 规范（6.0，2024-11-14 发布；本机 gcc 13.3 `_OPENMP=201511` 即 4.5，核实 2026-07-30）；工程实践回落 oneTBB（oneAPI Threading Building Blocks，work-stealing 任务调度器） ｜ 成熟度：GA/理论稳定（fork-join/futures/work-stealing/sense-reversing barrier 均为 1990 年代确立的经典结果；OpenMP task 自 3.0(2008) 起、depend 子句自 4.0(2013) 起为现役标准）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-12.1–12.5）是一条"如何把一堆有依赖的任务铺到多核上跑得又对又快"的单线——futures 给出表达异步结果与依赖的最小语言构件（12.1），fork-join 是最常用的结构化任务并行骨架（12.2），work-stealing 是让任务在核间自动均衡的运行时机制（12.3），barrier 是任务并行里最基本的阶段同步点（12.4），任务图与负载均衡把前四者统一到 DAG 调度的心智模型下（12.5）。五节共享同一套 work/span 记号与同一条"表达任务 → 运行时调度 → 同步 → 均衡"的主线，拆开会断，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**任务并行是"程序员只负责说清哪些活能并行、彼此谁依赖谁（画出一张任务 DAG），把'谁在哪个核上、什么时候跑'完全交给运行时"。你写 `spawn`/`task`/`future`，运行时用 work-stealing 把任务动态搬到空闲核上。评判一个任务并行程序好不好，只看两个量：总活量 work（记 T₁，单核跑完的时间）和最长依赖链 span（记 T∞，无穷多核也省不掉的时间）；二者之比 T₁/T∞ 就是这段程序理论上能吃下多少个核。本课只讲"范式怎么表达、运行时怎么调度、为什么调度是对的"，具体机器上的调优/GPU 归 L6-06 HPC。**
 
 > 分账（本课不外扩，交界处一句指路）：**每个核上双端队列的无锁实现、CAS/ABA 细节、缓存一致性对偷任务成本的影响**指回 CP-08/CP-10（本报告用到时只点名，不重推无锁栈/队列）；**barrier 底层用到的 acquire/release 配对与 seq_cst 屏障如何生成机器码**归 CP-06（本报告只说 barrier 在语义上是一个双向同步点，不展开内存序）；**线程如何被内核创建/抢占/上下文切换**归 L4-01·OS-04/05；**在真实机器上测加速比、调 cutoff、GPU offload** 归 L6-06 HPC（本课只给上界模型与正确性）。
 
-> 本报告以多来源比对为主承重腿：AMP ch16–17 为主一手，work-stealing 的理论界逐条与 Blumofe-Leiserson 1999 原始论文交叉核对，OpenMP 语义以官方规范为准并标注版本，工程落地用 oneTBB 印证"work-stealing 是现役生产调度器而非纸上算法"。实机验证为**可选补充**且**本报告已取两项**：CP-12.4 的 sense-reversing barrier 与 `pthread_barrier` 在本机真跑（4 线程 × 3 阶段同步、SERIAL_THREAD 每阶段恰返回 1 个线程），CP-12.2 的 OpenMP `task`/`taskwait` fork-join 在本机真跑（结果正确、4 线程）——顺带**坐实 round3b 中标「待核」的 OpenMP 可用性：本机 gcc 13.3 带 `-fopenmp`（libgomp.so.1，`_OPENMP=201511`＝OpenMP 4.5）可用**，见下文实证块。
+> 本报告以多来源比对为主承重腿：AMP ch16–17 为主一手，work-stealing 的理论界逐条与 Blumofe-Leiserson 1999 原始论文交叉核对，OpenMP 语义以官方规范为准并标注版本，工程落地用 oneTBB 印证"work-stealing 是现役生产调度器而非纸上算法"。实机验证为**可选补充**且**本报告已取两项**：CP-12.4 的 sense-reversing barrier 与 `pthread_barrier` 在本机真跑（4 线程 × 3 阶段同步、SERIAL_THREAD 每阶段恰返回 1 个线程），CP-12.2 的 OpenMP `task`/`taskwait` fork-join 在本机真跑（结果正确、4 线程）——顺带**坐实 本库编排清单中标「待核」的 OpenMP 可用性：本机 gcc 13.3 带 `-fopenmp`（libgomp.so.1，`_OPENMP=201511`＝OpenMP 4.5）可用**，见下文实证块。
 
 ---
 
@@ -62,7 +60,7 @@ T_P ≥ T∞
 
 ### CP-12.2.3 OpenMP task/taskwait 落地 fork-join（本机实证，坐实 OpenMP 可用性）
 
-OpenMP 用 `#pragma omp task` 发起一个可异步执行的任务（fork），用 `#pragma omp taskwait` 等待当前任务派生的所有子任务完成（join），整个任务区通常套在一个 `#pragma omp parallel` 建线程组 + `#pragma omp single` 让单一线程启动递归的外壳里。round3b 曾把本机 OpenMP 可用性标「待核」，本报告实证坐实：**本机 gcc 13.3 支持 `-fopenmp`，链接 libgomp.so.1，`_OPENMP` 宏值 201511 即 OpenMP 4.5**（`task`/`taskwait` 自 3.0 起、`task` 的 `depend` 依赖子句自 4.0 起均在 4.5 覆盖内）。
+OpenMP 用 `#pragma omp task` 发起一个可异步执行的任务（fork），用 `#pragma omp taskwait` 等待当前任务派生的所有子任务完成（join），整个任务区通常套在一个 `#pragma omp parallel` 建线程组 + `#pragma omp single` 让单一线程启动递归的外壳里。本库编排清单曾把本机 OpenMP 可用性标「待核」，本报告实证坐实：**本机 gcc 13.3 支持 `-fopenmp`，链接 libgomp.so.1，`_OPENMP` 宏值 201511 即 OpenMP 4.5**（`task`/`taskwait` 自 3.0 起、`task` 的 `depend` 依赖子句自 4.0 起均在 4.5 覆盖内）。
 
 本机真跑（基线 gcc 13.3 @2026-07-30，4 核 x86-64，`OMP_NUM_THREADS=4`）：用递归 fork-join 对 0..10⁷−1 求和，子区间小于阈值时顺序算（叶子），否则 `omp task` 分叉左右两半、`taskwait` 汇合再相加。可复现命令与真实输出：
 
@@ -84,7 +82,7 @@ fork-join 好用，但有两个初学者必须守的正确性纪律。其一，*
 #### 来源与时效
 - AMP 2nd/Revised ch16 §16.2「Analyzing Parallelism」（核实 2026-07-25）：work T₁ 与 critical-path length（span）T∞ 的定义、parallelism=T₁/T∞、T_P≥T₁/P 与 T_P≥T∞ 两条下界；fork-join 计算作为 DAG 展开。
 - OpenMP API 规范（现行 6.0，2024-11-14 发布；本机为 4.5＝`_OPENMP` 201511，核实 2026-07-30）：`task` 构造自 3.0(2008)、`taskwait` 自 3.0、`task` 的 `depend` 子句自 4.0(2013)；`parallel`/`single`/`for reduction` 语义。
-- 本机实证（基线 gcc 13.3 @2026-07-30，x86-64 4 核，`OMP_NUM_THREADS=4`）：`-fopenmp` 可用、libgomp.so.1、`_OPENMP=201511`；fork-join task 求和 = 49999995000000（=解析解），reduction 版一致。命令与输出见正文，可复现。**坐实 round3b「OpenMP 可用性待核」＝本机可用（4.5）。**
+- 本机实证（基线 gcc 13.3 @2026-07-30，x86-64 4 核，`OMP_NUM_THREADS=4`）：`-fopenmp` 可用、libgomp.so.1、`_OPENMP=201511`；fork-join task 求和 = 49999995000000（=解析解），reduction 版一致。命令与输出见正文，可复现。**坐实 本库编排清单「OpenMP 可用性待核」＝本机可用（4.5）。**
 - 交叉一致，无冲突。work/span 记号 AMP 与 Cilk/Blumofe-Leiserson 谱系一致；OpenMP task 引入版本以官方规范为准。
 
 ## CP-12.3 work-stealing：每核双端队列、空闲核偷任务

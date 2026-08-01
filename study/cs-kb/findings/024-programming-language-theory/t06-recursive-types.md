@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课大主题T3（STLC、类型环境、Progress/Preservation）、T4（积/记录/和类型/变体、一般递归 fix、引用）、T5（子类型关系与 subsumption、变型、Top/Bot）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002, ISBN 9780262162098) Part IV，Ch.20（递归类型）、Ch.21（递归类型的元理论），作者页 https://www.cis.upenn.edu/~bcpierce/tapl/ （2002 版为唯一版本，核实 2026-07-25）｜ 交叉一手：Harper《Practical Foundations for Programming Languages》(PFPL, Cambridge 2nd ed. 2016)「Inductive and Coinductive Types」与「System FPC of Recursive Types」两章；Amadio & Cardelli《Subtyping Recursive Types》(ACM TOPLAS 15(4), 1993)；Abadi & Cardelli《A Theory of Objects》(Springer 1996)｜ 成熟度：GA/稳定（等递归/同构递归之分、fold/unfold、余归纳子类型均为 1980s–1990s 定型的经典结果，数十年无实质变动）
 
-> 粒度判定：**1 份，不拆**。本大主题仅 3 个小主题（T6.1–T6.3，为本课最少者），围绕同一条主线——"类型自己引用自己该如何精确定义、如何让机器接受、其元理论为何要换用余归纳"——层层递进：先用列表/流/对象三个例子把"为什么需要递归类型"讲透（T6.1），再回答"递归类型和它的展开到底是相等还是同构"这个核心分岔（T6.2），最后交代无限类型、子类型与余归纳这套元理论骨架（T6.3）。三节机制紧密咬合、篇幅适中，按 v3 默认与本大主题 prompt 明示"不建议再拆"，产 1 份报告。
-
 > 本报告一条主线心智模型：**递归类型 μX.T 就是"允许类型定义在等号右边提到自己"**——像 `List = Nil | Cons of Nat × List` 里右边又出现了 List。整个大主题就在回答两个问题：一，这种"自指"数学上怎么才算合法（把它看成无限展开的树）；二，工程上要不要程序员显式写 fold/unfold 标记"这里把展开式当成递归类型用"（同构递归）还是让编译器默默认为两者相等（等递归）。ML/Haskell 的 datatype、面向对象里返回自身的方法，底层都是它。
 
 > 本大主题实证机会少（递归类型的核心命题——同构、合流、子类型可判定性——多为证明论结果，Python 不足以佐证）。本报告以**多来源文本比对**为主承重，未做本机实证处一律如实标注；纯理论命题以 TAPL / PFPL / Amadio–Cardelli 交叉核对为准。

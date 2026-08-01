@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 #09 摊还三法（聚合/记账/势能，本报告只用不重讲）、L3-01 #11 最短路与 MST（Dijkstra/Prim 的二叉堆版）、L3-01 #12 网络流（Ford–Fulkerson/Dinic 的先修视角）、二叉搜索树与旋转 ｜ 一手锚点：Fredman–Tarjan《Fibonacci heaps and their uses in improved network optimization algorithms》(JACM 34(3):596–615, 1987)；Sleator–Tarjan《Self-Adjusting Binary Search Trees》(JACM 32(3):652–686, 1985)；Sleator–Tarjan《A Data Structure for Dynamic Trees》(JCSS 26(3):362–391, 1983)；CLRS《Introduction to Algorithms》(3rd ed. 2009 / 4th ed. 2022, MIT Press) Fibonacci 堆章（3e 为 Ch19，4e 具体章号待核）与摊还章（3e Ch17 / 4e Ch16）；MIT 6.854J Advanced Algorithms (Fall 2008, OCW) Lec 1、5–8 lecture notes ｜ 成熟度：GA/稳定（1983–1987 奠基，摊还界与势函数数十年无变动）
 
-> 粒度判定：**1 份，不拆**。本大主题含三种独立高级结构（Fibonacci 堆 / Splay 树 / link-cut 树），但它们由一条主线串起——"用摊还分析换取更优的图算法界"：Fibonacci 堆把 Dijkstra/Prim 压到 O(E + V log V)，link-cut 树把 Dinic 最大流压到 O(VE log V)，而 Splay 树既是自身一个话题、又是 link-cut 树的实现零件。三节篇幅适中、机制彼此咬合（Splay 是 link-cut 的组件），按 v3 默认 1 大主题 = 1 报告更利于读者建立"摊还→更优图界"的整体图景，故不拆。
-
 > 本报告一条主线心智模型：**这三种结构都放弃"每次操作都快"，改追求"一长串操作总量快"——用摊还分析证明某些昂贵操作的代价可以被大量便宜操作预付或抵消**。Fibonacci 堆把整理工作推迟到必须做时才做，Splay 树让每次访问顺手把树"揉"得更平衡，link-cut 树用 Splay 维护森林里的路径；三者都靠势函数记账，把"偶尔很贵"摊平成"平均很便宜"。
 
 > 本报告两处经验结论在如下环境实跑取证：Python 3.11.15 @2026-07-30，仅用标准库。一处验证 Fibonacci 堆最大度界背后的关键不等式 F₍ₖ₊₂₎ ≥ φᵏ，另一处用一个简易 Splay 树统计随机访问的平均触达深度随 n 呈对数增长。实证为多来源比对之补充，非替代；纯理论命题（摊还界、静态最优性、动态最优猜想）以一手文本比对为准，未实证处如实标注。

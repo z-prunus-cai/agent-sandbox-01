@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题11（I/O 子系统与设备驱动：块设备、中断/DMA、MMIO）、大主题10（缺页与后备存储：swap 落到块设备的代价）、大主题08/09（地址空间与页/块概念）｜ 一手锚点：OSTEP 网页版 Ch37「Hard Disk Drives」/Ch38「Redundant Arrays of Inexpensive Disks (RAIDs)」/Ch44「Flash-based SSDs」（https://pages.cs.wisc.edu/~remzi/OSTEP/ ，核实 2026-07-25）；Silberschatz《Operating System Concepts》Ch11「Mass-Storage Structure」（HDD 几何、磁盘调度、RAID 级别 0–6）；Patterson/Gibson/Katz「A Case for Redundant Arrays of Inexpensive Disks (RAID)」SIGMOD 1988（RAID 原始论文）；Linux 内核文档 `admin-guide/md.html`（md 软 RAID：默认 chunk、consistency_policy、journal/PPL，docs.kernel.org，核实 2026-07-29）；`mdadm(8)` man page（man7.org，核实 2026-07-29）｜ 成熟度：GA/稳定（HDD 几何、SSTF/SCAN/C-SCAN、RAID 0–6、写洞、写放大概念均为数十年稳定教材内容）；⚙演进快：具体介质参数（RPM、页/块尺寸、WAF 数值）随产品迭代，Linux md 的写洞缓解实现（journal/PPL、consistency_policy）随内核版本演进，实现细节以对应版本内核文档为准。
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（12.1–12.4）沿一条单一主线——"持久存储介质慢且会坏，OS 怎样榨性能、怎样用冗余扛住坏盘"：先讲机械盘为什么慢、怎样排 I/O 顺序省寻道（12.1），再讲固态盘的物理约束与 FTL 如何把它伪装成块设备（12.2），接着讲用多块盘拼成阵列换取容量/性能/可靠性（12.3），最后讲阵列在"更新校验"这件事上的正确性难题（小写与写洞，12.4）。四节层层递进、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**持久存储比内存慢好几个数量级，而且形态各异——机械盘慢在"机械臂要移动、盘片要转"，固态盘慢在"写之前必须先擦整块"。OS 和存储控制器为此各出一套花招：对机械盘是重排 I/O 顺序减少寻道（磁盘调度），对固态盘是用 FTL 把随机写变成顺序日志式写。而单块盘既不够大也会坏，于是用 RAID 把 N 块盘拼起来——条带化换性能、镜像或校验换容错——代价是校验更新引入了"小写"开销和崩溃时的"写洞"一致性风险。**
 
 > 下游边界（本课不外扩，只在交界处一句指路）：本报告讲**介质特性、磁盘调度、RAID 布局与一致性**。**块设备驱动/中断/DMA** 属大主题11（本报告只在"I/O 如何发下去"处引用）；**文件系统如何在块设备上排布 inode/数据块** 属大主题13/14；**软件层的校验和与静默损坏检测（btrfs/zfs）** 属大主题14.6（本报告只在写洞缓解处一句指路，RAID 层校验只保证"重建出一致数据"，不保证"数据本身没被悄悄改坏"）；**分布式冗余（副本/纠删码跨机器）** 属 L5 分布式课，本报告限于单机块层。

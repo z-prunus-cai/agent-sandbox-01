@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题05（内存一致性模型、happens-before 与 DRF 定理）、大主题06（原子操作与 memory_order，尤其 relaxed）、L4-01 大主题05（CPU 调度与抢占）｜ 一手锚点：ISO/IEC 9899:2024（C23）§5.1.2.4「Multi-threaded executions and data races」；ISO C++ `[intro.races]`（结论回落 ISO，cppreference c/cpp「memory model / multithreading」仅作指路）；Hans-J. Boehm & Sarita V. Adve「Foundations of the C++ Concurrency Memory Model」PLDI 2008；Hans-J. Boehm「How to miscompile programs with "benign" data races」HotPar 2011｜ 成熟度：GA/理论稳定（data-race = UB 的"catch-fire"语义自 C11/C++11 起写入标准，C23/C++23 仍沿用，措辞微调不改结论）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-07.1–07.5）是一条环环相扣的单线——先把"数据竞争"这个词用标准原文钉死为四要件（07.1），再讲清踩中它为何直接掉进 UB、会撕裂读写、会被编译器激进优化吃掉（07.2），接着讲工业界怎么用 ThreadSanitizer 把这种飘忽的 bug 逮出来（07.3），然后拆穿"我这个竞争是良性的、不用管"这一最常见误区并给出 relaxed atomic 的正解（07.4），最后交代抢占调度如何充当竞争"显形"的触发面（07.5）。五节是一条从"定义→后果→检测→修正→根因"的完整叙事，拆开会断，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**数据竞争不是"运气不好偶尔算错"，而是标准明文规定的未定义行为（UB）——一旦两个线程对同一非原子内存做冲突访问且互相之间没有 happens-before 关系，整个程序的行为就不再有任何保证，编译器可以假设"这种事不会发生"并据此做出把你循环里 10 万次自增合并成一条加法指令这类激进优化。修正的唯一正道不是"祈祷"或"加 volatile"，而是要么用锁/同步建立 happens-before，要么把变量声明成原子（哪怕 relaxed）把它移出"数据竞争"的定义之外。** 这门课回答的是"这段并发代码为何是错的、错在标准的哪一条"，不是讲某把锁怎么在内核里实现（那归 L4-01）。
 
 > 下游边界（本课不外扩，交界处一句指路）：**happens-before 与 DRF 定理的完整定义**归 CP-05（本报告直接取用其结论）；**memory_order 六档、`atomic_fetch_add`/CAS 的接口与 relaxed 的确切排序语义**归 CP-06（本报告只在修正竞争处用到 relaxed，不展开六档强弱谱）；**调度器如何实现抢占、时钟中断夺回控制权**归 L4-01·OS-05（本报告只借"抢占制造交错"这一结论）。本报告只做"什么是数据竞争、它为何是 UB、怎么查、怎么改"这一层。

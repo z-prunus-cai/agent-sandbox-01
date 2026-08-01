@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题02（线性一致性、线性化点、进展性条件 wait-free/lock-free/obstruction-free）、大主题04（CAS 共识数=∞，是本课全部无锁结构的原语基座）、大主题06（`atomic_compare_exchange`、`_Atomic`、memory_order）、大主题08（自旋锁与缓存争用）；L4-01 大主题06（RCU 呼应）、大主题07（死锁四条件的资源层视角） ｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 9 章「Linked Lists: The Role of Locking」、第 10 章「Concurrent Queues and the ABA Problem」、第 11 章「Concurrent Stacks and Elimination」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；交叉源：Michael & Scott「Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue Algorithms」PODC 1996（MS 队列原始论文，https://www.cs.rochester.edu/~scott/papers/1996_PODC_queues.pdf ，核实 2026-07-30）、Michael「Hazard Pointers: Safe Memory Reclamation for Lock-Free Objects」IEEE TPDS 15(6):491–504, 2004（hazard pointer 原始论文，核实 2026-07-30）、Harris「A Pragmatic Implementation of Non-Blocking Linked-Lists」DISC 2001（无锁链表逻辑删除标记的原始来源，核实 2026-07-30）、Treiber「Systems Programming: Coping with Parallelism」IBM RJ5118, 1986（Treiber 栈原始技术报告，核实 2026-07-30） ｜ 成熟度：GA/理论稳定（Treiber 栈 1986、MS 队列 1996、Harris 链表 2001、hazard pointer 2004 均为已固化经典结果；C++26 已把 hazard pointer 与 RCU 纳入标准库 `<hazard_pointer>`/`<rcu>`，此处标注见 CP-10.5）
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（CP-10.1–10.6）是一条单线：从"锁怎么一步步放松直到不用锁"（10.1）→"不用锁的链表怎么正确删除"（10.2）→ 把同一套 mark+CAS 思路搬到队列并撞上 ABA（10.3）→ 搬到栈并用消除分散争用（10.4）→ 三者共同的"节点什么时候能安全 free"这个后遗症（10.5）→ 回头总结无锁在死锁/活锁层面到底赢在哪、又留下什么（10.6）。六节共享同一条"用 CAS 替代锁"的主线与同一组进展性词汇，拆开会断上下文。按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**锁的本质是"我占着，你等着"——一旦持锁线程卡住（被抢占、崩溃），所有等待者跟着卡死。无锁（lock-free）换了个思路：谁都不占坑，大家各自把"打算做的整步操作"压缩成一次 CAS（compare-and-swap），成了就前进、没成（说明别人先动了）就重读最新状态再试。因为没有"占着的坑"，任何单个线程停摆都不会拖住别人，系统整体保证有人前进。代价是三件麻烦事贯穿全大主题：删除不能一步到位（要"先打标记逻辑删、再 CAS 物理摘"）、指针可能被"偷梁换柱"（ABA）、节点回收要问"确定没人还在看它吗"（安全内存回收）。**
 
 > 下游边界（本课不外扩，交界处一句指路）：**CAS/`compare_exchange` 的语言级接口、strong vs weak、六档 memory_order 的具体内存序推导**归 CP-06（本报告一律用"CAS 成功即原子地读旧值+写新值"这一语义，不展开屏障生成）；**为什么 CAS 共识数=∞、能实现任意 wait-free 对象**归 CP-04；**线性化点/线性一致性的形式定义**归 CP-02（本报告只在标注每个操作"线性化点在哪次 CAS"时引用）；**死锁四条件的完整列举与银行家算法、资源分配图找环**归 L4-01·OS-07（本报告只讲"无锁在算法层如何绕开循环等待"，不讲操作系统资源管理层的检测/避免）；**RCU 在 Linux 内核的宽限期实现细节**归 L4-01·OS-06.5（本报告只取 RCU 作为回收方案之一做对比）。
@@ -154,7 +152,6 @@ uint64_t vexp = v_seen;
 int vok = atomic_compare_exchange_strong(&vtop, &vexp, PACK(1,2));  // 期望 tag0 -> 失败
 ```
 
-
 ```
 Case1 plain CAS  : CAS(top: A->B) SUCCEEDED, top now = node2  <-- ABA: B was freed, stack corrupted
 Case2 tagged CAS : CAS(tag0,A -> tag1,B) FAILED (found tag3,node1)  <-- tag changed, ABA detected, retry
@@ -234,7 +231,6 @@ RCU 是 EBR 的近亲，专为**读极多写极少**优化（呼应 L4-01·OS-06
 RCU 的极致在于把几乎所有代价都挪到写端，读端近乎免费，因此在读:写比极高（如路由表、配置、链表遍历）时无可匹敌。代价是写端要承担宽限期等待与复制开销，且它不适合写频繁或需要读者立即看到最新值的场景。要与 EBR 区分：EBR 是通用无锁库的回收机制，RCU 是一整套"读端免同步 + 写端延迟回收"的编程范式（内核里是核心设施）。C++26 也把 RCU 纳入标准库 `<rcu>`（`std::rcu_*`），标注：C++26 特性，工具链可用性**待核**。
 
 ### CP-10.5.5 三方案对比与选型直觉
-
 
 hazard pointer——读端有开销（每次解引用要公示 + 屏障），但**回收上界确定**、耐线程停摆，适合内存敏感 + 要 lock-free 保证。
 

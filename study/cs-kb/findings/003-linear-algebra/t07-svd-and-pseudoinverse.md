@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题2（向量空间与四大子空间）、大主题3（正交性、投影与最小二乘）、大主题5（特征值与对角化）、大主题6（对称矩阵与谱定理） ｜ 一手锚点：Gilbert Strang《Introduction to Linear Algebra》（Wellesley-Cambridge Press）Ch.7「The Singular Value Decomposition (SVD)」（§7.1 图像与几何意义、§7.2 SVD 的基与构造、§7.3 主成分与几何、§7.4 伪逆 A⁺）；MIT 18.06 / 18.06SC Fall 2011 官方 syllabus Unit III，URL https://www.ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/pages/syllabus （核实 2026-07-25）；交叉锚 Sheldon Axler《Linear Algebra Done Right》（奇异值分解 / 极分解视角，通常为该书 Ch.7「Operators on Inner Product Spaces」的 Singular Value Decomposition 一节） ｜ 成熟度：GA/稳定（定型已久的经典内容，无演进快问题；库实现细节标锚版本 numpy 2.4.6）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题 3 个小主题（7.1 SVD → 7.2 低秩近似 → 7.3 伪逆）是同一条主线上依次展开的三段——「先把任意矩阵拆成 A=UΣVᵀ（7.1）→ 只保留前几个奇异值得到最优的低秩近似（7.2）→ 把 Σ 里的非零奇异值取倒数就得到伪逆、从而统一四子空间与最小二乘（7.3）」。三节共享同一套「奇异值 / 奇异向量」核心对象，环环相扣、无跨机制断层，篇幅属常规单元，未达 v3 §一的拆分阈值（小主题多 / 跨机制 / 过长）。round2 已建议把 SVD 提为一级方向、CS 承重高，故本报告在广度完备的前提下把 SVD 写得较充分，但仍只做到「初学者懂」，不做专家级数值纵深。跨课边界：把 SVD/伪逆接到降维（PCA）、推荐系统、机器学习正则化等，归 L5-02 及后续课，本报告只做「点接口」，不深挖。
-
 > 本报告的可选 Python 验证基于 Python 3.11.15 + numpy 2.4.6、Linux 6.18.5 x86_64，对应上面的基线串；数值仅用于「加固公式 / 结论」，不替代多来源比对。
 
 ---
@@ -73,7 +71,6 @@ print("A v1 =", (A @ V[:,0]).round(4), "  sigma1*u1 =", (s[0]*U[:,0]).round(4))
 w = np.sort(np.linalg.eigvalsh(A.T @ A))[::-1]
 print("eig(A^T A) =", w.round(4), "  s^2 =", (s**2).round(4))
 ```
-
 
 ```
 s = [6.3246 3.1623]
@@ -146,7 +143,6 @@ for _ in range(20000):
     best = min(best, np.linalg.norm(A-B,'fro'))
 print("两万次随机秩2的最小Frob误差 =", round(best,4), " (未能低于 A_k 误差)")
 ```
-
 
 ```
 奇异值 = [3.0357 2.016  1.279  0.4853]
@@ -242,7 +238,6 @@ def penrose(A,Ap):
             np.allclose((A@Ap).T,A@Ap), np.allclose((Ap@A).T,Ap@A))
 print("Penrose 四条 :", penrose(A,Ap))
 ```
-
 
 ```
 A+ == (A^T A)^-1 A^T : True

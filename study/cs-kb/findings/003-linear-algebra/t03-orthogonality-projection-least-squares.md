@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（线性方程组与消元）、大主题2（向量空间与四大子空间） ｜ 一手锚点：Gilbert Strang《Introduction to Linear Algebra》（Wellesley-Cambridge Press）Ch.4「Orthogonality」（§4.1 四子空间的正交性、§4.2 投影、§4.3 最小二乘、§4.4 正交基与 Gram-Schmidt）；MIT 18.06 / 18.06SC Fall 2011 官方 syllabus Unit II，URL https://www.ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/pages/syllabus （核实 2026-07-25）；交叉锚 Sheldon Axler《Linear Algebra Done Right》（内积空间 / 正交投影视角，通常为该书 Ch.6） ｜ 成熟度：GA/稳定（几十年定型的经典内容，无演进快问题）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（3.1 正交子空间 → 3.2 投影 → 3.3 最小二乘 → 3.4 Gram-Schmidt/QR）是一条环环相扣的主线——「谁和谁正交（3.1）→ 把向量投到子空间上（3.2）→ 当方程无解时用投影求最优近似解（3.3）→ 用正交化把这一切算得又快又稳（3.4）」。四节共享同一套「正交 + 投影」核心机制，无跨机制断层，篇幅属常规单元，未达 v3 §一的拆分阈值（小主题多 / 跨机制 / 过长）。跨课边界：把最小二乘接到统计回归的完整推断（置信区间、假设检验等）归 L2-03，本报告只做「点接口」，不深挖。
 >
 > 本报告的可选 Python 验证基于 Python 3.11.15 + numpy 2.4.6、Linux 6.18.5 x86_64，对应上面的基线串；数值仅用于「加固公式 / 结论」，不替代多来源比对。
 
@@ -72,7 +71,6 @@ print("rank A =", int(np.sum(s > tol)))
 print("A @ nullvec =", (A @ ns[:, 0]).round(6))
 print("每行·零空间向量 =", [round(float(r @ ns[:, 0]), 6) for r in A])
 ```
-
 
 ```
 rank A = 2
@@ -157,7 +155,6 @@ print("P^2 == P :", np.allclose(P @ P, P))
 print("P^T == P :", np.allclose(P.T, P))
 ```
 
-
 ```
 P =
  [[ 0.8333  0.3333 -0.1667]
@@ -227,7 +224,6 @@ print("normal:", xhat_normal, " lstsq:", xhat_lstsq, " qr:", xhat_qr)
 e = b - A @ xhat_normal
 print("A^T e =", (A.T @ e).round(6))                 # 残差⊥列空间
 ```
-
 
 ```
 normal: [ 5. -3.]  lstsq: [ 5. -3.]  qr: [ 5. -3.]
@@ -308,7 +304,6 @@ print("Q^T Q == I :", np.allclose(Q.T @ Q, np.eye(Q.shape[1])))
 xhat = np.linalg.solve(R, Q.T @ b)
 print("xhat (QR) =", xhat)
 ```
-
 
 ```
 Q =

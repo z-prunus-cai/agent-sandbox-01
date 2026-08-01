@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐进记号 O/Θ、增长量级、调和级数 H_n≈ln n）、L2-03 概率论基础（样本空间、随机变量、期望、独立性——本报告只用不证）｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch5「Probabilistic Analysis and Randomized Algorithms」（§5.1 The hiring problem、§5.2 Indicator random variables、§5.3 Randomized algorithms、§5.4 Probabilistic analysis and further uses of indicator random variables）；MIT 6.046J Design & Analysis of Algorithms (Spring 2015) syllabus「Randomized Algorithms」模块 ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-25 最新版，无更晚版本）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（3.1–3.4）全部落在 CLRS 4e 同一章 Ch5，是一条前后咬合的入门主线——「先用雇佣问题引出『在随机输入上算平均代价』的概率分析（3.1）→ 引入指示器随机变量这件核心工具、配合期望线性性算出雇佣期望 ≈ ln n（3.2）→ 把视角从『假设输入随机』翻转为『算法主动制造随机』，给出随机排列输入的两种做法（3.3）→ 最后用同一套指示器工具巡览几个经典概率现象（3.4）」。篇幅适中、机制单一（都是「指示器 + 期望线性性」这一套），不触及 report-format v3 §一「小主题多/跨机制/过长」的拆分线。
 >
 > 跨课边界（本课止于何处）：随机化在 L3-01 只是**入门**——建立「期望分析 + 随机化去除最坏输入」的直觉，后续大主题4/5 的随机化快排、RANDOMIZED-SELECT 是它的直接应用。**深入内容**（Las Vegas vs Monte Carlo 两类刻画、Karger 最小割、Markov/Chebyshev/Chernoff 集中不等式、指纹与验证）归 **L6-01 #05 随机化算法**；概率工具本身（分布、条件期望、方差）先修属 **L2-03**。本报告对这些只点名指路、不展开。
 

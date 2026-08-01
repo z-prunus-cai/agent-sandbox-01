@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（数制与信息编码，二进制与逻辑 0/1）、L1-02 离散数学·大主题11（布尔代数代数层：公理/恒等式/范式）｜ 一手锚点：Harris & Harris《Digital Design and Computer Architecture》RISC-V Edition, 1st ed, 2021（ISBN 9780128200643, Morgan Kaufmann/Elsevier）Ch2 Combinational Logic Design（§2.2 Boolean Equations、§2.3 Boolean Algebra、§2.4 From Logic to Gates、§2.5 Multilevel Combinational Logic、§2.6 X's and Z's、§2.7 Karnaugh Maps）｜ 成熟度：GA/稳定（布尔代数自 1854 Boole、1904 Huntington 公理化定型；门级化简自 1953 Karnaugh 图定型，无版本漂移）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（2.1–2.5）属同一条主线——「先立布尔代数的公理与定理（2.1）→ 用最小项/最大项把任意函数写成两种规范形 SOP/POS（2.2）→ 用卡诺图把规范形化简到最省门（2.3）→ 知道只用 NAND 或 NOR 就能实现任意函数、并据此把化简式落成通用门（2.4）→ 把真值表/表达式/门图三种表示打通互推、落到门级原理图（2.5）」。全部围绕「布尔化简与表示互转」这一单机制，环环相扣、篇幅常规，未达 v3 §一的拆分阈值（小主题多/跨机制/过长）。跨课边界：本报告是 L1-02 大主题11「布尔代数代数层」的**门级工程落地**——代数层已把公理/范式/化简讲成纯数学，这里补「卡诺图操作流程、通用门完备性、真值表↔式↔门图三表互推」这些数字逻辑特有的工程内容；具体组合构件（加法器/MUX/译码器/ALU）与传播延迟/冒险深挖归本课大主题3，不在此展开。
-
 本报告的可选 Python 验证基于 Python 3.11.15、Linux 6.18.5 x86_64（对应上面的基线串），仅用真值表穷举「加固」公理/定理/完备性/范式相等，**不替代**多来源比对。全部 25 条断言（T1–T5、T8–T12、德摩根 3 变量推广、NAND/NOR 各自导出 NOT/AND/OR、SOP=POS=真值表）在 2^n 全部输入上穷举通过，复现脚本与真实输出见 §2.1 与 §2.4 末的代码块。
 
 需要先点明一个贯穿全章的对应关系：布尔代数（运算记 `·` 布尔积、`+` 布尔和、上划线 `‾` 或撇 `′` 补，值取 1/0）与 L1-02 的命题逻辑（`∧`、`∨`、`¬`，值取 T/F）、集合代数（`∩`、`∪`、补）是**同一套代数结构的三种记号**。Harris & Harris 用前一套（硬件惯例），Rosen 离散数学也用前一套，MIT 6.042 等逻辑课用后一套——这正是本章「多来源比对」的天然抓手：同一条定律能在数字逻辑教材、离散数学教材、逻辑讲义里各自独立查到。
@@ -216,7 +214,6 @@ def eq(f,g): return all(f(*c)==g(*c) for c in itertools.product([0,1],repeat=3))
 print("SOP==truth:", eq(sop,ref), " POS==truth:", eq(pos,ref), " SOP==POS:", eq(sop,pos))
 ```
 
-
 ```
 SOP==truth: True  POS==truth: True  SOP==POS: True
 ```
@@ -325,7 +322,6 @@ print("NOR->NOT :", eq(1, lambda x: NOR(x,x),                       lambda x: 1-
 print("NOR->OR  :", eq(2, lambda x,y: NOR(NOR(x,y),NOR(x,y)),       lambda x,y: x|y))
 print("NOR->AND :", eq(2, lambda x,y: NOR(NOR(x,x),NOR(y,y)),       lambda x,y: x&y))
 ```
-
 
 ```
 NAND->NOT: True

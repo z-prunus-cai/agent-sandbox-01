@@ -2,13 +2,11 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题01（互斥问题与理论：临界区、锁）、大主题05–07（内存一致性、原子操作、数据竞争——理解"共享内存范式为什么难"）、大主题12（任务并行与调度：fork-join、work/span）、L4-01·OS-02/04（进程与线程抽象）｜ 一手锚点：CSP 回落 Hoare「Communicating Sequential Processes」CACM 21(8):666–677, 1978 与 1985 专著（Prentice-Hall），及 Go 官方文档（The Go Programming Language Specification、Effective Go、Go Memory Model，本机 go1.24.7 @2026-07-30）；actor 回落 Hewitt/Bishop/Steiger「A Universal Modular ACTOR Formalism for AI」IJCAI 1973 与 Erlang/OTP 官方 Reference Manual；MPI 回落 MPI Standard（MPI Forum，4.1 版 2023-11-02）；范式对比回落 Flynn 分类（Flynn 1972）与《The Art of Multiprocessor Programming》(AMP) 引论 ｜ 成熟度：GA/概念稳定（CSP/actor 为 1970 年代确立的经典模型；Go channel、Erlang 进程、MPI 集合通信均为现役生产标准）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-14.1–14.5）是一条"不用共享内存、改用交换消息来协调并发实体"的单线——14.1 立起共享内存 vs 消息传递两大范式的对立与"share by communicating"总纲，14.2/14.3/14.4 是这条总纲的三个具体落地（CSP/channel 的 Go、actor 模型的 Erlang、进程级显式消息的 MPI），14.5 换一个正交维度（按数据划分 vs 按任务划分）收束选型。五节共享同一组核心对照（有无共享状态、同步 vs 异步、拷贝 vs 引用），拆开会让"范式对比"这条主线断裂，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**并发实体之间要协调，只有两条根本路子。一条是"共享内存"——多个线程读写同一块内存，靠锁/原子操作防止踩踏（前面 13 个大主题几乎都在讲这条路怎么走对）；另一条是"消息传递"——每个实体守着自己的私有状态，谁也不碰谁的内存，要交换信息就发消息。消息传递把"数据竞争"这个共享内存范式的头号难题从根上绕开了：没有共享的东西，就没有争用。代价是消息要拷贝/序列化、要显式设计通信协议。CSP（Go channel）、actor（Erlang 进程）、MPI 是这条路上三种风格不同的落地；数据并行/任务并行则是"怎么切分工作"的另一把尺子。**
 
 > 分账（本课不外扩，交界处一句指路）：**共享内存范式里锁/原子/内存序为什么对、数据竞争的精确定义**归本课大主题01/05/06/07（本报告只把它当"消息传递要替代的那条路"点名，不重讲）；**协程/goroutine 作为轻量执行流的调度与用户态让出机制**归 L4-01·OS-04.5（本报告只讲 goroutine 作为 CSP 里的"进程"角色，不深挖 M:N 调度器实现）；**跨机器的一致性/共识/容错（Raft、两阶段提交、CAP）**归 L5 分布式课（本报告的 actor/MPI 只到"进程间显式发消息"为止，不碰分布式一致性协议）；**MPI 在真实集群上的性能调优、GPU 通信**归 L6-06 HPC。
 
-> 本报告以多来源比对为主承重腿：CSP 语义以 Hoare 1978 原文为准、与 Go 官方文档交叉核对（两者在"同步 rendezvous"这一点一致，在"channel 是否有缓冲/是否一等公民"上有别，已显式标注）；actor 以 Hewitt 1973 定义与 Erlang 官方文档交叉；MPI 以 MPI 标准文本为准。实机验证为**可选补充**，本报告已取三项并顺带**坐实 round3b 标「待核」的工具链**：CP-14.2 的 goroutine+channel 在本机真跑（**Go 虽未列入基线工具链，但本机实装 go1.24.7，可用**，见实证块），Go 运行时的死锁检测亦实测触发；CP-14.4 的 MPI **本机确无（`mpicc`/`mpirun`/`mpiexec` 均不存在，「待核」坐实为"未装"）**，改用 node v22.22.2 的 `worker_threads` 消息传递作范式备用实测。
+> 本报告以多来源比对为主承重腿：CSP 语义以 Hoare 1978 原文为准、与 Go 官方文档交叉核对（两者在"同步 rendezvous"这一点一致，在"channel 是否有缓冲/是否一等公民"上有别，已显式标注）；actor 以 Hewitt 1973 定义与 Erlang 官方文档交叉；MPI 以 MPI 标准文本为准。实机验证为**可选补充**，本报告已取三项并顺带**坐实 本库编排清单标「待核」的工具链**：CP-14.2 的 goroutine+channel 在本机真跑（**Go 虽未列入基线工具链，但本机实装 go1.24.7，可用**，见实证块），Go 运行时的死锁检测亦实测触发；CP-14.4 的 MPI **本机确无（`mpicc`/`mpirun`/`mpiexec` 均不存在，「待核」坐实为"未装"）**，改用 node v22.22.2 的 `worker_threads` 消息传递作范式备用实测。
 
 ---
 
@@ -64,7 +62,7 @@ goroutine 是"演员"，channel 是"传送带"。无缓冲传送带要求两头�
 
 Go 提供三个配套构件把 channel 用活。**`select`** 对应 CSP 的卫式选择：同时守候多个 channel 操作，哪个先就绪就执行哪个分支，多个同时就绪则随机选一个（避免饥饿）——常用于超时、多路复用、优雅退出。**`close(ch)`** 关闭 channel，表示"不会再有值了"；对已关闭 channel 接收会立即返回零值且第二返回值为 false。**`for v := range ch`** 持续接收直到 channel 关闭并取空——这是"生产者关闭、消费者自然收尾"的惯用法。
 
-本机实证坐实工具链与语义（round3b 把 Go 标「待核」，此处坐实：**本机实装 go1.24.7，未列入基线但可用**）。基线 go1.24.7 @2026-07-30，4 核 x86-64：无缓冲 channel 会合、4-worker 池 fan-out/fan-in（1..9 的平方和 = 285）、`select` 多路，真实输出：
+本机实证坐实工具链与语义（本库编排清单把 Go 标「待核」，此处坐实：**本机实装 go1.24.7，未列入基线但可用**）。基线 go1.24.7 @2026-07-30，4 核 x86-64：无缓冲 channel 会合、4-worker 池 fan-out/fan-in（1..9 的平方和 = 285）、`select` 多路，真实输出：
 
 ```
 # go run chan.go
@@ -163,7 +161,7 @@ MPI_Barrier  — 栅栏：所有进程都到达此点才一起继续
 
 ### CP-14.4.4 本机状态与范式备用实证
 
-round3b 把 MPI 标「待核」，本报告坐实：**本机确无 MPI**——`mpicc`、`mpirun`、`mpiexec` 均不存在，无法在本机做 MPI 实机验证（如实标注"未取"）。MPI 语义取自 MPI 标准文本。为给"进程级显式消息传递"一个可跑的范式感受，用 node v22.22.2 的 `worker_threads`（worker 间无共享堆、仅靠 `postMessage`/`on('message')` 传消息，形态上与 actor 邮箱/MPI 收发同源）作**范式备用**实测——3 个 worker 各算一个值、经消息汇总（10+20+30），真实输出：
+本库编排清单把 MPI 标「待核」，本报告坐实：**本机确无 MPI**——`mpicc`、`mpirun`、`mpiexec` 均不存在，无法在本机做 MPI 实机验证（如实标注"未取"）。MPI 语义取自 MPI 标准文本。为给"进程级显式消息传递"一个可跑的范式感受，用 node v22.22.2 的 `worker_threads`（worker 间无共享堆、仅靠 `postMessage`/`on('message')` 传消息，形态上与 actor 邮箱/MPI 收发同源）作**范式备用**实测——3 个 worker 各算一个值、经消息汇总（10+20+30），真实输出：
 
 ```
 # node worker.js

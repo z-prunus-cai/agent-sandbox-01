@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25（本组实证工具链另含 git 2.43.0）｜ 核实日期：2026-07-30 ｜ 先修：本课大主题06-1（软工过程与工程质量观，尤其 MIT 6.031「safe from bugs / easy to understand / ready for change」三目标）、基本 OOP 与类型概念 ｜ 一手锚点：MIT 6.031 Software Construction sp22 的 Reading 6 Specifications、Reading 7 Designing Specifications、Reading 10 Abstract Data Types、Reading 11 Abstraction Functions & Rep Invariants（准一手承重）；交叉：Liskov & Guttag《Program Development in Java: Abstraction, Specification, and OO Design》、Liskov & Wing 1994 子类型行为定义（LSP）｜ 成熟度：GA/稳定（规约与 ADT 是数十年软件构造基础，定义稳定；本报告不涉及演进快的工具生态）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（06-2.1~06-2.5）共享单一教学主线——「用规约把契约写清（1）→ 比较规约强弱并安全替换（2）→ 用操作而非表示定义 ADT（3）→ 用 AF/RI 把表示与抽象对齐并守护（4）→ 堵住表示暴露这个最常见漏洞（5）」，层层递进、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 一条主线心智模型：软件构造的核心手法是**画抽象屏障**。规约（06-2.1/2.2）是"横向"屏障——把一个函数的**客户端**与**实现者**隔开，双方只认那份 requires/effects 契约，各自可独立演进；抽象数据类型（06-2.3/2.4/2.5）是"纵向"屏障——把类型的**抽象值**（客户端看到的数学对象）与**表示**（内部数据结构）隔开，客户端只认操作，实现者可任意换表示。AF/RI 是把这两个空间对齐的一对映射，checkRep 是守护屏障的运行期哨兵，防御拷贝是堵住屏障漏洞（表示暴露）的手段。
 
 > 分账（本报告只停在软件构造层，交界处一句指路）：本主题讲**方法规约 + ADT 的构造纪律**。「封装/可见性修饰符（private/public）如何在语言层实现信息隐藏」的 OOP 机制归 L3-04（OOP 封装）；「子类型、协变/逆变、行为子类型的类型论形式化，以及契约的形式验证」归 L5-06（PL 理论）与 026 程序分析与验证；本报告只把 LSP、契约强弱作为"规约比较的工程直觉"讲清，不做类型系统或霍尔逻辑的纵深。
@@ -307,7 +305,6 @@ class MonthDays:
     def days_safe(self):  # observer：返回防御拷贝，安全
         return list(self._days)
 ```
-
 
 ```
 初始： MonthDays([1, 3])

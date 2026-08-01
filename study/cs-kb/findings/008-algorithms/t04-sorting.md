@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐进记号 O/Ω/Θ、最坏/平均情形、lg 与阶乘增长）、大主题2（分治与递归式、主定理）、大主题3（指示器随机变量、期望线性性、随机化算法）、L1-02 离散数学（求和、对数、Stirling 公式）、L2-01 数据结构（数组/树的实现基础） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch6「Heapsort」（§6.1–6.5）、Ch7「Quicksort」（§7.1–7.4）、Ch8「Sorting in Linear Time」（§8.1 下界、§8.2 计数排序、§8.3 基数排序、§8.4 桶排序）；MIT 6.046J Design & Analysis of Algorithms (Spring 2015) syllabus 排序相关模块 ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-25 最新版，无更晚版本）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（4.1–4.4）都落在 CLRS 4e 相邻的 Ch6–8，构成一条咬合的主线——「先补两种最重要的 O(n lg n) 比较排序（堆排序 4.1、快速排序 4.2）→ 再用决策树模型证明『任何比较排序都逃不过 Ω(n lg n)』这个下界（4.3，本课高价值点）→ 最后展示『不比较、换模型』如何在特定前提下做到线性时间（4.4）」。四节机制同源（都是排序 + 复杂度分析），篇幅适中，不触及 report-format v3 §一「小主题多/跨机制/过长」的拆分线，故单篇。跨课边界（边界 B4）：堆、优先队列、数组等的**实现与操作细节**归 L2-01 数据结构；本课重「分析、选型与下界论证」，实现只点到能支撑分析为止。
 
 本报告中的实测基于 Python 3.11.15、numpy 2.4.6、sympy 1.14.0、scipy 1.17.1、Linux 6.18.5 x86_64，对应上面的基线串。测试脚本仅存于仓库外 scratchpad，跑完即清；下文只贴真实输出。实测为可选补充，正确性仍以多来源比对为准。
 
@@ -332,7 +331,6 @@ h = Ω(n lg n)
 环境：Python 3.11.15 / numpy 2.4.6 / sympy 1.14.0 / scipy 1.17.1 / Linux 6.18.5 x86_64（基线串 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25）。脚本仅存于仓库外 scratchpad，跑完即清。以下为真实输出。
 
 对拍与量级验证的最小可复现要点（完整脚本已清理，关键逻辑如下）：max-heap 的 MAX-HEAPIFY/BUILD-MAX-HEAP/HEAPSORT、Lomuto PARTITION 的确定性与随机化快排、稳定计数排序，均按 CLRS 伪代码实现（0 起始下标）；对拍基准为内置 `sorted()`。
-
 
 ```
 [correctness] heapsort==sorted: True | quicksort==sorted: True | rand_quicksort==sorted: True | counting_sort stable==sorted: True

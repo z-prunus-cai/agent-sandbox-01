@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（ADT 与渐近分析）、大主题2（数组与链表） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed(2022) Ch10（§10.1 简单数组结构：栈与队列，§10.2 链表）；Berkeley CS61B（sp24.datastructur.es，Lists / Deque 讲次与 Project 1 Deques，Java）；Pat Morin《Open Data Structures》Ch2（ArrayStack/ArrayQueue/ArrayDeque）、Ch3（SLList/DLList）；CPython 源码 Modules/_collectionsmodule.c @tag v3.11.15（`collections.deque`） ｜ 成熟度：GA/稳定
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（3.1–3.5）共享同一条主线——「受限接口（只在端点操作）如何用数组或链表落地、代价画像如何」。栈、队列、双端队列是同一族「限制访问位置的线性结构」，环形缓冲区又是队列的定容实现，彼此环环相扣、无跨机制断层；篇幅属常规单元，不足以触发拆分。跨课边界：把这些结构用于具体算法（表达式解析器完整文法、BFS、调度器）深挖归 L3-01 算法课与 L1-01 应用层，本报告只讲「结构本身的接口、实现与复杂度」到初学者能懂即止。
 
 本报告中的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，均对应上面的基线串；CPython 实现细节引用自源码标签 v3.11.15。
 

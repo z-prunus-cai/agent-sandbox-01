@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题3（OO 三支柱：封装/继承/多态、类/实例/方法查找、子类型多态与方法覆盖）；L1-01（函数、指针基础） ｜ 一手锚点：Python 3.11 官方文档（The Python Language Reference §3 Data Model §3.3.2 属性访问、`type.mro()`/`__mro__`、内置 `super`；HOWTO：Descriptor Guide、"The Python 2.3 Method Resolution Order"）；ISO/IEC 14882 C++ 标准 [class.virtual]（虚函数/动态派发语义）；Itanium C++ ABI（vtable 布局，gcc/clang on Linux 实现基准）；Barrett et al.《A Monotonic Superclass Linearization for Dylan》(1996, C3 线性化原始描述） ｜ 成熟度：GA/稳定（派发语义为经典机制，无版本漂移；C++ vtable 属实现约定，Python MRO 自 2.3 起为 C3）
 
-> 粒度判定：**1 份**（不拆）。理由：prompt 允许在"C++ vtable 线"与"Python 鸭子类型/MRO/菱形线"两边体量都足时拆 -a/-b，但本报告按 v3"广度优先、讲懂不纵深"的边界写——机器层落地（vtable 的内存布局深挖、RTTI、thunk）显式归 L3-03，此处只讲概念/用法与一段本机旁证，两条线合计篇幅适中且共享同一条主线（"一个方法调用点，实际执行哪份代码是何时、如何决定的"），拆开反而割裂对照。5 个小主题（4.1–4.5）恰好从"静态 vs 动态"的总纲，走到 C++ 的编译型单分派实现（vtable），再走到 Python 的运行时结构化派发（鸭子类型→MRO→菱形），是一条完整教学序，故合为 1 份。跨课边界：vtable 机器落地归 L3-03；Rust trait 派发对照留 L5-14；本报告不重复立项。
-
 本报告的 C++ vtable 布局与虚调用反汇编、Python MRO/菱形/鸭子类型的输出，均为基线环境（gcc/g++ 13.3.0、binutils/objdump 2.42、Python 3.11.15、Linux 6.18.5 x86_64）下的真实运行结果，命令与输出随节贴出。
 
 ---
@@ -53,7 +51,7 @@ C 语言没有内建对象派发；用函数指针表可手工模拟动态派发
 
 虚表（virtual table, vtable）是 C++ 编译器为**含虚函数的类**生成的一张**函数指针表**：表里每个槽位对应一个虚函数，存的是"该类版本的那份实现的地址"。每个这样的对象里藏一个隐藏指针 **vptr**，指向它所属类的 vtable。运行 `p->f()`（`f` 是虚函数）时，编译器生成的代码是"先经对象里的 vptr 找到 vtable，再取出 `f` 对应槽位里的地址，间接跳过去"——这正是 4.1 动态派发在 C++ 里的落地手段。
 
-**C++ 标准只规定虚函数的动态派发语义（[class.virtual]：调用最终覆盖者），并不强制用 vtable**。vtable/vptr 是编译器的实现策略；其**具体布局**由平台 ABI 规定——Linux 上 gcc/clang 遵循 **Itanium C++ ABI**。因此下文的布局是"gcc 13.3 + Itanium ABI"的实现观察，不是语言标准的要求（这一条也回应了 round3b「4.2 vtable 一手规范章节待核」：语义在 [class.virtual]，布局在 Itanium ABI，非 ISO 标准正文）。
+**C++ 标准只规定虚函数的动态派发语义（[class.virtual]：调用最终覆盖者），并不强制用 vtable**。vtable/vptr 是编译器的实现策略；其**具体布局**由平台 ABI 规定——Linux 上 gcc/clang 遵循 **Itanium C++ ABI**。因此下文的布局是"gcc 13.3 + Itanium ABI"的实现观察，不是语言标准的要求（这一条也回应了 本库编排清单「4.2 vtable 一手规范章节待核」：语义在 [class.virtual]，布局在 Itanium ABI，非 ISO 标准正文）。
 
 ### 4.2.2 本机观察 vtable 布局（旁证）
 

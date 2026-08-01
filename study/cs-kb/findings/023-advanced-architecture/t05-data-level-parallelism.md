@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-02 CO-8（Flynn 分类 SIMD/MIMD、GPU 与 SIMT 入门）、本课大主题1（三类并行 ILP/DLP/TLP 总览与 Amdahl 定律）、本课大主题2（内存层次与带宽） ｜ 一手锚点：Hennessy & Patterson《Computer Architecture: A Quantitative Approach》6th ed, 2017（ISBN 9780128119051）ch4 *Data-Level Parallelism in Vector, SIMD, and GPU Architectures*（§4.1 引论、§4.2 向量体系结构 RV64V、§4.3 SIMD 多媒体指令扩展、§4.4 GPU 图形处理单元、§4.5 检测与增强 DLP、§4.7 交叉议题含 Roofline） ｜ 佐证：Williams, Waterman & Patterson, *Roofline: An Insightful Visual Performance Model for Multicore Architectures*, CACM 52(4), 2009；Intel《Intel 64 and IA-32 Architectures Software Developer's Manual》Vol.1 ch14–15（AVX/AVX-512）与 Intel Intrinsics Guide；NVIDIA《CUDA C++ Programming Guide》（SIMT/warp/occupancy）；本机 gcc 13.3.0 + AVX-512（avx512f/bw/cd/dq/vl）SAXPY 与计算密集核实测 ｜ 成熟度：向量/SIMD/SIMT/Roofline 的**原理**为 GA/稳定；**具体 ISA 与硬件代际**（AVX-512 子集、GPU warp 宽度与 SM 规模、HBM 带宽）标 ⚙演进快·锚版本
 
-> 粒度判定：**1 份（不拆）**。理由：AA-5 的 5 个小主题是"用一份硬件同时算多份数据"这一条主线的层层展开——先讲最纯粹的向量处理器把 DLP 机制（向量寄存器/lane/链接/条带挖掘）讲透（5.1）→ 把同一思想塞进通用 CPU 指令集就是 SIMD 多媒体扩展，落到本机的 AVX-512（5.2）→ 把 SIMD 推到极致、用海量线程掩盖延迟就是 GPU 的 SIMT（5.3）→ SIMT 特有的两个效率命门是分支发散与占用率（5.4）→ 最后用 Roofline 把"到底受算力还是受带宽限制"统一量化（5.5，同时收束向量/SIMD/GPU 三条线）。五节共享同一套"数据并行—车道—带宽—延迟隐藏"词汇，硬拆会切断向量 lane 与 SIMT warp 的对照、以及各机制在 Roofline 上的统一定位，故合为一份。按 prompt 边界，本报告**只讲硬件机制**；CUDA/OpenMP 编程落地、内核调优实战留给 L6-06 HPC 与 N-16 GPU 编程，此处仅点接缝不下沉。
-
 本报告的向量机制、SIMD 扩展分类、GPU/SIMT 执行模型、Roofline 模型均以 H&P《QA》6th ed ch4 为一手骨架，并与 Intel SDM/Intrinsics Guide（AVX-512 具体寄存器与掩码）、NVIDIA CUDA 编程指南（warp/occupancy 现状）、Williams 等 2009 CACM 原始 Roofline 论文交叉核对；教材出版于 2017，凡涉及具体 ISA 子集与硬件代际数据一律以厂商一手文档为准并硬标 ⚙演进快·锚版本，不以教材数字作现状结论。术语首次出现中英并给。教材用于讲解的向量机 RV64V 是 RISC-V 向量扩展的教学化版本（6th ed 已从 5th ed 的 VMIPS 换成 RV64V），与本机 x86-64 的 AVX-512 是两套独立 ISA，二者分账。本机 AVX-512 实测（5.2.5、5.5.5）为可选补充，用于坐实"向量化收益取决于是否受带宽限制"，不替代多来源比对。
 
 ---
@@ -211,7 +209,6 @@ SIMD 线程 / warp           Warp                   32 个同步执行的线程
 
 GPU 的每个 SM 同时驻留**多个 warp**，并用零开销的硬件线程切换在它们之间轮转：某个 warp 因为等访存（几百拍的显存延迟）而卡住时，SM 立刻切去执行另一个就绪的 warp，让执行单元不空转。这就是 GPU 的**延迟隐藏（latency hiding）**——它不像 CPU 那样想办法**降低**延迟，而是用足够多的并行 warp 把延迟**盖住**。
 
-
 ```
 需要的并行 warp 数 ≈ 要隐藏的延迟（拍） / 每 warp 每次能持续发射的拍数
 （并行 warp 越多，越能填满长访存延迟造成的空档）
@@ -232,7 +229,6 @@ GPU 的每个 SM 同时驻留**多个 warp**，并用零开销的硬件线程切
 ### 5.4.1 分支发散（warp divergence）与惩罚
 
 **分支发散（branch/warp divergence）**指同一个 warp 里的 32 个线程在遇到 `if`/循环时想走**不同**的路径。由于 warp 共用一个 PC、只能同拍执行同一条指令，硬件的处理办法是**串行化**：先让走 then 分支的线程执行（其余线程被掩码屏蔽、空转），再让走 else 分支的线程执行（前一批被屏蔽）。两条路径接连跑完，warp 才继续。
-
 
 ```
 发散执行时间 ≈ Σ(每条被走到的路径的时间)

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：T1（三种语义风格、结构归纳/规则归纳、小步操作语义与"卡住项"）、T2（无类型 λ 演算：抽象/应用、β 归约、值调用求值策略、代换 [x↦s]t）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002) Part II，Ch.8（Typed Arithmetic Expressions）/ Ch.9（Simply Typed Lambda-Calculus）/ Ch.10（An ML Implementation of Simple Types）；交叉核对 Harper《Practical Foundations for Programming Languages》2nd ed（Cambridge 2016）Ch.6 Type Safety；证明方法回溯 Wright & Felleisen《A Syntactic Approach to Type Soundness》(Information and Computation 115(1), 1994) ｜ 成熟度：经典理论 GA/稳定（非演进快对象）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（T3.1–T3.5）是一条单一主线——先在最小的算术语言上把"类型关系 + 类型安全"讲清（T3.1），再把这套机器搬到函数上得到 STLC（T3.2），随后证明 STLC 确实安全（T3.3），接着从逻辑视角重看这套类型系统（Curry-Howard，T3.4），最后落到"类型检查器怎么写"（T3.5）。同一套形式机制贯穿始终、无跨机制断裂，篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 **类型系统是一个只看程序文本、不运行程序，就能提前证明"这段代码运行时不会做出无意义操作"的轻量形式方法**。T2 里的无类型 λ 演算能写出 `true true` 这种"把布尔值当函数调用"的荒谬项——它不是值、也无法继续求值，只能"卡住"(stuck)。类型系统的全部意义，就是用一组语法制导的规则，在运行前把这类会卡住的项一律拒之门外；而"良类型的程序绝不会卡住"这一承诺，正是由 **Progress + Preservation** 两条定理精确刻画并证明的。本篇两定理只讲陈述与证明骨架/直觉，不铺完整归纳证明（那属专家纵深）。
 
 本报告是 **L5-14 Rust 与内存安全 R12 RustBelt 类型安全证明的祖型**——RustBelt 证明的"含 unsafe 的 Rust 标准库是类型安全的"，用的正是 Progress+Preservation 这套语法方法的现代重型版本；也是 **L4-04 编译原理 C5 语义分析/类型检查** 的理论根（C5 讲"类型检查器在编译器里怎么实现"，本篇 T3.5 讲"为什么这么检查是对的"）。这些下游只在此点名，不展开。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 大主题03（随机化算法、指示器随机变量与期望线性性——本报告全程用）、L2-03 概率（期望/方差、Markov 不等式、独立哈希的直觉，Count-Min 与 HLL 的误差界要用）、L1-02 离散数学（调和数、几何级数求和）、L3-01 大主题06 §6.2 散列表（哈希函数把键映到桶——四个草图都以哈希为原料）｜ 一手锚点：MIT 6.854J Advanced Algorithms (Fall 2008, OCW) Lec 25–26（流式与亚线性）；Muthukrishnan《Data Streams: Algorithms and Applications》(Foundations and Trends in TCS, 2005) 综述；Cormode–Muthukrishnan《An Improved Data Stream Summary: The Count-Min Sketch and its Applications》(J. Algorithms 55(1), 2005)；Flajolet–Fusy–Gandouet–Meunier《HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm》(AofA 2007)；Vitter《Random Sampling with a Reservoir》(ACM TOMS 11(1), 1985)；Morris《Counting Large Numbers of Events in Small Registers》(CACM 21(10), 1978) ｜ 成熟度：GA/稳定（四者皆为经典算法，工业界广泛部署：Redis/Presto/BigQuery 用 HLL，Count-Min 用于流式监控）
 
-> 粒度判定：**1 份，不拆**。四个小主题（7.1–7.4）共享同一根主线——「数据以流的形式一遍流过，内存远小于数据量（亚线性乃至对数级），于是放弃精确、退而用随机化草图（sketch）给出带概率误差保证的估计」。四者是同一范式在四类查询上的并列实例：等概率抽样（7.1）、计数（7.2）、频数（7.3）、去重基数（7.4），机制同源（哈希 + 随机 + 集中不等式），误差分析手法互相呼应，拆开会割裂「同一模型、不同查询、可比空间/误差」的核心对照。篇幅可控，故合为 1 份。**边界 B8**：本报告只讲通用估计与误差界的概念；具体落到数据库基数估计（L6-04）、机器学习特征（L5-02）、分布式聚合（L6-05）的工程细节归下游。
-
 > 流式模型（data stream model）设定：输入是一个长度 n 的序列 a₁, a₂, …, aₙ，逐个到达；算法只能**顺序读一遍**（或极少数遍），可用的工作内存 S 远小于 n（目标是 S = polylog(n) 或 O(1/ε·polylog) 量级），每个元素处理时间要小。因为存不下全部数据，精确回答（如「恰好多少个不同元素」）在这种内存下被证明不可能，所以流式算法几乎都是**随机化 + 近似**：以高概率给出相对误差受控的估计。下文每个算法都要盯住三个量——用了多少空间、单遍还是多遍、误差保证是什么形式。
 
 > 本报告可选实测基于 Python 3.11.15、numpy 2.4.6、Linux 6.18.5 x86_64（对应基线串）。实测仅用于加固三处载重数值（Morris 无偏性与 rel-SE ≈ 1/√2、蓄水池抽样均匀性、HLL 相对误差 ≈ 1.04/√m），脚本仅存仓库外 scratchpad、跑完即清，正文只贴真实结论。实测为可选补充、非替代；所有算法与误差界以多来源文本比对（一手论文 / Muthukrishnan 综述 / 6.854 讲义）为准，未实证处如实标注。

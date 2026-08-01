@@ -1,8 +1,6 @@
 # L1-04·大主题10 微分方程与凸性接口
 
-> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 定位：**可选接口节**（round3a/round3b 标注），微积分↔优化的桥接小节，讲到初学者懂即可、不做专家纵深 ｜ 先修：导数与微分法（大主题2）、导数的应用之极值判定（大主题3）、多元偏导与梯度/Hessian（大主题7）｜ 一手锚点：MIT 18.01 Single Variable Calculus (Fall 2006) syllabus（https://ocw.mit.edu/courses/18-01-single-variable-calculus-fall-2006/pages/syllabus/），Unit 5 "Applications of Integration" 中的分离变量/初值问题一节；James Stewart《Calculus》第 9 章 "Differential Equations"（§9.1 建模、§9.3 可分离方程）与第 4 章 §4.3 凹凸性判据、§4.7 最优化；（ML/优化承重佐证）Deisenroth 等《Mathematics for Machine Learning》第 7 章 "Continuous Optimization"（§7.1 梯度下降、§7.3 凸优化）｜ 成熟度：GA/稳定（经典数学内容，无演进快项）
-
-> 粒度判定：**1 份，不拆**。本大主题仅 2 个小主题（10.1 一阶微分方程、10.2 无约束优化与凸性），且被上游明确定位为"可选接口层"、体量小，作为 004-calculus 文件的收尾接口节最合适；两节共享同一条主线——**都是"用导数信息刻画一条随参数变化的轨迹或一个最优点"**，不存在跨机制割裂，故按 v3 默认 1 大主题 = 1 报告，不拆 `-a/-b`。
+> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 定位：**可选接口节**（本库编排清单标注），微积分↔优化的桥接小节，讲到初学者懂即可、不做专家纵深 ｜ 先修：导数与微分法（大主题2）、导数的应用之极值判定（大主题3）、多元偏导与梯度/Hessian（大主题7）｜ 一手锚点：MIT 18.01 Single Variable Calculus (Fall 2006) syllabus（https://ocw.mit.edu/courses/18-01-single-variable-calculus-fall-2006/pages/syllabus/），Unit 5 "Applications of Integration" 中的分离变量/初值问题一节；James Stewart《Calculus》第 9 章 "Differential Equations"（§9.1 建模、§9.3 可分离方程）与第 4 章 §4.3 凹凸性判据、§4.7 最优化；（ML/优化承重佐证）Deisenroth 等《Mathematics for Machine Learning》第 7 章 "Continuous Optimization"（§7.1 梯度下降、§7.3 凸优化）｜ 成熟度：GA/稳定（经典数学内容，无演进快项）
 
 **微积分学到这里，开始反过来"用导数当已知、去求未知的函数或未知的最优点"**。前面章节都是"给定函数、求它的导数/积分"；本章把方向掉转——10.1 给你一个关于"变化率"的等式（微分方程），让你反推出满足它的函数；10.2 给你一个目标函数，用一阶导数（梯度）找"平地"、用二阶导数（Hessian/凸性）确认那块平地到底是谷底还是山顶还是马鞍。两节在机器学习里合流：训练一个模型 = 在一个（希望是凸的）损失曲面上，沿着"负梯度"这条连续轨迹滑到谷底，而"沿负梯度连续演化"本身就是一个微分方程（梯度流）。抓住"导数当已知、轨迹/极值当未知"这根钉子，本章两节都能挂上去。
 
@@ -98,7 +96,6 @@ dy/dx = y 读作"我在每一点的增长速度，正好等于我当前的高度
     y0 = sp.symbols('y0')
     print(sp.dsolve(sp.Eq(y(x).diff(x), k*y(x)), y(x), ics={y(0): y0}))
     print(sp.dsolve(sp.Eq(y(x).diff(x), x*y(x)), y(x), ics={y(0): 1}))
-
 
     Eq(y(x), C1*exp(k*x))
     Eq(y(x), y0*exp(k*x))
@@ -205,7 +202,6 @@ f(x) = x²，f'(x) = 2x，令 2x = 0 得唯一临界点 x = 0，正是碗底（s
     print(sp.diff(x**2, x), sp.diff(x**2, x, 2), sp.solve(sp.diff(x**2, x), x))
     for e in [sp.exp(x), -sp.log(x), x**2, x**3]:
         print(e, sp.diff(e, x, 2))
-
 
     2*x 2 [0]
     exp(x) exp(x)

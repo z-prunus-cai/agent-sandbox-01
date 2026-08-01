@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题1（编程范式总览与抽象层次）、L1-01（值/变量、函数、可变性入门、构造器/选择器雏形）、L2-01 §1.1（ADT 的规范 vs 实现分离） ｜ 一手锚点：SICP《Structure and Interpretation of Computer Programs》(Abelson & Sussman, 2nd ed, MIT Press) §2.1（Introduction to Data Abstraction）、§2.1.3（What Is Meant by Data?）、§2.2（Hierarchical Data and the Closure Property）；Barbara Liskov《Data Abstraction and Hierarchy》(OOPSLA '87 Addendum, Oct 1987) §2；抽象函数/表示不变式的一手源为 C.A.R. Hoare《Proof of Correctness of Data Representations》(Acta Informatica 1, 1972) 与 Liskov & Guttag《Abstraction and Specification in Program Development》(MIT Press/McGraw-Hill, 1986)，教学锚 MIT 6.005/6.031 Reading（AF/RI）｜ 成熟度：GA/稳定（经典数据抽象理论，无版本漂移；Python 示例锚 3.11.15）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（2.1–2.4）是同一条主线——「先建立构造器/选择器 + 抽象屏障（2.1），再看到数据其实可以纯用过程表示、从而理解数据抽象的本质（2.2），然后从软件工程视角把它升格为信息隐藏与 ADT 规范（2.3），最后用表示不变式与抽象函数把『接口与实现的契约』钉死（2.4）」。偏概念、跨机制少、篇幅适中，不足以触发拆分。跨课边界：ADT 的具体结构实现（链表/数组等）归 L2-01，本报告只讲抽象与封装的思想，不深挖结构本身；子类型可替换（LSP）虽也源自 Liskov 1987，但归本课大主题 5。
 
 本报告中的 Python 示例基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串；示例的真实运行输出随节贴出。
 
@@ -56,7 +55,6 @@ def add_rat(a, b):           # 运算只用接口，不碰底层 tuple
     return make_rat(numer(a) * denom(b) + numer(b) * denom(a),
                     denom(a) * denom(b))
 ```
-
 
 ```text
 1/2 + 1/3 = 5 / 6
@@ -146,7 +144,6 @@ def cons(x, y):
 def car(z): return z(0)
 def cdr(z): return z(1)
 ```
-
 
 ```text
 car(cons(3,4)) = 3 | cdr(cons(3,4)) = 4

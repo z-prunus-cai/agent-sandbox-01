@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L6-02 V1 不可判定性与近似框架（sound/over-approximation 世界观）、V2 数据流分析（格、单调、不动点、最小解）、V3 约束式分析（约束生成→求解的两段式、⊆ 约束、条件约束）、L5-06 T3 简单类型 λ 演算与类型安全（类型判断 Γ ⊢ e : τ、subject reduction）、L5-06 T4 类型系统扩展（引用/存储、异常）、L5-06 T5 子类型（subsumption、协变/逆变）、L5-06 T7 类型重建与 let-多态（合一、Algorithm W、principal type）｜ 一手锚点：《Principles of Program Analysis》(Nielson/Nielson/Hankin)，Springer 1999（corrected printing 2005），本大主题锚 **Ch.5「Type and Effect Systems」**（https://link.springer.com/book/10.1007/978-3-662-03811-6 ）；同作者同内容的公开镜像讲义 F. Nielson & H. R. Nielson《Type and Effect Systems》(1999, https://web.cs.ucla.edu/~palsberg/tba/papers/nielson-nielson-csd99.pdf ) 用作逐条规则的一手核对；第二锚点 TAPL（Pierce, MIT Press 2002）Ch.22（合一/约束式类型重建/Algorithm W，交叉核对推断技术）；效果系统一手源 Talpin & Jouvelot《The Type and Effect Discipline》(LICS'92 / Information and Computation 111(2), 1994)、Lucassen & Gifford《Polymorphic Effect Systems》(POPL'88)、Tofte & Talpin 区域推断(POPL'94 / I&C 1997) ｜ 成熟度：GA/稳定（注解类型、效果系统、子效果、Algorithm W 扩展均为 1980s–1990s 定型的经典机制；本篇讲经典骨架，不追效果代数(algebraic effects)等 2010s 之后的现代分支）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V5.1–V5.4）是一条单线故事——先讲"把分析信息编码进类型"这一总思想及其两种落点（V5.1 注解类型系统），再把注解升级成"效果"、给出 Γ ⊢ e : τ & φ 这一核心判断形式并巡览副作用/通信等效果族（V5.2），接着讲让这套系统能用起来的代数配件——子效果、子类型、效果上的序（V5.3），最后收束到"怎么把它变成一个能跑的推断算法"（V5.4，复用 V3/L5-06 T7 的合一与约束求解）。四节共享同一套"类型判断 + 注解/效果"骨架、篇幅适中，符合 report-format v3「默认 1 大主题 = 1 报告」，故不产 `-a/-b`。
-
 **类型与效果系统 = 给类型检查器"加料"——在原本只描述"数据长什么形状"的类型上，附挂一份"求值过程中会发生什么"的账单（效果），让同一套语法制导的推导规则在检查类型的同时把分析信息也算出来。** 前三个大主题（V2 数据流、V3 约束、V4 抽象解释）都属于"流基（flow-based）"路线——在控制流图或约束图上迭代传播到不动点；本大主题属于另一条"推断基（inference-based）"路线——把分析写成一组像类型规则那样的推导规则（inference rules），分析的答案就是"这个程序能推出的类型和效果"。它的独特卖点是天然复用类型系统几十年积累的全套机械（语法制导、多态、合一、principal type），并且结果直接挂在类型上、对人类可读——这是流基分析在中间表示上跑时难以做到的。
 
 ---

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L1-01（函数定义/参数/返回值、作用域 LEGB、闭包雏形）；L3-04 大主题1（编程范式总览，§1.3「函数式范式概览：表达式 + 无副作用」） ｜ 一手锚点：SICP（Abelson & Sussman，2nd ed）§1.3「Formulating Abstractions with Higher-Order Procedures」（§1.3.1 Procedures as Arguments、§1.3.2 Lambda、§1.3.4 Procedures as Returned Values）、§2.2.1「Representing Sequences」（含「Mapping over lists」引入 `map`）、§2.2.3「Sequences as Conventional Interfaces」（`filter`/`accumulate`），https://sarabander.github.io/sicp/html/index.xhtml ；CMU 15-150《Principles of Functional Programming》(Fall 2015, SML/NJ 110.75)，https://www.cs.cmu.edu/~iliano/courses/15F-CMU-CS150/syllabus.shtml ；Python 3.11 官方文档（`functools.reduce`、内置 `map`/`filter`、Data Model） ｜ 成熟度：GA/稳定（FP 概念为经典范式，无版本漂移；Python API 自 Py3 起 `map`/`filter` 返回惰性迭代器、`reduce` 移入 `functools`）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（7.1–7.5）是一条连贯教学序——从「函数是值」（7.1）出发，到「函数带着环境走」（7.2 闭包），再到「不带可变状态地算」（7.3 纯/不可变），落到最常用的「用高阶函数做序列变换」（7.4 map/filter/reduce），最后收束于「把副作用挤到边缘」的工程直觉（7.5）。按 v3「广度优先、讲懂不纵深」的边界，λ 演算的形式化根、求值策略的机制深挖显式归 L5-06，本报告不下形式化结论；总篇幅适中且共享同一主线（「以表达式而非状态变更来构造程序」），拆开反而割裂对照，故合为 1 份。
-
 本报告的 Python 示例（高阶函数、晚绑定 bug、不可变性、map/filter/reduce、纯核心重构）均为基线环境（Python 3.11.15、Linux 6.18.5 x86_64）下的真实运行结果，命令与输出随节贴出；CMU 15-150 以 SML 授课，本报告用 Python 佐证同一概念，规范（SICP/15-150 的语言无关论述）与实现（Python 具体行为）分别标注。
 
 ---
@@ -334,7 +332,6 @@ main()
 ### 7.5.3 work 与 span 的并行直觉
 
 CMU 15-150 用 **work** 与 **span** 两个量刻画纯函数式程序的并行代价。work 是"总计算量"——把所有操作**顺序**做完要多少步（≈ 单核运行时间）；span（也叫 depth）是"最长依赖链"——即使有**无穷多处理器**、把能并行的都并行了，仍必须串行完成的那条最长路径长度。
-
 
 work / span = 理想情况下可获得的最大并行加速比
 

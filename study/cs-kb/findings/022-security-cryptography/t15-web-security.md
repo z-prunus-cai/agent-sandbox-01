@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：软 L4-02（HTTP：请求/响应、方法、头部、URL 结构）、软 L4-03（数据库：SQL 与查询执行）｜ 一手锚点：UC Berkeley CS161 (Fall 2025) Web Security 系列讲义 https://fa25.cs161.org/ ；Stanford CS155 Web Security 讲义 https://cs155.stanford.edu/syllabus.html ；OWASP Top 10:2025（最终版，2026 年初发布，取代 2021）https://owasp.org/Top10/2025/ ；MDN Web Docs（Same-origin policy / Set-Cookie / CSP / CORS）https://developer.mozilla.org/ ；IETF RFC 6265（HTTP State Management，2011）＋ RFC 6265bis（SameSite 与 Cookie 前缀，IETF 草案，⚙演进中）；MITRE CWE https://cwe.mitre.org/ ｜ 成熟度：多数为 GA/稳定的经典 Web 安全机制；Cookie 的 SameSite 默认行为、CSP 推荐姿势、OWASP 分类硬标 `⚙演进快·锚版本`（见各节）。
 
-> 粒度判定：1 份，不拆。本大主题 6 个小主题（15.1–15.6）共用一条主线——浏览器把不同来源的内容放进同一个用户会话里，攻击面就来自"信任边界被跨越"：SOP（15.1）划边界，Cookie/会话（15.2）承载被冒用的凭据，XSS（15.3）在受害者源内注入脚本、CSRF（15.4）借用受害者凭据发请求、注入（15.5）把数据当代码，OWASP Top 10:2025（15.6）是这些风险在业界的权威谱系。机制同族、篇幅适中，按 v3 默认 1 大主题 = 1 报告。
-
 浏览器是一个同时运行"你信任的网站"和"你不信任的网站"的多租户执行环境，安全几乎全部围绕一个问题——**谁的代码/请求，能以谁的身份，访问谁的数据**。SOP 是隔离的地基，Cookie 是身份的载体，XSS/CSRF/注入是三类最经典的"越界"，OWASP Top 10 则是把这些越界按真实世界频率与影响排序的清单。
 
 15.5 的 SQL 注入在本机用 Python 内置 `sqlite3` 做了教学级实证（仅本地内存库、无真实攻击目标），最小脚本与真实输出贴入 15.5.3。其余攻防仅概念讲解，遵循"实证不替代多来源比对"。

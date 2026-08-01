@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L1-01 程序设计入门（值/变量、函数、可变性入门）、本课大主题 1（范式总览）与大主题 2（数据抽象与封装的数据侧） ｜ 一手锚点：SICP《Structure and Interpretation of Computer Programs》(Abelson & Sussman, 2nd ed, MIT Press) — §3.1（Assignment and Local State：局部状态、对象、消息传递）、§2.4（Multiple Representations for Abstract Data）、§2.5（Systems with Generic Operations：通用型操作、数据导向编程）；Python 3.11 官方文档 — Data Model（`__dict__`、`__getattribute__`、描述符协议、实例方法绑定，docs.python.org/3.11/reference/datamodel.html）、Language Reference §6.2.1（私有名字改写 name mangling）、`functools` 库（`singledispatch`，docs.python.org/3.11/library/functools.html） ｜ 成熟度：GA/稳定（OO 语义为经典理论，无版本漂移；Python 示例锚 3.11.15）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 5 个小主题（3.1–3.5）是一条连贯主线——「对象把状态和行为捆在一起（封装）→ 类/实例如何按查找规则找到属性和方法（消息传递模型）→ 用继承表达 is-a 并覆盖行为 → 覆盖带来运行时按对象选行为（子类型多态）→ 把多态推广到跨多种数据表示的通用操作」，跨机制少、彼此高度承接，合成一份最利于初学者顺读。跨课边界：派发（vtable / MRO / 鸭子类型）的机制细节归本课大主题 4，接口与设计原则（ABC/LSP/组合优于继承）归大主题 5，泛型与参数多态归大主题 6；本报告只讲三支柱的语义与 Python 用法，不深挖派发的机器层落地（那归 L3-03）。
 
 本报告所有 Python 示例基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串；关键片段的真实运行输出以代码块紧随其后给出，可复现。
 

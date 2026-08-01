@@ -2,13 +2,11 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题02（并发对象与线性一致性：顺序规约、线性化点、可组合性）、大主题04（同步原语相对能力：CAS 共识数=∞）、大主题06（原子操作与 memory_order：CAS/`fetch_add`）、大主题10（无锁数据结构：逻辑删除标记 + CAS 物理摘除、lazy 链表、hazard pointer/RCU 内存回收）、L4-01 大主题06（锁与条带化）、数据结构课（哈希表、平衡树、二叉堆）｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）——ch12「Counting, Sorting, and Distributed Coordination」(pp.265–303)、ch13「Concurrent Hashing and Natural Parallelism」(pp.305–334)、ch14「Skiplists and Balanced Search」(pp.335–357)、ch15「Priority Queues」(pp.359–376) ｜ 交叉源：Pugh「Skip Lists: A Probabilistic Alternative to Balanced Trees」CACM 33(6):668–676, 1990；Aspnes-Herlihy-Shavit「Counting Networks」JACM 41(5):1020–1048, 1994；Shalev-Shavit「Split-Ordered Lists: Lock-Free Extensible Hash Tables」JACM 53(3):379–405, 2006；Shavit-Zemach「Diffracting Trees」ACM TOCS 14(4), 1996 ｜ 成熟度：GA/理论稳定（这些结构与网络均为 1990–2006 确立的经典结果；skiplist 的无锁变体已进入 Java `java.util.concurrent.ConcurrentSkipListMap` 现役标准库）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-11.1–11.5）虽横跨 AMP 四章（ch13/14/15/12），但共享同一条主线——"如何让一个原本被单点争用卡死的数据结构，把争用**在空间上摊开到多个互不干扰的点**，从而随核数扩展"。哈希用桶分散、skiplist 用概率分层免除再平衡热点、优先队列把 removeMin 的全局热点拆开、counting/sorting 网络用 balancer 把计数/排序争用扇出成网。五节是"分散争用"这一个思想的五种落法，拆开会丢主线，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**可扩展性的敌人是"热点"——一个所有线程都必须碰的单一位置（一把全局锁、一个计数器变量、树根、堆顶）。核越多，撞这个点的人越多，结构就越退化成串行。本大主题的每一种结构都在回答同一个问题：能不能把这个热点"摊开"？哈希把键散到很多桶（各桶几乎独立）；skiplist 用随机层数让插入删除落在不同位置且永不需要旋转再平衡（再平衡本身是热点）；并发优先队列想办法让多个线程各取一个"近似最小"元素而不都盯着同一个堆顶；counting network 用一串 balancer 把"给我下一个号"的请求像分流阀一样扇散到 w 条输出线上，任意时刻只有极少数线程碰同一个 balancer。摊开得越均匀，越接近"加核即提速"。**
 
 > 下游边界（本课不外扩，交界处一句指路）：**逻辑删除标记 + CAS 物理摘除的链表底盘、以及"何时能安全 free"的内存回收（hazard pointer / epoch / RCU）**已在 CP-10（大主题10 无锁数据结构）讲透，本报告的无锁哈希/skiplist 直接复用其结论，只指路不重推；**锁本身的可扩展实现（MCS/CLH 队列锁、条带锁的缓存代价）**归 CP-08；**线性一致性/顺序规约/可组合性的形式定义**归 CP-02，本报告用到"线性化点""quiescent consistency"时给直觉并指回 CP-02；**这些结构在真实机器上的吞吐调优/NUMA 放置**归 L6-06 HPC，本课只讲"为何能扩展"的算法图景，不做实测调优。
 
-> 本报告以多来源比对为主承重腿：AMP ch12–15 为主一手，四个原始论文（Pugh 1990 skiplist、AHS 1994 counting networks、Shalev-Shavit 2006 split-ordered、Shavit-Zemach 1996 diffracting trees）对各自结构的定义、复杂度与关键性质逐条交叉核对。本主题 5 个小主题在 round3b 清单中**全部标注"概念"、无本机强实证腿**，故本报告实机验证**未取**（如实标注）；正确性由"一手教材 + 原始论文"两源交叉支撑，不以实机替代。
+> 本报告以多来源比对为主承重腿：AMP ch12–15 为主一手，四个原始论文（Pugh 1990 skiplist、AHS 1994 counting networks、Shalev-Shavit 2006 split-ordered、Shavit-Zemach 1996 diffracting trees）对各自结构的定义、复杂度与关键性质逐条交叉核对。本主题 5 个小主题在 本库编排清单清单中**全部标注"概念"、无本机强实证腿**，故本报告实机验证**未取**（如实标注）；正确性由"一手教材 + 原始论文"两源交叉支撑，不以实机替代。
 
 ---
 
@@ -51,7 +49,7 @@
 - 拆分有序表交叉源：Shalev & Shavit「Split-Ordered Lists: Lock-Free Extensible Hash Tables」JACM 53(3), 2006（DOI 10.1145/1147954.1147958，核实 2026-07-30）——"递归拆分序、位反转键、扩容不移动元素、期望 O(1)、仅用 load/store/CAS"逐条与 AMP 一致。
 - cuckoo hashing 原始思想回落 Pagh & Rodler「Cuckoo Hashing」（J. Algorithms 2004）——"两个哈希函数、两候选位置、最坏 O(1) 查找、插入可能级联踢出"。AMP 讲的是其并发/分阶段变体。
 - 交叉一致，无冲突。
-- 实证：本节全部为概念/算法图景，round3b 标"概念"、无本机强实证腿，本报告**未取实机验证**（如实标注）。
+- 实证：本节全部为概念/算法图景，本库编排清单标"概念"、无本机强实证腿，本报告**未取实机验证**（如实标注）。
 
 ## CP-11.2 skiplist 与并发平衡搜索：概率平衡、无锁跳表
 

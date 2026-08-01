@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题3（OO 三支柱：封装/继承/子类型多态与方法覆盖）、大主题4（动态派发、鸭子类型、MRO）、大主题5（抽象基类/协议、LSP） ｜ 一手锚点：Cardelli & Wegner《On Understanding Types, Data Abstraction, and Polymorphism》(ACM Computing Surveys, 1985, §1.3 与 Fig.1 多态分类)；Python 3.11 官方文档 `typing`（`Generic`/`TypeVar`）与 Data Model（`__add__`/`__eq__`/`__radd__` 等数值与比较协议）；PEP 484（类型提示）、PEP 695（类型参数语法，3.12 引入）；Java Language Specification（类型擦除、reifiable/non-reifiable 类型）；ISO/IEC 14882 C++（模板实例化 [temp]） ｜ 成熟度：GA/稳定（四分类为 1985 经典；Python 3.11 泛型 API 稳定，PEP 695 新语法属 3.12 delta，基线不可用）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题只有 4 个小主题（6.1–6.4），且它们是一条紧密的教学序——先立"多态到底分几种"的总纲（6.1），再展开其中的参数多态（6.2）与特设多态（6.3），最后横向对比这些多态在三种语言里"编译期怎么落地"（6.4）。四节共享同一根主线（"同一段代码/同一个名字如何服务多种类型"），拆开反而割裂对照，篇幅也适中，故合为 1 份。跨课边界：类型系统的形式化（全称/存在量化、λ 演算编码）归 L5-06，本报告只在 6.1 点到 Cardelli-Wegner 的直觉、不做形式推导；Rust 泛型与 trait 约束（单态化的另一代表 + 一致性/coherence）归 L5-14，本报告不重复立项。
-
 本报告的 Python 代码输出（`Stack[int]` 的运行期类型与参数不保留、运算符重载、PEP 695 语法在 3.11 报 `SyntaxError`）均为基线环境（Python 3.11.15、Linux 6.18.5 x86_64）下的真实运行结果，命令与输出随节贴出；Java 擦除、C++ 单态化以规范与官方教程为准，未在本机跑 Java/C++ 编译，相关处如实标注。
 
 ---

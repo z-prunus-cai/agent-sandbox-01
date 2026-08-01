@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题1（渐近分析）、大主题2（数组与链表/指针表示）、大主题4（哈希表，作对照）、大主题5（树术语与遍历） ｜ 一手锚点：Berkeley CS61B（sp24.datastructur.es，Tries 讲次，Java，本主题主锚）；Sedgewick & Wayne《Algorithms》4th ed §5.2「Tries」（R-way tries / TST，字符串符号表，作第二独立一手源）；Knuth《TAOCP》Vol 3 §6.3「Digital Searching」（trie / Patricia 的经典权威定位）；Pat Morin《Open Data Structures》§13.1 BinaryTrie（位级 radix 思想，交叉源）；CLRS 4th ed(2022) Radix trees 习题（作旁证，4th 确切编号待核） ｜ 成熟度：GA/稳定
 
-**1 份**（不拆）。理由：本大主题只有 3 个小主题（10.1–10.3），且共享同一条主线——「键不存在结点里、而是由根到结点的**路径**拼出来」这一个核心思想，10.1 讲结构、10.2 讲在结构上做的三种操作、10.3 讲对结构的空间压缩优化，环环相扣、篇幅属常规单元，无拆分必要。
-
 本报告的「Trie」（读作 /traɪ/ 或 /triː/，取自 re**trie**val）与「前缀树（prefix tree）」是同义词；「字符（character）」是键的最小单位（英文小写词就是 26 个字母），「字母表大小（alphabet size）」记作 R（小写英文 R=26，含大小写数字等 ASCII 则 R=128 或 256）；键长记作 L（一个词有多少个字符）；键的总数记作 n。下文复杂度里 L、R、n 都按此约定。CLRS 4th 没有独立的 Trie 主线章节（仅有 radix trees 习题），故本报告的两个承重一手源取 **CS61B Tries 讲次**与 **Sedgewick §5.2**，Knuth Vol 3 与 Open Data Structures 作交叉印证。
 
 本报告的 Python 实测基于 Python 3.11.15、Linux 6.18.5 x86_64，对应上面的基线串。

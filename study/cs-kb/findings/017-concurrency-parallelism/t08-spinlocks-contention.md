@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L4-05 大主题06（原子操作与 memory_order：`atomic_fetch_add`/CAS、relaxed 序）、大主题05（内存一致性与重排序）、L4-01 大主题06（硬件原语造锁 TAS/CAS、锁的接口与代价）、计算机组成课的缓存与 MESI 一致性协议 ｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 7 章「Spin Locks and Contention」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；交叉源：Mellor-Crummey & Scott「Algorithms for Scalable Synchronization on Shared-Memory Multiprocessors」ACM TOCS 9(1):21–65, 1991（原始论文 PDF https://www.cs.rochester.edu/u/scott/papers/1991_TOCS_synch.pdf ，核实 2026-07-30）；Linux 内核 `kernel/locking/qspinlock.c` 与 `Documentation`（qspinlock 基于 MCS，核实 2026-07-30）；MESI/伪共享行为可回落 Hennessy-Patterson《Computer Architecture》缓存一致性章 ｜ 成熟度：GA/理论稳定（TAS/TTAS/backoff/MCS/CLH 均为 1990 年代确立的经典结果；qspinlock 是 Linux ≥4.2 起的现役实现）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-08.1–08.5）是一条"竞争如何一步步被驯服"的单线——从最朴素的 TAS 暴露缓存行失效风暴（08.1），到 backoff 缓解争用（08.2），再到队列锁 MCS/CLH 用局部自旋根治风暴且带来公平（08.3），中间贯穿的是 MESI 缓存一致性对自旋成本的支配与伪共享陷阱（08.4），最后延伸到 NUMA 层级的非一致代价与锁放置（08.5）。五节共享同一条"内存层级 + 争用"的主线，拆开会断，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**自旋锁本身是对的（拿不到锁就原地循环重试），慢的从来不是"循环"，而是"每次重试都在总线/缓存一致性网络上制造流量"。竞争一大，一把朴素自旋锁会让 n 个核互相把对方缓存里的锁变量作废（invalidate），退化成"抢总线"而非"算数据"。本课回答的就是：怎么让线程等待时只碰自己核上的缓存、不打扰别人——从 TTAS 的"先读再试"到 MCS 的"每人守着自己的节点自旋"，一步步把争用从共享变量移开。**
 
 > 下游边界（本课不外扩，交界处一句指路）：**持锁线程被调度器抢占导致其他自旋者空转（lock holder preemption）、自旋转睡眠的 futex 慢路径、关中断构建内核自旋锁**归 L4-01·OS-06（本课只讲用户态可扩展性与内存层级代价，不进内核睡眠/唤醒机制）；**`atomic_fetch_add`/`compare_exchange` 的语言级接口与六档 memory_order 语义**归 CP-06（本报告用到 relaxed RMW 时只指路，不展开内存序推导）；**MESI 各状态迁移的完整状态机**归计算机组成/体系结构课（本报告只取"独占才能写、写他人副本要先作废"这一支配性事实）。
@@ -177,7 +175,6 @@ NUMA 感知锁用"局部性"换"全局公平"——让锁"赖在"一个节点多
 ### CP-08.5.3 本机拓扑（`lscpu` 实证）与本节可测性
 
 本机拓扑用 `lscpu` 实测：`NUMA node(s): 1`，`NUMA node0 CPU(s): 0-3`——即本机是**单 NUMA 节点、4 核**的 UMA 式机器。因此 CP-08.5 的核心命题（跨节点访问比本节点慢、锁应尽量节点内易主）在本机**无法直接计时验证**——没有第二个节点可"跨"，跨节点代价在本机恒为不适用。如实标：**本机不可测·跨平台待核**；本节结论完全由一手文献（AMP 对 NUMA 局部性的讨论 + MCS 1991 的"避免远程自旋"动机 + NUMA cohort 文献）支撑，不靠本机实证。
-
 
 ```
 # lscpu | grep -i numa

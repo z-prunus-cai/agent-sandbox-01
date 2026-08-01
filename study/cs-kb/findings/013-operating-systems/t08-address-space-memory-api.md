@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题01（OS 作为资源虚拟化器）、大主题02（进程抽象与地址空间视图）、大主题03（陷入/系统调用作为穿越保护边界的唯一入口）｜ 一手锚点：OSTEP 网页版 Ch13「The Abstraction: Address Spaces」/Ch14「Interlude: Memory API」/Ch17「Free-Space Management」（https://pages.cs.wisc.edu/~remzi/OSTEP/ ，核实 2026-07-25）；MIT 6.1810 2024 Fall「Virtual Memory for Applications」讲义（pdos.csail.mit.edu/6.1810，核实 2026-07-25）；Linux man-pages `mmap(2)`/`brk(2)`/`sbrk(3)`/`malloc(3)`/`free(3)`/`mallopt(3)`（man7.org，release 6.9.1，核实 2026-07-29）；glibc 手册「Malloc Tunable Parameters / The GNU Allocator」（gnu.org/software/libc/manual，对应本机 GLIBC 2.39，核实 2026-07-29）；CSAPP 3e Ch9「Virtual Memory」（Dynamic Memory Allocation 一节）｜ 成熟度：GA/稳定（虚拟地址空间模型、`brk`/`mmap` 系统调用、C 分配器 API 均为数十年稳定契约；glibc 分配器实现随版本演进，接口不变；本机 GLIBC 2.39）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（8.1–8.4）共享一条单一主线——"进程眼里的内存长什么样（8.1 地址空间布局）→ 程序用什么 API 向这块内存要/还空间（8.2 malloc/free 契约与误用）→ 这些 API 底层到底怎么向内核拿内存（8.3 brk/sbrk vs mmap 两条路径）→ 分配器拿到大块后如何自己切分与回收（8.4 空闲空间管理）"。四节自上而下层层下沉、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**每个进程都以为自己独占一整条从 0 开始的连续内存**，这条"假内存"就是虚拟地址空间；它被切成用途固定的几段（代码/数据/堆/栈/映射区）。程序要动态内存时不直接碰物理内存，而是调 `malloc`/`free` 这层 C 库 API；库自己维护一片"空闲空间"并按 first-fit/best-fit 之类策略切给你；库手里不够了才向内核要——小额扩堆走 `brk`/`sbrk` 顶指针，大额直接 `mmap` 一整块匿名内存。整条链上任何一环违约（用完不还=泄漏、还两次=双重释放、还了又用=悬垂）都会出难查的 bug，而碎片则是"空间明明够却拼不出一块连续可用区"的顽疾。
 
 > 下游边界（本课只在交界处一句指路）：本报告讲**用户视角的地址空间与内存 API**——段怎么排、契约是什么、`brk`/`mmap` 两条路、free list 与碎片。而**虚拟地址→物理地址的翻译、页表结构、TLB** 归本课大主题09；**缺页/按需分页/页替换/COW 的内核处理路径**归大主题10（本报告只把 COW、按需置零点到为止）；**内核自己的对象分配（slab/slub）** 在 8.4 只作对照浅讲，深挖归内核内存管理专题。本报告不做专家纵深。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30（教材与经典论文）；产品代际快照锚 2026-07 ｜ 先修：L3-02 CO-8（Flynn 分类、GPU/SIMT 入门）、本课大主题1（性能/功耗/能效量化、Amdahl 定律）、本课大主题2（内存层次与带宽）、本课大主题5（向量/SIMD/GPU 与 Roofline 模型） ｜ 一手锚点：Hennessy & Patterson《Computer Architecture: A Quantitative Approach》6th ed, 2017（ISBN 9780128119051）ch7 *Domain-Specific Architectures*（§7.1 引论与五条准则、§7.2 深度神经网络、§7.3 TPU、§7.4 Microsoft Catapult、§7.5 Intel Crest、§7.6 Pixel Visual Core、§7.9 谬误与陷阱） ｜ 佐证：Jouppi et al., *In-Datacenter Performance Analysis of a Tensor Processing Unit*, ISCA 2017（TPU v1 一手论文）；Kung & Leiserson, *Systolic Arrays (for VLSI)*, 1978/1982（脉动阵列原始文献）；NVIDIA 官方架构白皮书与 CUDA 编程指南（张量核/混合精度）；Google Cloud TPU 官方文档（代际规格） ｜ 成熟度：DSA 设计原则、脉动阵列、张量核、Roofline 评估的**原理**为 GA/稳定；**具体产品与硬件代际**（TPU v1→v7、张量核 Volta→Blackwell/Rubin、峰值 TFLOPS、精度格式、HBM 带宽）**硬标 ⚙演进快·锚版本·随时变**，不以教材 2017 年数字作现状结论
 
-> 粒度判定：**1 份（不拆）**。理由：AA-8 的 5 个小主题是同一条主线的层层展开——先立"为什么专用化划算 + 怎么专用化"的设计原则（8.1）→ 用最典型的专用矩阵乘加速器 TPU 及其核心机构脉动阵列把原则落到实物（8.2）→ 把同一"矩阵乘专用单元"塞进通用 GPU 就是张量核，并引出混合精度（8.3）→ 专用硬件离不开软件栈，讲领域语言/编译器的软硬协同（8.4）→ 最后用 Roofline 统一量化"这些加速器到底跑得有多满、卡在算力还是带宽"（8.5，收束前四节）。五节共享同一套"专用化—去通用开销—矩阵乘—带宽—算术强度"词汇，硬拆会切断 TPU 脉动阵列与 GPU 张量核的对照、以及二者在 Roofline 上的统一定位，故合为一份。按 prompt 边界，本报告**只讲硬件机制与设计原则**；深度学习模型本身、GPU/HPC 编程调优、AI 系统栈落地分别留给 L6-03 深度学习 / L6-06 HPC / N-11 AI 系统，此处仅点接缝不下沉。
-
 本报告以 H&P《QA》6th ed ch7 为一手骨架，凡涉及具体产品与代际数据（TPU 各代峰值算力、张量核精度格式、HBM 带宽等）一律与厂商一手文档/原始论文交叉核对，并硬标 ⚙演进快·锚版本——教材出版于 2017，其 TPU 数字对应的是 2015 年部署的 TPU v1，绝不能当作 2026 年的现状。术语首次出现中英并给。本机无 TPU/张量核硬件，涉及加速器的实证一律标「不适用/未取」，不以本机 CPU 数字冒充加速器结论；8.5 的 Roofline 原理与本课大主题5（AA-5.5）同源，此处只做"面向 DSA"的应用，不重复推导，需要模型细节请回看大主题5 报告。
 
 ---

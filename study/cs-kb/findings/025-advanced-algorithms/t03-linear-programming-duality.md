@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：CLRS 4e Ch29（线性规划先修视角：标准型/松弛型、单纯形直觉、对偶）、本课大主题02（网络流：最大流最小割作为 LP 对偶的组合特例）、L3-01 摊还与图算法基础、线性代数（矩阵秩、线性无关列、凸集）｜ 一手锚点：MIT 6.854J Advanced Algorithms (Fall 2008, David Karger) lecture notes Lec 9–15（OCW，https://ocw.mit.edu ，核实 2026-07-30）；CLRS《Introduction to Algorithms》4th ed. (2022, MIT Press, ISBN 9780262046305) Ch29；Bertsimas & Tsitsiklis《Introduction to Linear Optimization》(Athena Scientific, 1997)；Boyd & Vandenberghe《Convex Optimization》(Cambridge, 2004, 官方免费 PDF https://web.stanford.edu/~boyd/cvxbook/ ) Ch4–5, Ch11；Vazirani《Approximation Algorithms》(Springer, 2001) Ch12；原始论文 Khachiyan (1979, 椭球法)、Karmarkar (1984, 内点法)、Klee–Minty (1972, 单纯形指数下界)｜ 成熟度：GA/稳定（单纯形 1947、对偶 1947、椭球法 1979、内点法 1984 均为数十年成熟结果；SDP 求解器与内点法实现工程上仍在演进，但理论框架稳定）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（3.1–3.5）是一条单主线的逐段展开——先立"LP 长什么样、可行域是什么几何形状、最优点在哪"（3.1），再讲"怎么沿几何走到最优"的第一个实用算法单纯形及其陷阱（3.2），接着是贯穿全篇的核心理论对偶与互补松弛（3.3），最后两节回答"单纯形最坏指数、那多项式可解吗"——椭球法给出理论上的"是"（3.4）、内点法给出实用的"是"并推广到锥规划/SDP（3.5）。五节篇幅适中、机制层层咬合，按 v3 默认 1 大主题 = 1 报告。
-
 > 本报告一条主线心智模型：**线性规划 = "在一块由平面切出来的多面体积木上，找一个让线性目标最大/最小的角"**。三件事反复出现——可行域永远是凸多面体、最优点永远可以取在顶点（3.1）、每个 LP 都配一个"对偶 LP"且两者最优值相等（3.3）。单纯形、椭球、内点只是三种"走到那个角"的不同走法。
 
 > 本报告的强对偶/互补松弛结论在如下环境实跑取证：Python 3.11.15 @2026-07-30，scipy 1.17.1 `scipy.optimize.linprog`，用 CLRS 4e Ch29 的经典算例双跑原问题与对偶问题、核对最优值相等并检查互补松弛；代码仅存 scratchpad、不入库，正文贴真实输出。实机验证为多来源比对之补充，非替代；纯理论命题（单纯形有限终止、椭球体积收缩率、内点迭代数界）以教材/论文文本比对为准，未实证处如实标注。

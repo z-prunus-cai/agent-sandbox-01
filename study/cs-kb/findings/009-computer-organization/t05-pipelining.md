@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：本课大主题4（单周期数据通路与控制，尤其 4.5 单周期局限）、L2-02 数字逻辑（触发器/寄存器堆/时序参数，理解"段寄存器"就是一排边沿触发器） ｜ 一手锚点：Patterson & Hennessy《Computer Organization and Design》RISC-V Edition, 2nd ed, 2020（ISBN 9780128203316）ch4 §4.5–§4.9 *An Overview of Pipelining / Pipelined Datapath and Control / Data Hazards / Control Hazards / Exceptions*；佐证 Harris & Harris《Digital Design and Computer Architecture》RISC-V ed, 2021（ISBN 9780128200643）ch7、Hennessy & Patterson《Computer Architecture: A Quantitative Approach》6th ed, 2017（ISBN 9780128119051）附录 C *Pipelining: Basic and Intermediate Concepts*、Berkeley CS61C ｜ 成熟度：GA/稳定（顺序 5 级流水的划分、冒险分类、转发/停顿、精确异常为经典公理，无版本漂移；分支延迟槽属 ISA 相关差异，见 §5.5 显式标注）
 
-> 粒度判定：**1 份（不拆）**。理由：CO-5 的 6 个小主题是一条不可切断的因果链——「先把单周期切成 5 段以提吞吐（5.1）→ 切开后立刻冒出三类冒险，先看资源冲突的结构冒险（5.2）→ 再看数据相关引发的数据冒险及其主解法转发（5.3）→ 转发唯独覆盖不了 load-use，于是必须停顿一拍（5.4）→ 分支带来的控制冒险与入门级预测（5.5）→ 最后把异常/中断塞进流水线还要保持精确（5.6）」。5.3→5.4、5.5→5.6 之间共享同一套"冲刷/气泡"机制，硬拆成"基础+冒险"与"分支+异常"两份会切断转发与停顿、控制冒险与异常之间的对照，故合为一份。全篇按广度优先的入门教辅处理，超标量/乱序/动态调度（Tomasulo、ROB、gshare/TAGE）等专家级纵深明确留给 L5-05 AA-3/AA-4，不在此下沉。
-
 本报告的划分、时序图、转发路径、停顿拍数来自 P&H《COD》ch4 §4.5–4.9、H&H《DDCA》ch7、H&P《QA》附录 C 三处交叉核对；CO-5.1 与 CO-5.4 另附本机 Python 逐拍模拟（纯逻辑模型，不需 RISC-V 硬件）坐实吞吐与 load-use 气泡。术语首次出现时中英并给。教学 RISC-V 顺序流水 ≠ 本机 x86-64 乱序超标量实现，二者分账（后者归 L5-05）。
 
 ---

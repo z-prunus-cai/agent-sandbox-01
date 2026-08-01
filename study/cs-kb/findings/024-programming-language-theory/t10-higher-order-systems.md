@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：T3（STLC：函数类型 T₁→T₂、类型环境 Γ、T-Var/T-Abs/T-App、语法制导类型检查）、T5（子类型：subsumption T-Sub、S-Refl/S-Trans、记录/函数变型、Top/Bot）、T8（System F：类型抽象 ΛX.t 与类型应用 t[T]、全称类型 ∀X.T、存在类型 ∃X.T 与 pack/open）、T9（有界量化 F<:：界 X<:T、kernel vs full F<:、Full F<: 子类型不可判定）｜ 一手锚点：TAPL《Types and Programming Languages》(Pierce, MIT Press 2002) **Part VI（Higher-Order Systems），Ch.29 "Type Operators and Kinding"（λω）、Ch.30 "Higher-Order Polymorphism"（Fω）、Ch.31 "Higher-Order Subtyping"（Fω<:）、Ch.32 "Case Study: Purely Functional Objects"**；交叉核对 Harper《Practical Foundations for Programming Languages》2nd ed（Cambridge 2016）关于构造子/种类（constructors and kinds）与高阶类型的处理；λ-cube 与广义类型系统 Barendregt《Introduction to Generalized Type Systems》(J. Functional Programming 1(2):125–154, 1991) 与《Lambda Calculi with Types》(Handbook of Logic in CS Vol.2, 1992)；Fω 原始出处 Girard《Interprétation fonctionnelle et élimination des coupures de l'arithmétique d'ordre supérieur》(Thèse, 1972) ｜ 成熟度：经典理论 GA/稳定（非演进快对象；依赖类型仅作"一瞥"点名，展开交 L6-02 V11）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（T10.1–T10.4）是一条单向递进链——先在类型层加一套"类型的类型"即种类系统与类型算子（T10.1 λω），再把它与 System F 的多态合流成 Fω（T10.2），然后把子类型关系抬到算子层得 Fω<:（T10.3），最后用这套机器做一个案例（纯函数式对象）并沿 λ-cube 的第四条轴指向依赖类型（T10.4）。同一套"种类 + 类型算子 + 类型等价"机制贯穿全篇，无跨机制断裂，篇幅适中，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 **高阶系统就是"把 λ 演算那一套（抽象、应用、β 归约、类型检查）原样复制到类型层，再让类型也需要被'定型'"**。前面几大主题里，类型一直是"扁平"的名字或简单构造（Bool、Nat、T₁→T₂、∀X.T）；从本篇起，类型自己也可以是**函数**——例如 `List` 不是一个类型，而是"吃一个类型、吐一个类型"的算子。一旦类型能当函数用，就必须有一层判断式来回答"这个类型表达式合不合法、它是普通类型还是算子"，这层判断式就是**种类判断（kinding）** Γ ⊢ T :: K。System F 让项在类型上抽象（多态），λω 让类型在类型上抽象（算子），两者合流即 Fω；再叠上子类型即 Fω<:。
 
 这也正是 Barendregt λ-cube 的三条坐标轴：项依赖类型（多态，→ System F）、类型依赖类型（算子，→ λω），以及本篇末尾只点名的第三轴——类型依赖项（依赖类型，→ λP 直至演算构造 CoC，即 Coq 的内核，交 L6-02 V11）。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：大主题1（系统模型/失败模型）、大主题2（happens-before 与逻辑/向量时钟）、大主题3（复制与副本收敛）；对接大主题6（CAP/PACELC）｜ 一手锚点：Herlihy & Wing「Linearizability: A Correctness Condition for Concurrent Objects」ACM TOPLAS 12(3):463–492, July 1990；Lamport「How to Make a Multiprocessor Computer That Correctly Executes Multiprocess Programs」IEEE Trans. Computers C-28(9):690–691, Sept 1979（顺序一致性原始定义）；Terry, Demers, Petersen, Spreitzer, Theimer & Welch「Session Guarantees for Weakly Consistent Replicated Data」PDIS 1994（会话保证四条，Bayou 项目）；MIT 6.5840 Spring 2026 schedule L8「Consistency and Linearizability」（Mar 5，https://pdos.csail.mit.edu/6.824/schedule.html ）；Jepsen consistency 模型谱系（https://jepsen.io/consistency ，交叉核对与可用性归类）；Kleppmann《Designing Data-Intensive Applications》2E ch5/ch9 ｜ 成熟度：GA/稳定（线性一致 1990、顺序一致 1979、会话保证 1994 定义数十年稳定；谱系图与可用性归类近年由 Bailis/Viotti-Vukolić 系统整理，属整理性共识而非规范）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（5.1–5.5）全部落在同一条轴上——"一个复制/并发对象，它对外表现出的读写顺序被约束得多紧"，从最强的线性一致一路松到最终一致，最后 5.5 把这条轴收成"强度 ↔ 协调代价"的权衡总账并对接 CAP。机制同源、一条谱系贯穿，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**一致性模型是一份"合法性契约"——它规定"一段读写历史（history）在什么条件下算合法"，等价于"客户端被允许看到哪些结果、不允许看到哪些"。** 越强的模型允许的历史越少（约束越紧、越像单机单线程那台"理想机器"），实现起来越需要副本之间频繁协调，因而在分区/高延迟下越难保持可用；越弱的模型允许的历史越多（副本可以各说各话一阵子），越能在坏网络下继续响应，但把"消解分歧"的负担推给了应用。这条谱系从强到弱是：线性一致（5.1）⊃ 顺序一致（5.2）⊃ 因果一致（5.3）⊃ 最终一致 + 会话保证（5.4），5.5 把它整理成一根"越强越贵"的权衡轴并接到 CAP。
 
 > 分账（本课不外扩，只在交界处一句指路）：本报告讲的是**分布式对象/存储的一致性语义**（客户端视角看到的读写顺序）。**硬件内存模型/缓存一致性**（x86-TSO、MESI、C++/Java 内存模型）虽同名"consistency"但属 L5-05/L4-05，不在此混讲——Lamport 1979 那篇虽出自多处理器语境，本报告只取其"顺序一致性"的分布式语义。CAP/PACELC 的精确表述与系统归类方法归大主题6；具体系统（Dynamo、Spanner、Cassandra）怎么在这条轴上选点，归 L6-05。向量时钟/happens-before 的机制在大主题2 已讲，本报告直接取用。

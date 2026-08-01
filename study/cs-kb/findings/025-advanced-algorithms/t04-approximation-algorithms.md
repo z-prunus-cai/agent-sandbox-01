@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 大主题13（NP 完全性——先知道哪些优化问题被公认难解）、L3-01 大主题14（近似入门：ρ-近似定义、VC 2-近似、TSP、Set-Cover 的初步近似比，边界 B2）、L6-01 大主题03（线性规划标准型、LP 对偶/弱对偶/强对偶/互补松弛——本报告 LP 舍入与原始–对偶要用）、L1-02 离散数学（调和级数 H(n)、期望线性性）、L2-03 概率（随机变量与期望，本报告随机舍入与 Max-Cut 分析要用） ｜ 一手锚点：Williamson–Shmoys《The Design of Approximation Algorithms》(Cambridge Univ. Press, 2011, ISBN 9780521195270；官方免费 PDF https://www.designofapproxalgs.com) 全书主教材；MIT 6.854J Advanced Algorithms (Fall 2008, OCW) Lec 16–19；CLRS《Introduction to Algorithms》4th ed (2022) Ch35（入门交叉视角）｜ 原始论文：Christofides (1976)、Goemans–Williamson (Max-Cut SDP, JACM 1995)、Arora–Safra / Arora–Lund–Motwani–Sudan–Szegedy（PCP, 1998）、Bourgain (1985)、Arora–Rao–Vazirani (2009) ｜ 成熟度：GA/稳定（经典理论；个别界为活跃研究前沿，正文以「⚙演进快」硬标）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（4.1–4.5）共享唯一主线——「对 NP 难优化问题，放弃精确，退而求带最坏情形保证 ρ 的多项式时间解，并用四把工具（组合论证 / LP 舍入 / 原始–对偶 / 半定规划）系统地造这类解，再用不可近似性划出保证的天花板」。四把工具在同一批经典问题（顶点覆盖、集合覆盖、Max-Cut、TSP、sparsest-cut）上反复出现、互为呼应，拆开会割裂「同一问题、不同手法、可比近似比」这层核心对照。篇幅可控，故合为 1 份。**边界 B2**：入门实例（VC/TSP/Set-Cover 的初步 2、3/2、ln n）已在 L3-01 大主题14 讲过，本报告只快速点名衔接，重心放在**通用框架**（LP-rounding 通式、原始–对偶范式、SDP、hardness）。
-
 > 本报告可选实测基于 Python 3.11.15、numpy 2.4.6、scipy 1.17.1、Linux 6.18.5 x86_64（对应基线串）。实测仅用于加固 Goemans–Williamson 常数 α ≈ 0.878 这一处载重数值，脚本仅存仓库外 scratchpad、跑完即清，正文只贴真实结论。实测为可选补充、非替代；所有近似比与定理以多来源文本比对（Williamson–Shmoys / CLRS / 6.854 讲义）为准，未实证处如实标注。
 
 ---

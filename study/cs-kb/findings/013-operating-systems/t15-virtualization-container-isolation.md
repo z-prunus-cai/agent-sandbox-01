@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题01（OS 作为资源虚拟化器、双模式/特权级、受保护指令）、大主题03（中断/陷入/受限直接执行）、大主题09（地址翻译与多级页表、TLB）、大主题05（CPU 调度——cgroup 的 CPU 限额建在调度器之上）｜ 一手锚点：MIT 6.1810 2024 Fall「Virtual Machines」「Meltdown」讲义（pdos.csail.mit.edu/6.1810，核实 2026-07-25）；OSTEP 网页版 附录/VMM 概念（pages.cs.wisc.edu/~remzi/OSTEP/，核实 2026-07-25）；Linux man-pages `namespaces(7)`、`cgroups(7)`、`user_namespaces(7)`、`clone(2)`、`unshare(2)`、`setns(2)`（man7.org，核实 2026-07-29）；Linux 内核官方文档 admin-guide/cgroup-v2（docs.kernel.org，核实 2026-07-29）；Intel SDM Vol.3C「VMX」/ AMD64 APM Vol.2「SVM」（机制命名 EPT/NPT，低层细节标「待核」）；Meltdown（Lipp et al. 2018）、Spectre（Kocher et al. 2019）原始论文 ｜ 成熟度：硬件虚拟化（VT-x/AMD-V）、二级地址翻译（EPT/NPT）、namespaces 均 GA/稳定；**⚙演进快·锚版本**：cgroup **v2**（unified hierarchy，锚 Linux 6.18.5 / kernel.org 现行文档 @2026-07-29，容器运行时默认逐步全面转 v2，随发行版与内核版本变）；推测执行漏洞缓解现状随微码/内核持续变动，硬标日期
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（15.1–15.5）沿一条清晰主线递进——"如何把一台机器骗成多台（15.1 硬件虚拟化）→ 虚拟机的内存怎么翻译两层（15.2 内存虚拟化）→ 比虚拟机更轻的隔离怎么做（15.3 namespaces 切视图 + 15.4 cgroups 切资源）→ 这些隔离在推测执行面前为何会漏、怎么补（15.5 侧信道）"。五节篇幅适中、互为前后依赖，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**隔离有两个层次，代价与强度成反比**。虚拟机（VM）在硬件层复制一整台机器——每个客户机跑自己的完整内核，靠 CPU 的 VMX/SVM 扩展做"陷入并模拟"、靠 EPT/NPT 做两层地址翻译，隔离最强但每台都背一个内核、开销大。容器不复制机器，而是让所有容器**共享同一个宿主内核**，靠 Linux 的两组内核机制拼出"看起来像独占一台机器"的错觉：**namespaces 负责"看得见什么"**（切割进程号、挂载点、网络栈等命名视图），**cgroups 负责"能用多少"**（限制并计量 CPU/内存/IO）。容器轻快，但共享内核意味着内核一旦被侧信道击穿（15.5），隔离就可能漏。
 
 > 下游边界（本报告只在交界处一句指路）：本报告讲**内核提供的隔离原语**（hypervisor 陷入模拟、EPT/NPT、namespaces、cgroups）；**Docker/containerd/runc 容器运行时、OCI 镜像、Kubernetes 编排** 归 L5-08「容器与云原生」，本课不深挖，只说"容器 = namespaces + cgroups + 根文件系统切换（pivot_root）+ 能力/seccomp 限制，这几块内核积木被运行时组装起来"。

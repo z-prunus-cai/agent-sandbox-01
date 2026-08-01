@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题1（范式总览：命令式/OO/函数式/声明式）、大主题7（函数式：一等/高阶函数、闭包）、大主题8（求值模型、环境模型、惰性求值引申）；L1-01（表达式求值、递归） ｜ 一手锚点：SICP《Structure and Interpretation of Computer Programs》第 4 章 Metalinguistic Abstraction（§4.1 元循环求值器、§4.2 惰性求值、§4.3 非确定性计算、§4.4 逻辑编程），https://sarabander.github.io/sicp/html/index.xhtml ；独立第二版 SICP JavaScript Edition（Abelson & Sussman，Henz & Wrigstad 改编，MIT Press 2022，Ch4 同结构）；求值策略/逻辑编程/amb 的领域一手（Haskell 2010 Report 非严格语义、Colmerauer/Kowalski 逻辑编程、McCarthy 1963 amb） ｜ 成熟度：GA/稳定（SICP Ch4 为经典教材内容，无版本漂移；所标语言历史事实为定论）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题只含 3 个小主题（9.1–9.3），且 prompt 明确定位为"选修广度"——只作范式概览，机制深挖显式归 L5-06（PL 理论）与 L1-01（CS61A 解释器/SQL），此处不重复立项。三个小主题共享同一条主线（"用一门语言去描述/改写另一门语言的求值规则"，即元语言抽象），合为一份能保住"求值器→改求值策略→改范式"的教学序，拆开反而割裂对照。篇幅适中，无拆分理由。
-
 本报告的 Python 玩具示例（toy eval、微型规则引擎、amb 直觉）均为基线环境（Python 3.11.15、Linux 6.18.5 x86_64）下的真实运行结果，命令输出随节贴出；这些是"帮助理解 SICP Scheme 机制"的直觉旁证，不替代对 SICP 一手章节的多来源比对。
 
 ---

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：大主题10（图的表示、BFS/DFS、O(V+E) 遍历——增广路要靠 BFS/DFS 找）、大主题11（贪心与松弛的最优性论证思路）、大主题8（贪心选择性质与交换论证，理解 Gale–Shapley 稳定性用得上）、L1-02 离散数学（图、集合、二部图、鸽巢与计数） ｜ 一手锚点：CLRS《Introduction to Algorithms》4th ed (2022, MIT Press) Ch24「Maximum Flow」(§24.1 Flow networks p671 / §24.2 The Ford-Fulkerson method p676 / §24.3 Maximum bipartite matching p693)、Ch25「Matchings in Bipartite Graphs」(§25.1 Maximum bipartite matching (revisited) p705 / §25.2 The stable-marriage problem p716 / §25.3 The Hungarian algorithm for the assignment problem p723)（章节页码取自 MIT Press 官方 4e 目录 PDF） ｜ 成熟度：GA/稳定（经典理论；CLRS 4th 为截至 2026-07-26 最新版，无更晚版本；Ch25 为 4e 相对 3e 新增的独立章）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题两章 Ch24–25 共享同一条主线——「把匹配/指派问题**化为流或增广路问题**再求解」，Ch24 的最大流与增广路正是 Ch25 二部匹配算法的地基，拆开会割裂「流 → 匹配 → 加权匹配」这条层层加码的教学阶梯。全主题 6 个正文小节都是「定义 + 一个核心算法 + 一个正确性定理」的同构结构，篇幅与机制跨度均未触及 report-format v3 §一「小主题多／跨机制／过长」的拆分线，故合为 1 份。
-
 > 覆盖映射与待核核定：本报告按 CLRS 4e 正文的**章节顺序**编排 12.1–12.6，与 prompt 的小主题清单对应关系为——12.1↔prompt 12.1（§24.1）、12.2↔prompt 12.2（§24.2）、12.3↔prompt 12.3（§24.3）、12.4↔prompt 12.4（§25.1 Hopcroft–Karp）、12.6↔prompt 12.5（§25.3 匈牙利）。两条 prompt 待核项均已逐条取证核定：**匈牙利算法节号 = §25.3**（非「待核」）；**稳定婚姻（Gale–Shapley）在 4e 为正文独立小节 §25.2**（不是习题级），据 prompt「证实则补入并锚定」要求，作为 12.5 补入。核定依据为 MIT Press 官方 4e 目录 PDF（见下各章「来源与时效」）。
 
 本报告的可选实测基于 Python 3.11.15、numpy 2.4.6、scipy 1.17.1、Linux 6.18.5 x86_64，对应上面的基线串。测试脚本仅存于仓库外 scratchpad，跑完即清；下文只贴真实输出。实测为可选补充，正确性仍以多来源比对为准。

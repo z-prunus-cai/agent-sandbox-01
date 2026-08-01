@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L2-03（概率统计：随机变量、期望/方差、指数分布与拉普拉斯/高斯分布）← L1-04 ｜ 一手锚点：Cynthia Dwork & Aaron Roth《The Algorithmic Foundations of Differential Privacy》(2014, Foundations and Trends in TCS, 官方免费 PDF) Ch2–4 及附录 A；NIST SP 800-226「Guidelines for Evaluating Differential Privacy Guarantees」(Final, 2025-03-06) https://csrc.nist.gov/pubs/sp/800/226/final ；UC Berkeley CS161 (Fall 2025) L26「Anonymity & Tor」https://fa25.cs161.org/ ；Dingledine-Mathewson-Syverson《Tor: The Second-Generation Onion Router》(USENIX Security 2004)；Chaum《Untraceable Electronic Mail…》(CACM 1981)｜ 成熟度：Tor/洋葱路由、(ε,δ)-DP、敏感度与 Laplace/Gaussian 机制、组合定理均为 GA 长期知识；DP-SGD/联邦学习为活跃工程领域（⚙演进快·锚 2026-07-30）；18.6 机密计算(TEE) ⚙未定型·只登记不作结论。
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题分三块——匿名通信（18.1）、差分隐私理论（18.2–18.5）、隐私保护机器学习与硬件（18.6）——但共享同一根主线：**如何在"要发布/要利用数据"和"要保护个体"之间量化并管理泄露**。匿名网络保护的是"谁在和谁通信"这一元数据层面的隐私，DP 保护的是"某个体是否在数据集中"这一记录层面的隐私，PPML 则把 DP 搬到模型训练里。三块概念递进、术语互相引用（敌手模型、隐私预算、噪声-效用权衡贯穿始终），按 v3 默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 **隐私不是"有或无"的开关，而是可以量化、可以花预算购买的连续量**。匿名网络用"把我藏进一群人里"来量化（匿名集越大越安全）；差分隐私用一个数 ε 来量化"加进/拿掉任何一个人的数据，输出分布最多变多少"，ε 越小越私密但噪声越大。读本主题的关键是随时问三个问题：我们在防谁（敌手模型）、我们保护的是哪一层隐私（通信元数据 / 记录存在性 / 训练数据）、以及为这份隐私付出了多少效用（噪声/延迟/精度）代价。
 
 本主题的教学级实证（numpy 实现 Laplace/Gaussian 机制对计数查询加噪、经验验证组合下预算累加、绘噪声-误差权衡曲线）属可选，仅在仓库外 scratchpad 运行、跑完即清、不入库；本次以多来源交叉核对（Dwork-Roth 专著与 NIST SP 800-226 与 CS161 / Tor 设计文档 / 原论文）为主，numpy 实证未逐项落地处如实标注，实证不替代多来源比对。

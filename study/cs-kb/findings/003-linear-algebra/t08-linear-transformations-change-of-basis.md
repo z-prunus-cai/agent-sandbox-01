@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：向量空间/子空间与基·维数（大主题2）、矩阵乘法与逆（大主题1）、特征值/特征向量与对角化（大主题5）｜ 一手锚点：Gilbert Strang《Introduction to Linear Algebra》第 8 章"Linear Transformations"（§8.1 线性变换的思想、§8.2 线性变换的矩阵、§8.3 好基的寻找/基变换）与第 6 章"Eigenvalues and Eigenvectors"§6.6"Similar Matrices"（含 Jordan 形）；MIT 18.06/18.06SC Linear Algebra (Fall 2011) 官方 syllabus，Unit III（"Linear Transformations and Their Matrices"/"Change of Basis; Image Compression"/"Similar Matrices and Jordan Form"），https://www.ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/pages/syllabus ｜ 交叉锚：Sheldon Axler《Linear Algebra Done Right》（以线性映射为主线）｜ 成熟度：GA/稳定（经典数学内容，无演进快项）
 
-> 粒度判定：**1 份，不拆**。本大主题 3 个小主题（8.1 线性变换 → 8.2 基变换 → 8.3 相似矩阵与 Jordan 形）是一条连贯的"通用理论"主线：先定义什么是线性变换、它如何被一个矩阵代表；再问"换一组基，同一个变换/向量的坐标与矩阵怎么变"；最后把"换基后矩阵之间的关系"抽象成相似关系，并给出无法对角化时的替身——Jordan 形。三块环环相扣、不跨机制、篇幅中等，符合 v3 默认"1 大主题 = 1 报告"，不拆 `-a/-b`。按 round3a 提示，图形学里的具体变换（旋转/缩放/投影矩阵、齐次坐标）归 L5-03，本报告只做通用理论，不深挖图形应用。
-
 **矩阵不是线性变换本身，只是线性变换在某一组基下的"影子"**。同一个线性变换 T，选不同的基就会写出不同的矩阵；这些矩阵彼此"相似"（差一个基变换 M⁻¹(·)M），它们描述的是同一件事，只是用了不同坐标语言。于是本章三步走：8.1 说清"变换 ↔ 矩阵"这层对应是怎么建立的（选定输入基与输出基，把 T 作用在每个基向量上、写出坐标当列）；8.2 说清"换基"这个动作本身怎么用矩阵表达（坐标 c 满足 v = Bc，故 c = B⁻¹v）；8.3 把前两步合起来——同一变换换基前后的两个矩阵满足 B = M⁻¹AM，这就是相似，而"能不能换到一组基让矩阵变成对角阵"正是对角化，换不成时退而求其次得到 Jordan 形。理解了"矩阵依赖基、好基让矩阵变简单"这根钉子，本章一切都能挂上去。
 
 ---
@@ -211,7 +209,6 @@ Anil = sp.Matrix([[2,1],[0,2]]); P2,J2 = Anil.jordan_form()
 print("8.3 defective J:", J2.tolist(), " A=PJP^-1:", sp.simplify(P2*J2*P2.inv()-Anil)==sp.zeros(2))
 print("8.3 3x3 J:", sp.Matrix([[5,4,2],[0,5,0],[0,0,5]]).jordan_form()[1].tolist())
 ```
-
 
     8.1 D*p: [2, 10, 0]
     8.2 new-basis coords: [2. 1.]  B@c: [3. 1.]

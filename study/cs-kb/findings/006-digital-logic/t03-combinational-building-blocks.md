@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：DL-1（数制/补码）、DL-2（布尔代数/SOP/卡诺图/完备门）｜ 一手锚点：Harris & Harris《Digital Design and Computer Architecture》RISC-V Edition, 1st ed, 2021, ISBN 9780128200643, ch2 Combinational Logic Design / ch5 Digital Building Blocks（shop.elsevier.com/books/.../978-0-12-820064-3）｜ 交叉锚：Patterson & Hennessy《COD》RISC-V 2nd ed, 附录 A The Basics of Logic Design；M. Morris Mano & Ciletti《Digital Design》；Wakerly《Digital Design: Principles and Practices》｜ 成熟度：GA/稳定（经典门级组合逻辑，无演进快项）
 
-> 粒度判定：**1 份，不拆**。DL-3 有 6 个小主题，prompt 提示"跨度较大、可拆为『算术构件』与『选择/译码+延迟冒险』两份"。这里判为不拆，理由：六个小主题共享同一条教学主线——**都是"由基本门搭出的、无记忆的功能模块"，且后一块反复复用前一块**：全加器（3.1）是行波与超前进位（3.2）的原子，MUX/译码器（3.3/3.4）是"用选择结构落地任意布尔函数"的两副面孔，比较器与 ALU（3.5）正是把加法器+逻辑门+MUX 拼装起来，而传播延迟与冒险（3.6）是贯穿以上所有构件的共同时序副作用。拆开反而割裂"构件互相拼装"这条主脉，且教辅体量适中（广度优先、不做专家纵深），故合为一份。
-
 **组合电路 = 任意时刻输出只由当前输入决定的电路（无记忆、无反馈环）**；本章讲的"构件"就是把 DL-2 的布尔函数封装成可复用的标准积木——加法、选择、译码、比较——再层层拼成 ALU。抓住两句话贯穿全篇：（1）任何组合功能都能写成真值表→SOP→门图（DL-2.5 的三表示互推），构件只是"起了名字、画成一个方块"的常用布尔函数；（2）每个方块都有传播延迟，多个方块串起来延迟累加，最长的那条链（关键路径）决定电路能跑多快——这直接为 DL-6（时序分析）与 L3-02 CO-4/CO-5（数据通路/流水线）埋线。
 
 ---

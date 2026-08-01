@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：L4-05 大主题02（并发对象与线性一致性、wait-free/lock-free 进展性条件）、大主题03（共享内存基础与寄存器层级）、L4-01 大主题06（硬件原语造锁的机制层）｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 5 章「The Relative Power of Primitive Synchronization Operations」与第 6 章「Universality of Consensus」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；交叉源：Maurice Herlihy「Wait-Free Synchronization」ACM TOPLAS 13(1):124–149, 1991（原始论文 PDF https://cs.brown.edu/~mph/Herlihy91/p124-herlihy.pdf ，核实 2026-07-29）；ISO/IEC 9899:2024（C23）§7.17 `atomic_compare_exchange_*`（CAS 实测印证）｜ 成熟度：GA/理论稳定（共识层级与不可能性结果是 1991 年确立的经典结论，数十年未变）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（CP-04.1–04.5）共享一条严丝合缝的单线——先把"共识"这个标准问题定义清楚（04.1），用它当"测量尺"给每种原语标出一个数字 consensus number（04.2），由这些数字排出一座不可跨越的能力层级（04.3），指出 CAS 的数字是无穷大即"万能"（04.4），最后用 universal construction 把"万能"从一句断言变成一个建设性证明（04.5）。五节是一条论证链，拆开会断，按 report-format v3 §一默认不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**"某个同步原语到底有多强"这个模糊问题，被 Herlihy 变成了一个能算出确切数字的问题——把原语拿去解一个叫"共识"的标准难题，最多能让几个线程 wait-free 地达成一致，那个"最多几个"就是它的能力刻度（consensus number）。read/write 只能刻到 1（连两个线程都协调不了），CAS 能刻到 ∞（万能）。** 这门课回答的是"为何 CAS 万能、read/write 不行"这个能力排序问题，不是讲某把锁怎么实现。
 
 > 下游边界（本课不外扩，交界处一句指路）：**`compareAndSet`/`atomic_compare_exchange` 的语言级接口、strong/weak 变体、memory_order 参数**归 L4-05·CP-06（本报告只在 CAS 能力处指路到 C23 §7.17，不展开六档内存序）；**这些原语在真实弱内存模型上为何/何时需要屏障**归 CP-05；**硬件如何用 `LOCK` 前缀/缓存一致性把 CAS 做成原子**归 L4-01·OS-06。本报告只做能力/共识的理论层，不做实现纵深。
@@ -43,7 +41,6 @@
 ### CP-04.2.1 consensus number 的定义
 
 一个共享对象类型的 **consensus number**（共识数）定义为：用这种对象（可任意多个实例）外加任意多个 read/write 寄存器，能够 **wait-free 求解共识的最大线程数**。如果对任意大的 n 都能解，consensus number 就是 **∞**。
-
 
 consensus number(T) = 能被 T 类型对象 wait-free 求解共识的最多线程数（能解任意多则为 ∞）
 

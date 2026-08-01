@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：L4-05 大主题02（并发对象、顺序/线性一致性、wait-free 进展性）、L4-01 大主题04（线程与共享地址空间）｜ 一手锚点：《The Art of Multiprocessor Programming》(Herlihy/Shavit/Luchangco/Spear) 2nd ed / Revised Reprint 第 4 章「Foundations of Shared Memory」（Elsevier/Morgan Kaufmann，https://www.sciencedirect.com/book/monograph/9780124159501/ ，核实 2026-07-25）为主一手；交叉源：Leslie Lamport「On Interprocess Communication. Part I: Basic Formalism / Part II: Algorithms」Distributed Computing 1(2):77–85 / 86–101, 1986（safe/regular/atomic 寄存器分类的原始出处，https://lamport.azurewebsites.net/pubs/interprocess.pdf ）｜ 成熟度：GA/理论稳定（寄存器层级与构造是 1986 年 Lamport 奠基、经 AMP 教材化的经典结果，数十年未变）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（CP-03.1–03.4）是一条单线：先把"寄存器有强弱三级（03.1）"的语义讲准，再顺着 AMP 的构造阶梯看"如何用弱寄存器一级级搭出强寄存器（03.2）"，接着讲最顶端"多读多写 atomic 靠时间戳完成（03.3）"，最后收在"这条阶梯说明了什么、代价在哪（03.4）"。四节层层递进、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**最底层硬件只保证一个很弱的东西——"一个不与写并发的读，读到最近写入值；一旦读写重叠，读可能读到乱七八糟的值"（safe 寄存器）。整章的核心结论是：仅靠这种最弱的读写位、不借任何硬件原子指令，就能用纯软件、wait-free 地一层层搭出行为"像一次瞬间完成"的最强 atomic 多值多读多写寄存器。这解释了共享内存"读写原子性"到底从哪来、要付多少代价。**
 
 > 下游边界（本课不外扩，交界处一句指路）：**真实 x86-64 硬件的字读写为何本身近似 atomic、`lock` 前缀/内存屏障如何提供原子性**归 L4-01·OS-06 与 L4-05·CP-05/CP-06；**撕裂读写（word tearing）作为数据竞争后果**归 CP-07；**比寄存器更强的原语（CAS）的相对能力与共识数**归 CP-04。本报告只把这些当"原子性的另一种来源"点到，不展开硬件与语言级细节。

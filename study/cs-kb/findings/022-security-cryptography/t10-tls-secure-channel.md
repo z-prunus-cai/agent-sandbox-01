@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：G11-04（分组工作模式与 AEAD：GCM、ChaCha20-Poly1305、nonce 语义）、G11-06（公钥加密/RSA）、G11-07（DH 密钥交换与 ECDH/X25519）、G11-09（PKI 与 X.509 证书、信任链、吊销）；软 ← L4-02（网络分层、TCP）｜ 一手锚点：IETF RFC 8446《The Transport Layer Security (TLS) Protocol Version 1.3》（2018-08），https://www.rfc-editor.org/rfc/rfc8446.txt ；IETF RFC 5869《HKDF》（2010-05），https://www.rfc-editor.org/rfc/rfc5869.txt ；Katz & Lindell《Introduction to Modern Cryptography》3rd ed §13.7（TLS 案例研究）；UC Berkeley CS161 (Fall 2025) L20；Stanford CS155 HTTPS ｜ 成熟度：TLS 1.3（RFC 8446）GA/稳定，但部署面（版本占比、0-RTT 采用、PQ 混合密钥交换迁移）⚙演进快·锚 2026-07-30
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（10.1 握手流程 → 10.2 密钥派生调度 → 10.3 前向保密 → 10.4 认证与信道绑定 → 10.5 降级与中间人）是围绕"同一场 TLS 1.3 握手"的五个切面：先走一遍消息流（10.1），再放大握手内部的密钥调度机器（10.2），抽出其中"临时密钥换来前向保密"这一性质（10.3），抽出"证书签名 + Finished MAC 换来认证与信道绑定"这一性质（10.4），最后看攻击者如何试图撬开它以及现实部署的坑（10.5）。机制同族、篇幅适中，符合 report-format v3「1 大主题 = 1 报告」，不拆 `-a/-b`。
-
 > 一条主线心智模型：**TLS 把"两个原本互不认识、只有一条被监听的 TCP 连接"变成"经过认证、加密、且带完整性的安全信道"。它做三件事——用（临时）DH 协商出双方共享的秘密（机密性 + 前向保密），用证书签名让客户端确认对面确实是它想访问的服务器（认证），用一条贯穿整场握手的 transcript 哈希把上面两件事和最终密钥死死绑在一起（信道绑定 / 防篡改防降级）。TLS 1.3 相较 1.2 的最大变化是：砍掉所有不提供前向保密的密钥交换（只留 (EC)DHE），把握手压到一轮（1-RTT），并从 ServerHello 之后就开始加密。**
 
 > 本报告只讲**协议编排**：分组模式（GCM/ChaCha20-Poly1305，见大主题 04）、公钥/RSA（06）、DH/ECDH/X25519（07）、数字签名（08）、证书/PKI（09）等**原语**已在各自大主题成节，这里只在用到处指回、不重讲。TLS 1.3 握手步骤、HKDF 密钥派生式、Finished MAC 与信道绑定步骤均按 v3 要求独占行/块，不内联。本报告在仓库外 scratchpad 用纯 Python（hmac/hashlib）自实现 HKDF 并对 RFC 5869 Test Case 1 交叉验证通过（PRK/OKM 逐字节相符），脚本与真实输出贴入 10.2 末。实证仅为补充；多来源比对（RFC 8446 × RFC 5869 × Katz §13.7 × CS161）才是正确性主承重。openssl s_client 抓包解析记录**未取**（如实标注）。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25（本组实证工具链另含 git 2.43.0）｜ 核实日期：2026-07-30 ｜ 先修：本课大主题06-4（Git 对象模型——blob/tree/commit/tag 四类对象与内容寻址 DAG，尤其 commit 是不可变、由 SHA 命名的节点）｜ 一手锚点：Pro Git 2nd ed（https://git-scm.com/book/en/v2）§3.1 Git Branching - Branches in a Nutshell、§10.3 Git Internals - Git References（强·一手承重）；交叉：git 官方 man git-check-ref-format(1)、gitrevisions(7)、git-reflog(1)、git-symbolic-ref(1)（一手交叉核对）｜ 成熟度：GA/稳定（引用机制是 git 数十年不变的地基；唯一演进项是 SHA-1→SHA-256 使得 hash 长度可变，本报告在 06-5.1 点明）
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（06-5.1~06-5.5）共享单一主线——「引用（ref）就是一个存着 SHA 的名字」：分支（06-5.1）是可移动的 ref、HEAD（06-5.2）是指向 ref 的 ref、tag（06-5.3）是不移动的 ref、reflog（06-5.4）是记录 ref 移动历史的日志、远程跟踪引用（06-5.5）是缓存远端 ref 的本地 ref。层层围绕同一机制、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 一条主线心智模型：大主题06-4 讲的是 git 的**对象库**（一堆用 SHA 命名、不可变、内容寻址的 blob/tree/commit/tag），那是「事实」；本大主题讲的是**引用层**（refs），那是「给事实起的、可以移动的人类可读名字」。commit 的 40 位 SHA 没人记得住，也无法表达「最新」这种会变的概念——引用就是解决这两件事的：一个引用 = 一个名字 + 它当前指向的对象 SHA。分支、HEAD、tag、远程跟踪引用全都是「引用」这一个机制的不同用法，reflog 则是这些引用每次改指向时留下的黑匣子。理解了「引用只是存了 SHA 的小文件」，git 的分支为何"极其廉价"、detached HEAD 为何危险、reflog 为何能当后悔药，就都通了。
 
 > 本机实证：本报告所有关键论断（分支文件 41 字节、HEAD 内容形态、detached 态、tag 两种形态、reflog 可恢复、远程跟踪引用、散文件 vs packed-refs）均已在本机 git 2.43.0 临时 repo 实跑取证，命令与真实输出贴入正文并集中列于各章末来源。实证脚本只在仓库外 scratchpad，未入库。
@@ -50,7 +48,7 @@ $ wc -c .git/refs/heads/master
 41 .git/refs/heads/master
 ```
 
-本机实证确认为 41 字节，与 round3b 清单里的"约 41 字节"一致。给初学者补两个易错点。其一，这 41 字节是**松散引用（loose ref，即散文件形态）**下的数值；一旦引用被打包进 `packed-refs`（见 06-5.1.4），单条引用就不再是独立文件，"41 字节"这个说法只适用于散文件形态。其二，"41 = 40 + 1"里的 40 是 **SHA-1** 的十六进制长度；git 正在从 SHA-1 迁移到 **SHA-256**（256 位 = 64 个十六进制字符），在 SHA-256 仓库里同一个引用文件会是 65 字节（64 + 1）。所以"41 字节"是**特定于 SHA-1 的经验数值、不是恒定常数**，应理解为"hex 摘要长度 + 一个换行"。本机 git 2.43.0 默认仍是 SHA-1 仓库（`git init` 不加 `--object-format=sha256` 时），故本机实测 41 字节。
+本机实证确认为 41 字节，与 本库编排清单清单里的"约 41 字节"一致。给初学者补两个易错点。其一，这 41 字节是**松散引用（loose ref，即散文件形态）**下的数值；一旦引用被打包进 `packed-refs`（见 06-5.1.4），单条引用就不再是独立文件，"41 字节"这个说法只适用于散文件形态。其二，"41 = 40 + 1"里的 40 是 **SHA-1** 的十六进制长度；git 正在从 SHA-1 迁移到 **SHA-256**（256 位 = 64 个十六进制字符），在 SHA-256 仓库里同一个引用文件会是 65 字节（64 + 1）。所以"41 字节"是**特定于 SHA-1 的经验数值、不是恒定常数**，应理解为"hex 摘要长度 + 一个换行"。本机 git 2.43.0 默认仍是 SHA-1 仓库（`git init` 不加 `--object-format=sha256` 时），故本机实测 41 字节。
 
 ### 6.5.1.4 散文件 vs packed-refs：同一个引用的两种存在形态
 
@@ -99,7 +97,7 @@ $ git check-ref-format refs/heads/foo/        ; echo $?   # 斜杠结尾，非�
 - Pro Git 2nd ed §3.1「Branches in a Nutshell」（强·一手承重）：分支是"轻量可移动指针（lightweight movable pointer to a commit）"、建分支只写一个小文件故极廉价。
 - git 官方 man git-check-ref-format(1)（一手交叉，核实 2026-07-30）：合法引用名规则（禁 `..`、`.lock` 结尾、斜杠结尾等）。
 - 本机 git 2.43.0 实测（scratchpad 临时 repo）：分支文件内容 = 40 hex + 换行、`wc -c` = 41 字节、`pack-refs --all` 后散文件消失而 packed-refs 出现、check-ref-format 各案例退出码。
-- 冲突/分账：round3b 与 Pro Git 均用"约 41 字节"；本报告点明该数值特定于 SHA-1、SHA-256 仓库为 65 字节，不作恒定常数断言（SHA-256 侧为标准推算，非本机实测，本机默认 SHA-1）。
+- 冲突/分账：本库编排清单与 Pro Git 均用"约 41 字节"；本报告点明该数值特定于 SHA-1、SHA-256 仓库为 65 字节，不作恒定常数断言（SHA-256 侧为标准推算，非本机实测，本机默认 SHA-1）。
 
 ## 6.5.2 HEAD 与 detached HEAD
 

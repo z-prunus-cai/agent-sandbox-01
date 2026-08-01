@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题12（持久存储介质与 RAID：磁盘几何、SSD/FTL、RAID 小写）、大主题13（文件与目录接口：fd 表、inode 元数据、VFS、页缓存与 fsync）｜ 一手锚点：OSTEP 网页版 Ch40「File System Implementation」/Ch41「Locality and The Fast File System」/Ch42「Crash Consistency: FSCK and Journaling」/Ch43「Log-structured File Systems」/Ch45「Data Integrity and Protection」（https://pages.cs.wisc.edu/~remzi/OSTEP/ ，核实 2026-07-25）；MIT 6.1810 2024 Fall「File Systems / Crash Recovery / FS Performance」讲义（pdos.csail.mit.edu/6.1810）；Linux 内核 `Documentation/filesystems/ext4.rst` 与 `ext4/journalled data` 说明；McKusick 等「A Fast File System for UNIX」(1984)；Rosenblum & Ousterhout「The Design and Implementation of a Log-Structured File System」(1991/1992) ｜ 成熟度：GA/稳定（vsfs/FFS/journaling 概念数十年稳定；ext4 GA；btrfs 稳定但部分特性演进；ZFS 成熟）
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（14.1–14.6）沿 OSTEP 持久化篇一条主线递进——"先把一个最简文件系统怎样铺在磁盘上讲清（14.1 vsfs 布局）→ 为了性能怎样按局部性摆放（14.2 FFS）→ 掉电会把这套布局写坏，问题是什么（14.3 崩溃一致性与 fsck）→ 工业界怎样用日志根治它（14.4 journaling）→ 换一个思路把整盘当日志写（14.5 LFS）→ 磁盘还会悄悄把数据写错，怎样发现（14.6 校验和）"。六节互为因果、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**文件系统 = 一套把"线性编号的磁盘块"组织成"文件与目录树"的数据结构，外加一套保证这套结构在任何时刻掉电后都能被修回一致状态的协议**。前半（14.1–14.2）讲静态布局：超级块、位图、inode 表、数据块怎样分区，以及 FFS 怎样按局部性摆放它们让磁盘少寻道；后半（14.3–14.6）讲动态一致性：多个磁盘块的更新不是原子的，掉电会留下"改了一半"的结构，fsck 事后扫全盘修、journaling 事前写日志再改、LFS 干脆只追加不覆盖、校验和则防磁盘本身把数据写错或悄悄烂掉。
 
 > 下游边界（本课不外扩，只在交界处一句指路）：本报告讲**文件系统内部实现与崩溃一致性协议**。文件/目录的**用户接口**（open/read/write/fd 表/inode 字段语义/VFS/硬软链接/页缓存/fsync）归本课大主题13，本报告只在需要时呼应；**磁盘物理特性与 RAID 小写问题**归本课大主题12；**数据库的 WAL 与恢复**是同一族思想在 DB 层的展开，归数据库课，本报告只在 journaling 处点明"这就是 DB 的 write-ahead logging"。

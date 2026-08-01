@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：L4-03·03-1 关系代数、03-5 物理存储与文件组织（块/页、顺序 vs 随机访问代价）、03-6 索引与 B+树；L1 算法（归并排序、哈希）｜ 一手锚点：《Database System Concepts》7th ed.（Silberschatz/Korth/Sudarshan, 2019，简称 DBSC 7e）ch15「Query Processing」；《Database Management Systems》3rd ed.（Ramakrishnan/Gehrke, 2003，简称 R&G）ch12–14；CMU 15-445 Spring 2026 L11「Sorting & Aggregations Algorithms」、L12「Joins Algorithms」、L13–14「Query Execution I/II」（schedule 已核 2026-07-29，讲次编号随学期变，标 ⚙）；PostgreSQL 16/17 与 SQLite 3.4x 官方文档 ｜ 成熟度：GA/稳定（代价公式为 1970 年代 System R 以来经典结论，无演进快项；具体引擎行为标注版本）
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（03-7.1–03-7.6）都属于「一条 SQL 进来之后、优化器定好计划之后，执行层如何把每个关系算子真正跑出来、各花多少 I/O」这同一层主题，环环相扣（先讲流水线与代价单位 → 再讲单算子选择/排序/连接/其它 → 最后讲把算子串起来的执行模型）。按 report-format v3 §一「默认 1 大主题 = 1 报告」，展开后篇幅可控，故不产 `-a/-b`。
-
 > 边界申明：本报告只讲**单机、经典的一次一元组（tuple-at-a-time）执行**与其代价。**查询优化**（等价变换、代价模型细节、基数估计、连接顺序枚举）是下一个大主题 03-8；**向量化执行、JIT 代码生成、多核/分区并行执行**属内核级主题，留 L6-04（§04-4/§04-5/§04-8），本报告在 03-7.6 末显式点到为止、不展开。
 
 > 实机实证状态：**未取**。本环境无 SQLite CLI（`sqlite3` 缺失），且无运行中的 PostgreSQL 服务（`psql -l` 报 socket 连接失败）。故本报告的 `EXPLAIN` 判读、`enable_hashjoin` 切换对比等均为**规范/文档级说明**，未贴真实机器输出；按 v3「实机验证可选、未取如实标注」处理。所有代价公式来自 DBSC 7e / R&G 一手核对，非凭记忆。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-02 CO-8（并行处理器与多核入门）、本课大主题1（Amdahl 与三类并行总览：ILP/DLP/TLP，此处再加 RLP）、本课大主题6（多处理器与一致性，WSC 是其"跨机器放大版"） ｜ 一手锚点：Hennessy & Patterson《Computer Architecture: A Quantitative Approach》6th ed, 2017（ISBN 9780128119051）ch6 *The Warehouse-Scale Computer to Exploit Request-Level and Data-Level Parallelism* + Barroso, Clidaras & Hölzle《The Datacenter as a Computer》3rd ed, 2018（Morgan & Claypool，Google 一手经验） ｜ 佐证/现状：Google 数据中心效率页、Uptime Institute 2024 全球调查、Backblaze 2024 Drive Stats、Pinheiro/Schroeder 等 Google 现场研究论文 ｜ 成熟度：概念框架 GA/稳定；PUE/故障率/成本等**具体数值 ⚙演进快·锚版本·随时变**，教材 2017 数字不作 2026 现状结论
 
-> 粒度判定：**1 份（不拆）**。理由：AA-7 的 5 个小主题是"把一整座数据中心当一台计算机来设计"这一条主线的五个侧面——先立抽象与并行模型（7.1），再算这台"大计算机"的电（7.2）、连它内部的线（7.3）、扛它必然发生的坏（7.4）、付它的账（7.5）。五节共享同一个尺度前提（数万台服务器、故障是常态、成本以整栋楼摊算），且互相引用（PUE 既是能效指标又是成本杠杆、故障率既是可靠性问题又进 TCO），硬拆会切断这些回指，故合为一份综述式教辅。本大主题只讲 WSC 尺度的体系结构视角；单机微架构归大主题1–6，分布式一致性协议/云计费模型归接缝课 L5-01 分布式 / L6-05 云系统，此处仅点名不深挖。
-
 本报告的 WSC 抽象、请求级/数据级并行、存储-通信层级、PUE、能耗比例性、大规模故障模型、CapEx/OpEx/TCO 框架均取自 H&P《QA》6th ed ch6，并与其直接素材来源 Barroso《The Datacenter as a Computer》3rd ed 交叉核对（QA ch6 本身大量改编自 Barroso 团队的 Google 经验，两者对框架高度一致，属"同源加强"而非两个独立学派）；凡涉及会随年份漂移的具体数值（PUE 现状、磁盘 AFR、DRAM 错误率、成本占比），另用 2024–2025 的公开一手/权威来源（Google、Uptime Institute、Backblaze、Google 现场论文）复核并硬标 ⚙演进快。术语首次出现时中英并给。教材 2017 年的示例数字标「锚版本·教材设定」，不当作 2026 现状。本机实证不适用（数据中心尺度无法在单机复现），按 prompt 要求标「未取/不适用」。
 
 ---

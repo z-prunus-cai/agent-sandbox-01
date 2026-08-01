@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题3（封装/继承/多态三支柱）、大主题5（接口/抽象基类/组合优于继承）、大主题7（一等与高阶函数、闭包） ｜ 一手锚点：GoF《Design Patterns: Elements of Reusable Object-Oriented Software》(Gamma/Helm/Johnson/Vlissides, 1994, Addison-Wesley) —— 创建型/结构型/行为型三章及第 1 章「What Is a Design Pattern」与两大设计原则；Python 3.11 官方文档（`functools.wraps`、Compound statements §8「Function definitions」中的 decorator 语法、`abc` 模块）；PEP 318「Decorators for Functions and Methods」；Peter Norvig《Design Patterns in Dynamic Programming》(1996) ｜ 成熟度：GA/稳定（GoF 分类为 1994 年经典结晶，30 年无实质漂移；Python decorator 语法自 2.4a2 引入 `@`，Py3 起为稳定语言特性）
 
-> 粒度判定：**1 份**（不拆）。理由：本大主题定位为「可选单元」，4 个小主题（10.1–10.4）合起来只讲一件事——把 GoF 的三类模式当作「OO 范式为绕开语言表达力缺口而结晶出的惯用法」来速览，且 10.4 需要 10.1–10.3 的具体模式（尤其策略）作对照才讲得通，拆开会割裂「模式—消解」这条主线。按 v3「广度优先、讲懂不纵深」的边界，架构层方法学（SOLID 落地、模式的工程组织）显式归 L4-06，本报告只讲「语言层用法 + 范式定位」，篇幅适中，故合为 1 份。
-
 设计模式（design pattern）不是可以 import 的库函数，而是「对某类反复出现的设计问题，一个经过提炼的、可复用的解决方案骨架」。GoF 1994 年的书把 23 个面向对象模式编目为三类——创建型（怎么造对象）、结构型（怎么把对象/类组装成更大结构）、行为型（对象之间怎么分配职责、怎么通信），每个模式用统一的条目描述：意图（Intent）、动机（Motivation）、适用性（Applicability）、结构（Structure，UML 图）、参与者与协作、后果、实现要点。理解本报告的关键心态是：**模式是范式的「产物」而非「零件」**——它们是 OO 程序员在缺少某些语言特性（如一等函数、多方法分派）时，用类与对象反复拼出来的固定套路；换一种范式（如函数式），同一个问题可能一行高阶函数就解决，模式随之「消解」（10.4 展开）。
 
 GoF 全书贯穿两条设计原则，几乎所有模式都是它们的具体化，先记住它们后面每个模式都好懂：「Program to an interface, not an implementation」（面向接口而非实现编程——依赖抽象类型，不依赖具体类），以及「Favor object composition over class inheritance」（优先用对象组合而非类继承来复用——组合更灵活、耦合更松）。本报告所有 Python 示例均在基线环境（Python 3.11.15、Linux 6.18.5 x86_64）下真实运行，命令与输出随节贴出；GoF 原书以 C++/Smalltalk 举例，本报告用 Python 佐证同一意图时，会把「模式的语言无关意图」与「Python 的具体表达」分开标注。

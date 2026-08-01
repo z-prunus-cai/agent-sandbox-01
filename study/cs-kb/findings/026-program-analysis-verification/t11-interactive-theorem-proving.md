@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：本课 V9（Hoare 逻辑/演绎验证）、L5-06 T3（Safety = Progress + Preservation）、L5-06 T10（高阶系统与依赖类型一瞥，本报告 V11.2 点名接入不展开）｜ 一手锚点：Software Foundations（Pierce 等，Rocq/Coq 一手可执行教材）Vol.1 Logical Foundations v7.0（2026-01-09 发布，要求 Rocq/Coq 9.0.0+）、Vol.2 Programming Language Foundations，https://softwarefoundations.cis.upenn.edu/ ；The Rocq Prover 官方参考手册 Core language 章（V9.0.0 / V9.1.0），https://rocq-prover.org/ ｜ 交叉一手：Coquand & Huet《The Calculus of Constructions》(1988)；Paulson《From LCF to Isabelle/HOL》(arXiv:1907.02836)；de Moura 等《The Lean 4 Theorem Prover》系统描述 ｜ 工具实证：Coq/Rocq 本机**未预装**，本报告全部机制以一手比对为准，代码片段为示意/未实机验证（如实标注）｜ 成熟度：GA/⚙演进快·锚版本（Coq→Rocq 更名进行中；Lean 4 / mathlib 生态活跃演进）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（V11.1–V11.4）是同一条主线的自然推进——先钉住"证明助手凭什么可信"这个世界观地基（V11.1 可信基/TCB），再讲支撑这份可信的核心原理"依赖类型即命题、证明即程序"（V11.2 Curry-Howard 深化），接着给出实际怎么定义对象、怎么用 tactic 一步步把证明构造出来（V11.3 归纳类型与归纳证明），最后把这套机器落到本课"验证半场"最看重的成果上——机械化的元理论与可靠性证明（V11.4，接 L5-14 R12）。单一主线、机制层层咬合、本课偏少的 4 小主题，按 report-format v3「默认 1 大主题 = 1 报告」不产 `-a/-b`。
-
 交互式定理证明（interactive theorem proving，ITP）是这门课"验证半场"的顶点技术。前面的数据流分析、抽象解释、模型检验、SMT 都追求"全自动但只能证一类有限性质"；交互式定理证明反过来——它允许你证明**几乎任何**数学命题或程序性质，代价是需要人来引导证明的大方向，机器只负责逐步、机械地检查每一步是否严丝合缝。它的一句话心智模型是：**你和一台"绝不放过任何逻辑漏洞的助教"一起写证明——你出思路（用 tactic 指挥），它把你的每一步翻译成一个可被机械检查的证明对象，最后由一个极小的、可信的内核逐符号验收；只要内核通过，这个定理就被认为在数学上无懈可击。**
 
 理解 ITP 的两个总钥匙，正是本报告的两条暗线。第一条是 **Curry-Howard 对应**：命题就是类型、证明就是这个类型的程序（项）——于是"证明一个定理"这件本来很玄的事，被还原成"写一个类型正确的程序"这件可被类型检查器机械核对的事（V11.2）。第二条是 **de Bruijn 判据**：把整个庞大复杂的系统（几十万行的 tactic、自动化、用户界面）都当成"不可信的建议者"，只让一个几千行、被反复审计的**内核**（kernel）去做最终裁决——你只需要信任这个内核，就等于信任了全部证明（V11.1）。抓住这两点，Coq/Rocq、Isabelle、Lean 这些具体系统的差异就都成了同一主题下的变奏。

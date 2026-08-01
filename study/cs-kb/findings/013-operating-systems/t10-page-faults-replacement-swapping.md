@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：本课大主题08（地址空间与内存 API）、大主题09（地址翻译与分页机制：页表项、有效位、TLB）、大主题02（进程与 fork/COW，OS-02.4）｜ 一手锚点：OSTEP 网页版 Ch21「Beyond Physical Memory: Mechanisms」/Ch22「Beyond Physical Memory: Policies」/Ch23「Complete Virtual Memory Systems」（https://pages.cs.wisc.edu/~remzi/OSTEP/ ，核实 2026-07-25）；Silberschatz《Operating System Concepts》Ch10「Virtual Memory」（demand paging / 替换 / 工作集 / thrashing）；MIT 6.1810 2024 Fall「Page Faults」讲义（pdos.csail.mit.edu/6.1810，核实 2026-07-25）；Linux 内核文档 `admin-guide/sysctl/vm.html`（swappiness）与 `admin-guide/mm/multigen_lru.html`（MGLRU）（docs.kernel.org，核实 2026-07-29）｜ 成熟度：GA/稳定（按需分页、OPT/FIFO/LRU/clock、工作集、COW、swap 为数十年稳定教材内容）；⚙演进快：Linux 页回收实现（active/inactive 多级 LRU、swappiness 语义、MGLRU）随内核版本演进，实现细节以对应版本内核文档为准。
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（10.1–10.5）共享一条单一主线——"物理内存装不下所有虚拟页时怎么办"：先讲页怎样被延迟装入、装不到时缺页如何处理（10.1），再讲装不下时挑谁换出（替换策略 10.2），接着讲挑得太频繁会抖动、怎样用工作集判断该给多少内存（10.3），然后讲两个"省内存的按需装入"变体 COW 与按需置零（10.4），最后讲被换出的页到底去了哪、怎么回来（swap 机制 10.5）。五节层层咬合、篇幅适中，按 report-format v3 §一默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 本报告一条主线心智模型：**虚拟内存让每个进程都以为自己独占一大片内存，但物理 RAM 有限——于是页被"按需"装入（要用才装），装不下时按某种策略把"最不该留"的页换出到磁盘，用时再换回**。缺页（page fault）就是这套机制的触发器：每一次"要用的页当前不在内存/未建立映射"都会陷入内核，由缺页处理程序补上这一页。整套设计在"透明地假装内存无限"和"磁盘比内存慢约五到六个数量级"之间做工程折中——策略好坏、给多少帧、换出到哪，直接决定程序是流畅运行还是卡死在抖动里。
 
 > 下游边界（本课不外扩，只在交界处一句指路）：本课讲**机制与策略**——缺页处理时序、OPT/FIFO/LRU/clock、工作集与抖动、COW、swap 换入换出。而**页表结构与地址翻译、TLB、有效位**属大主题09（本报告只引用不重讲）；**fork 生命周期**属大主题02（COW 在此只讲"写触发复制"这一机制，呼应 OS-02.4）；**块设备 I/O 与磁盘调度**（swap 落到的介质代价）属大主题11/12；**页缓存与文件回写（fsync/脏页）** 属大主题13（本报告只在"文件页 vs 匿名页回收"处一句指路）。

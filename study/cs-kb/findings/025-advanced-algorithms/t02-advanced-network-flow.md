@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-01 #12（流网络、残量网络、增广路、最大流最小割定理、Ford–Fulkerson / Edmonds–Karp，本报告只点名不重讲）；摊还三法（聚合/记账/势能，L3-01 #09）与最短路（Bellman–Ford，L3-01 #11）作分析工具用 ｜ 一手锚点：MIT 6.854J *Advanced Algorithms*（Fall 2008）Lec 2–5 讲义（OCW）；Goldberg–Tarjan《A new approach to the maximum-flow problem》(JACM 35(4):921–940, 1988) 与《Finding minimum-cost circulations by canceling negative cycles》(JACM 36(4):873–886, 1989)；CLRS 4th ed.(2022) Ch24（最大流先修视角）｜ 佐证：Ahuja–Magnanti–Orlin《Network Flows》(1993)、Roughgarden CS261 讲义、Radzik–Goldberg (Algorithmica 1994) ｜ 成熟度：全部为 GA/稳定的经典结果（1988–1994 定型），非演进中对象
 
-> 粒度判定：**1 份（不拆）**。理由：三个小主题是同一条主线的三段——2.1 用"预流 + 高度"的局部推进法换掉增广路，把最大流做到更好的最坏界；2.2 把最大流推广成带费用的最小费用（循环）流，给出"消负圈"这一最朴素但只伪多项式的框架；2.3 正是为消负圈补上"强多项式"的最后一块拼图（最小均值圈消圈 + cancel-and-tighten）。三段共用残量网络、势/折合费用、势能式摊还这同一套工具，2.3 直接以 2.2 的消负圈为出发点，硬拆会切断"为什么需要强多项式化"这条因果线。最大流的更快算法（阻塞流、KRT、近年 almost-linear）与最小费用流的 SSP/scaling/网络单纯形留作延伸，本报告只做 push-relabel 与消负圈族的广度。
-
 本报告的界与算法结构以 6.854J 讲义与两篇 Goldberg–Tarjan 原始论文为一手交叉核对，复杂度数字再与 CLRS 4e Ch24、AMO《Network Flows》、Roughgarden CS261 比对；来源打架处两边都记、点明分歧。所有具体界均来自比对通过的来源，未证实处标「待核」。
 
 本机可选实证（核实 2026-07-30，脚本见文末思路，跑完即清）：自实现 FIFO push-relabel 在 200 个随机图上最大流值与 `scipy.sparse.csgraph.maximum_flow` 全部一致；自实现 Klein 消负圈最小费用流在 21 个随机图上总费用与 `scipy.optimize.linprog(method="highs")` 建模解全部一致。这只坐实"实现正确/最优值对得上"，不构成对复杂度界的证明。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L1-02 大主题1（逻辑与证明，理解形式定义与存在性论证）、大主题2（集合·函数·序列，字母表上的串就是有限序列、语言就是串的集合）、大主题9（关系，转移函数是一种特殊映射）｜ 一手锚点：Rosen《Discrete Mathematics and Its Applications》8th ed.（McGraw-Hill, ISBN 9781259676512）Ch13「Modeling Computation」（§13.1 Languages and Grammars／§13.2 Finite-State Machines with Output／§13.3 Finite-State Machines with No Output／§13.4 Language Recognition／§13.5 Turing Machines）｜ 交叉锚点：Sipser《Introduction to the Theory of Computation》3rd ed.（Cengage）Ch1–3；Hopcroft–Motwani–Ullman《Introduction to Automata Theory, Languages, and Computation》3rd ed.｜ 成熟度：GA/稳定（经典理论，定义与定理数十年无变动）
 
-> 粒度判定：**1 份，不拆**。本大主题 4 个小主题（12.1–12.4）构成一条完整而短小的"计算能力阶梯"教学链：先定义形式语言与文法、用 Chomsky 层次把文法按表达力排序（12.1），再看这条阶梯上最弱的机器——有限状态机（12.2），接着用正则表达式和 Kleene 定理刻画有限状态机到底能识别哪些语言（12.3），最后跳到阶梯顶端最强的模型——图灵机（12.4）。四节围绕"不同计算模型的表达力"同一主题、篇幅适中、不跨机制，按 v3 默认 1 大主题 = 1 报告，不拆 `-a/-b`。
-
 > 交叉源说明：本大主题原 prompt 列 MIT 6.042J 为交叉锚，但 6.042J《Mathematics for Computer Science》实际不覆盖自动机与图灵机（其内容为证明/图论/数论/概率/计数）。为守住"≥2 独立一手源"红线，本报告将交叉锚替换为该领域公认权威教材 Sipser 3e 与 Hopcroft–Motwani–Ullman 3e——这两本才是自动机与可计算性的标准一手源，与 Rosen Ch13 同级或更专精。此替换为诚实取证，非编造。
 
 > 本报告一条主线心智模型：**计算模型是"给'什么叫算得出来'画一条条能力线"**。同一件事——描述一个语言（= 一堆合法的串）——可以从两端看：从"生成"端用**文法**把合法串一条条造出来，从"识别"端用**机器**判断一个给定串合不合法。文法越自由、机器内存越多，能处理的语言就越复杂。这条能力阶梯由弱到强是：有限状态机（只有有限记忆）→ 下推自动机（加一个栈）→ 图灵机（无限纸带、最强）。本课只做定义导论，不证泵引理、不深挖可判定性——那些归 L3-05。
@@ -91,7 +89,6 @@ M = (S, I, O, f, g, s₀)
 ### 12.2.2 Moore 机与 Mealy／Moore 对比
 
 **Moore 机**（Moore machine）是带输出有限状态机的另一种约定：输出只由**当前状态**决定，与当前输入无关，即输出函数写成 g: S → O，输出标在每个状态"圈"里而不是标在转移边上。Mealy 机与 Moore 机在计算能力上**等价**——任一台都能转换成一台功能相同的另一型，只是状态数与输出时机不同。
-
 
 Mealy 输出 = g(当前状态, 当前输入)；Moore 输出 = g(当前状态)
 

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：L3-02（缓存与微架构：cache 命中/未命中、多级缓存、乱序/推测执行基础）、G11-12/13（内存安全攻防）；软 ← L5-05 ｜ 一手锚点：Stanford CS155《Hardware and micro-architectural security》https://cs155.stanford.edu/syllabus.html ；MITRE CWE-208《Observable Timing Discrepancy》(CWE 4.20, 2026-04-30) https://cwe.mitre.org/data/definitions/208.html ；Kocher《Timing Attacks…》CRYPTO'96；Yarom & Falkner《FLUSH+RELOAD》USENIX Security 2014；Lipp 等《Meltdown》USENIX Security 2018；Kocher 等《Spectre Attacks》IEEE S&P 2019；Kocher/Jaffe/Jun《Differential Power Analysis》CRYPTO'99 ｜ 成熟度：计时/缓存/功耗侧信道机理稳定（GA）；瞬态执行攻击谱系 ⚙演进快·锚 2026-07-30（新变体与缓解仍在增补，本机内核 6.18.5 缓解状态见 14.3.6）
 
-> 粒度判定：**1 份，不拆**。5 个小主题（14.1 计时 → 14.2 缓存 → 14.3 瞬态执行 → 14.4 功耗/电磁 → 14.5 常时实现与防御）共享一条主线——"计算过程会通过时间、缓存状态、功耗等**非预期通道**泄露秘密"，前四节是四类泄露源（软件时序 / 微架构缓存 / 推测执行 / 物理功耗），第五节是统一防御面（常时编码 + 掩码 + 盲化）。机制同族、篇幅适中，符合 report-format v3「1 大主题 = 1 报告」，不拆 `-a/-b`。
-
 > 一条主线心智模型：**密码算法在数学上是安全的，但它跑在真实的 CPU 和电路上——而"跑"这个动作本身会产生副产物：花了多长时间、访问了哪些缓存行、瞬间耗了多少电、辐射出什么电磁波。这些副产物若与秘密数据相关（"数据依赖"），攻击者就能反过来从副产物里推回秘密。侧信道攻击不打算破解算法，它绕过算法，去读实现的"体温和心跳"。防御的核心思想因此也统一：让执行的可观测行为与秘密无关（常时化），或者把秘密随机拆分/掩盖，让单次可观测量与真实秘密去相关（掩码/盲化）。**
 
 > 本报告只讲**微架构与实现层的侧信道**：缓存原理（见 L3-02）、AEAD/RSA/ECDSA 等被攻击的密码原语（见大主题 03–08）在各自大主题成节，这里只在用到处指回、不重讲。计时/缓存/瞬态泄露机理与常时编码/掩码/盲化步骤均按 v3 要求分行/块列出，不内联。本报告在仓库外 scratchpad 用纯 Python 做了一个**教学级计时差异**演示（朴素提前退出比较 vs `hmac.compare_digest`），真实输出贴入 14.1.5；并读取了本机 `/sys/devices/system/cpu/vulnerabilities/` 的**真实缓解状态**贴入 14.3.6。实证仅为补充；多来源比对（CWE-208 × Kocher × Yarom/Falkner × Meltdown/Spectre 原论文 × Intel/ARM 白皮书）才是正确性主承重。缓存/瞬态攻击**仅概念讲解，未复现**（如实标注）。

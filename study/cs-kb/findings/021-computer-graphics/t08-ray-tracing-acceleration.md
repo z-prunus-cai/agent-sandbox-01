@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-30 ｜ 先修：G-01 数学预备（点/向量/叉积/法线）、G-02 相机与投影（相机光线生成）、G-07.6 空间层次（BVH/kd-tree 数据结构视角）、L1-04 微积分与 L1-03 线代（求根、点积/叉积）｜ 一手锚点：PBRT（*Physically Based Rendering*，在线开放版 pbr-book.org，"Shapes / Intersection Acceleration / Bounding Volume Hierarchies" 章）；CMU 15-462/662 Computer Graphics（Spring 2024, Nancy Pollard）Ray Tracing / Spatial Hierarchies / High-Performance Ray Tracing lectures（http://15462.courses.cs.cmu.edu/spring2024/lectures ，2026-07-25 复核在架）；*Real-Time Rendering, 4th ed*（Akenine-Möller et al., 2018）第 22 章 Intersection Test Methods、第 26 章实时光线追踪；*Fundamentals of Computer Graphics*（Marschner & Shirley）光线追踪章；Möller & Trumbore, "Fast, Minimum Storage Ray/Triangle Intersection", JGT 1997（Möller–Trumbore 原始出处）｜ 成熟度：GA/稳定（求交公式、BVH、SAH 为数十年基石）；G-08.4 的 RT 硬件（RT Core / Ray Accelerator）与光追 API 🔴演进快·锚版本·本机无 GPU 无法实证
 
-> 粒度判定：**1 份，不拆**。本大主题 5 个小主题（G-08.1～G-08.5）集中在一条主线上——"光线追踪就是不断问'这条射线最先撞到哪个物体'，朴素做法是拿射线和每个图元逐一求交，太慢；于是用包围盒层次（BVH）把'不可能撞到'的一大片图元一次剔除。"从"怎么造射线、怎么和单个图元求交"（8.1）→"怎么把图元组织进 BVH"（8.2 构建）→"怎么在 BVH 上快速遍历并剔除"（8.3 遍历+slab 测试）→"怎么进一步榨性能：SIMD 打包与专用硬件"（8.4）→"支撑这一切的物理模型：几何光学与光场"（8.5）。机制同源、篇幅适中，按 report-format v3 §一默认「1 大主题 = 1 报告」，不拆 `-a/-b`。
-
 > 一条主线心智模型：把一条光线想成从相机（或某个表面点）射出的一支箭，参数 $t$ 是它飞了多远。光线追踪的每一步都在解同一个问题——"这支箭沿途最先扎中哪个物体，扎在哪个 $t$"。对单个图元（球/平面/三角形），这归结为把光线参数式代入图元方程后**求根**。场景里成千上万个图元时逐一求根不可行，于是引入**加速结构**：用轴对齐包围盒（AABB）把物体分层套起来（BVH），射线先问"撞不撞得上这个大盒子"，撞不上就整支子树跳过——把 $O(N)$ 的逐图元测试降到平均 $O(\log N)$。
 
 > 验证说明：本报告已用 numpy 2.4.6 就地做了四处**可选**数值加固——光线-球二次求根、Möller–Trumbore 光线-三角（命中与未命中各一例）、AABB slab 测试（命中与平行射线未命中）、一个 4 图元玩具场景的 SAH 代价对比。真实输出贴在对应节内。这些仅为补充直觉，**正确性主承重仍是多来源比对**（PBRT × CMU 15-462 × Real-Time Rendering 4th，Möller–Trumbore 另比对 1997 原文）；G-08.4 的 RT 硬件因**本机无 GPU 属文档腿·未实证**，不给任何硬件性能数字。

@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L2-02 数字逻辑（SRAM/DRAM 存储单元、寄存器堆）、本课大主题1（性能公式 CPU时间 = IC × CPI × 周期，理解访存延迟如何进 CPI）、大主题2（地址、字节编址、对齐） ｜ 一手锚点：Patterson & Hennessy《Computer Organization and Design》RISC-V Edition, 2nd ed, 2020（ISBN 9780128203316）ch5 *Large and Fast: Exploiting Memory Hierarchy*；佐证 Bryant & O'Hallaron《CSAPP》3rd ed（csapp.cs.cmu.edu/3e/）ch6 存储器层次 + ch9 虚拟内存、Berkeley CS61C、Hennessy & Patterson《QA》6th ed, 2017（ISBN 9780128119051）ch2 + 附录 B ｜ 成熟度：GA/稳定（局部性、映射、AMAT、分页均为经典公理，无版本漂移；本机具体 cache 参数/页大小随平台变，已用 sysfs/getconf 实读并与教材通式分账）
 
-> 粒度判定：**1 份（不拆）**。理由：CO-6 的 6 个小主题是一条单线——"为什么要分层（6.1 局部性）→ 最简单的缓存怎么定位数据（6.2 直接映射）→ 减少冲突（6.3 相联+替换）→ 写怎么办（6.4 写策略）→ 怎么量整体快慢并叠多级（6.5 AMAT）→ 把同一套思想放大到主存/磁盘（6.6 虚拟内存+TLB）"。彼此环环相扣、跨度小，硬拆会切断"tag|index|offset 拆分"这条贯穿 6.2–6.6 的主线，故合为一份。高级内存优化（预取/非阻塞 cache/多级页表细节）明确留给 L5-05 AA-2、虚拟内存的 OS 侧机制留给 L4-01，本报告只做入门广度。
-
 本报告的公式与结构来自 P&H《COD》ch5 与 CSAPP ch6/ch9 两处一手交叉核对；本机 cache 层级/大小/相联度来自 `/sys/devices/system/cpu/cpu0/cache/`，页大小来自 `getconf PAGE_SIZE`——**教材通式与本机具体值分账标注**。术语首次出现时中英并给。
 
 本机实测基线（`/sys/devices/system/cpu/cpu0/cache/`，核实 2026-07-26）：

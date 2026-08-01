@@ -2,8 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-29 ｜ 先修：N5 传输层与可靠数据传输（TCP 段结构、字节流序号与累积确认、超时重传与 RTT 估计）｜ 一手锚点：Kurose & Ross《Computer Networking: A Top-Down Approach》8th ed.(2021) Ch3；RFC 5681（TCP Congestion Control，2009，承重）；RFC 9438（CUBIC，2023，承重）；RFC 9293（Transmission Control Protocol，2022，流控/SWS/Nagle）；RFC 3168（ECN，2001）＋RFC 9768（AccECN，2025）＋RFC 9330/9331（L4S，2023）；BBR = IETF draft-ietf-ccwg-bbr-04（2025-10-20，Experimental，**非 RFC**）；Stanford CS144 ｜ 成熟度：Reno/CUBIC/流控/ECN 均 GA/稳定；BBR ⚙演进快·锚 draft-ietf-ccwg-bbr-04（BBRv3）·随时变
 
-> 粒度判定：**1 份，不拆**。本大主题 6 个小主题（N6.1–N6.6）都围绕同一根主线——「发送方到底一次能往网络里塞多少字节」。这个「多少」由两把闸门共同决定：一把是接收方开的（流控，rwnd），一把是网络自己"逼"出来的（拥塞控制，cwnd）。N6.1 讲第一把闸，N6.2–N6.6 讲第二把闸从原理（AIMD）到经典实现（Reno）、到 Linux 主流（CUBIC）、到显式信号（ECN）、到新范式（BBR）的演进。六节篇幅适中、共享同一套术语（cwnd/ssthresh/RTT/BDP），拆开反而割裂主线。按 report-format v3 §一「默认 1 大主题 = 1 报告」，不产 `-a/-b`。
-
 本报告从头到尾只回答一个问题，**任一时刻，TCP 发送方允许有多少"已发出但还没被确认"的字节在路上飞（即 in-flight / FlightSize）。** 这个上限是两个窗口取小：
 
 允许发送的字节数上限 = min(rwnd, cwnd)

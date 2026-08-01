@@ -2,7 +2,6 @@
 
 > 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜ 核实日期：2026-07-26 ｜ 先修：L3-04 大主题2（数据抽象与封装）、大主题3（OO 三支柱：封装/继承/多态）、大主题4（动态派发与 MRO） ｜ 一手锚点：Barbara Liskov《Data Abstraction and Hierarchy》(OOPSLA '87 keynote, 刊于 SIGPLAN Notices 23(5), May 1988)；Liskov & Wing《A Behavioral Notion of Subtyping》(ACM TOPLAS 16(6), Nov 1994)；Bertrand Meyer《Object-Oriented Software Construction》(1988) — 开闭原则原始出处；GoF《Design Patterns》(Gamma/Helm/Johnson/Vlissides, 1994) — "favor object composition over class inheritance"；Robert C. Martin《Design Principles and Design Patterns》(2000) 与《Clean Architecture》(2017) — SOLID；PEP 3119（abc）、PEP 544（Protocol）与 Python 3.11 官方 `abc`/`typing` 文档 ｜ 成熟度：GA/稳定（经典设计原则，无版本漂移；Python 机制锚 3.11，Protocol 自 3.8 起 GA）
 >
-> 粒度判定：**1 份**（不拆）。理由：本大主题 4 个小主题（5.1–5.4）共享同一条主线——"如何用接口/抽象约束类型之间的关系，并据此评价一个设计好不好"。5.1 给出表达接口的语言机制（ABC/Protocol），5.2 给出接口正确性的判据（LSP），5.3 给出复用手段的取舍（组合 vs 继承），5.4 把前三者收敛成一张原则总表（SOLID）。四者环环相扣、篇幅适中、跨机制少，不足以触发拆分。跨课边界：SOLID 在架构/工程层面的方法学应用（分层、依赖注入容器、模块边界设计）显式归 L4-06，本报告只做**语言机制层的原则概览**；Rust trait 约束下的等价讨论归 L5-14；类型系统的形式化归 L5-06。
 
 本报告的 Python 示例基于 Python 3.11.15、Linux 6.18.5 x86_64（对应上面的基线串）。5.1 中 `abc` 未实现即报错、`Protocol` 运行时检查两处贴的是本机真实输出；其余示例为说明性代码，未逐一实机跑，如未标"真实输出"即为讲解用最小片段。
 
