@@ -108,12 +108,15 @@ int call_it(Base* p) { return p->area(); }   // 虚调用
 ```text
 $ g++ -std=c++17 -O1 -c call.cpp && objdump -dC call.o
 <call_it(Base*)>:
+   endbr64
+   sub    $0x8,%rsp
    mov    (%rdi),%rax     ; rax = *p = vptr（对象首部就是 vptr）
-   call   *(%rax)         ; 间接调用 vtable[0] 指向的实现
+   call   *0x8(%rax)      ; 间接调用 vtable 第 2 槽（area 是第 2 个虚函数，偏移 0x8）
+   add    $0x8,%rsp
    ret
 ```
 
-`mov (%rdi),%rax` 从对象取出 vptr，`call *(%rax)` 是一次**通过 vtable 槽位的间接调用**——与直接 `call 某固定地址`（静态派发）形成鲜明对照。这一步间接就是动态派发的运行时开销来源。
+`mov (%rdi),%rax` 从对象取出 vptr，`call *0x8(%rax)` 是一次**通过 vtable 槽位的间接调用**——注意偏移是 `0x8` 而非 `0`：`speak` 是第 1 个虚函数占 vtable 起点（偏移 0），`area` 是第 2 个占偏移 8，所以调 `area` 走的是 `*0x8(%rax)`。这与直接 `call 某固定地址`（静态派发）形成鲜明对照，这一步间接就是动态派发的运行时开销来源。（`endbr64` 是 CET 间接分支落点，`sub/add $0x8,%rsp` 是 ABI 的 16 字节栈对齐。）
 
 vtable 就是"每个多态类一张、类内所有虚函数一行"的电话簿，vptr 是对象随身携带的"我该查哪本电话簿"的便条。机器层更细的部分（多继承下的 thunk、`offset-to-top`、RTTI 用途）归 L3-03，本节到"一次间接跳转"为止。
 
@@ -126,7 +129,7 @@ vtable 就是"每个多态类一张、类内所有虚函数一行"的电话簿�
 #### 来源与时效（本小主题末集中列）
 - ISO/IEC 14882 C++ 标准 [class.virtual]：规定虚函数动态派发语义（调用 final overrider），**不规定 vtable**——vtable 属实现，核实 2026-07-26。
 - Itanium C++ ABI（https://itanium-cxx-abi.github.io/cxx-abi/abi.html ，§2.5 Virtual Table Layout）：Linux/gcc/clang 的 vtable 布局基准——offset-to-top、RTTI、虚函数槽顺序的一手来源。
-- 本机旁证：gcc/g++ 13.3.0 `-fdump-lang-class` 的 vtable 转储 + objdump 2.42 对虚调用的反汇编（`mov (%rdi),%rax; call *(%rax)`），Linux 6.18.5 x86_64，核实 2026-07-26。
+- 本机旁证：gcc/g++ 13.3.0 `-fdump-lang-class` 的 vtable 转储 + objdump 2.42 对虚调用的反汇编（`mov (%rdi),%rax; call *0x8(%rax)`，area 为第 2 虚函数、槽偏移 0x8），Linux 6.18.5 x86_64，核实 2026-07-26。
 - 说明：布局为 gcc13.3+Itanium ABI 的实现观察，非语言标准要求；机器层深挖（thunk/多继承 this 调整/RTTI）归 L3-03，本报告不下机器层结论。
 
 ## 4.3 鸭子类型与运行时属性查找 — 无需继承的结构化多态

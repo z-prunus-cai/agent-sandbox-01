@@ -6,7 +6,7 @@
 
 > 分账（本课不外扩，交界处一句指路）：**共享内存范式里锁/原子/内存序为什么对、数据竞争的精确定义**归本课大主题01/05/06/07（本报告只把它当"消息传递要替代的那条路"点名，不重讲）；**协程/goroutine 作为轻量执行流的调度与用户态让出机制**归 L4-01·OS-04.5（本报告只讲 goroutine 作为 CSP 里的"进程"角色，不深挖 M:N 调度器实现）；**跨机器的一致性/共识/容错（Raft、两阶段提交、CAP）**归 L5 分布式课（本报告的 actor/MPI 只到"进程间显式发消息"为止，不碰分布式一致性协议）；**MPI 在真实集群上的性能调优、GPU 通信**归 L6-06 HPC。
 
-> 本报告以多来源比对为主承重腿：CSP 语义以 Hoare 1978 原文为准、与 Go 官方文档交叉核对（两者在"同步 rendezvous"这一点一致，在"channel 是否有缓冲/是否一等公民"上有别，已显式标注）；actor 以 Hewitt 1973 定义与 Erlang 官方文档交叉；MPI 以 MPI 标准文本为准。实机验证为**可选补充**，本报告已取三项并顺带**坐实 本库编排清单标「待核」的工具链**：CP-14.2 的 goroutine+channel 在本机真跑（**Go 虽未列入基线工具链，但本机实装 go1.24.7，可用**，见实证块），Go 运行时的死锁检测亦实测触发；CP-14.4 的 MPI **本机确无（`mpicc`/`mpirun`/`mpiexec` 均不存在，「待核」坐实为"未装"）**，改用 node v22.22.2 的 `worker_threads` 消息传递作范式备用实测。
+> 本报告以多来源比对为主承重腿：CSP 语义以 Hoare 1978 原文为准、与 Go 官方文档交叉核对（两者在"同步 rendezvous"这一点一致，在"channel 是否有缓冲/是否一等公民"上有别，已显式标注）；actor 以 Hewitt 1973 定义与 Erlang 官方文档交叉；MPI 以 MPI 标准文本为准。实机验证为**可选补充**，本报告已取三项并顺带**坐实 本库编排清单标「待核」的工具链**：CP-14.2 的 goroutine+channel 在本机真跑（**Go 虽未列入基线工具链，但本机实装 go1.24.7，可用**，见实证块），Go 运行时的死锁检测亦实测触发；CP-14.4 的 MPI **本机已装 Open MPI 4.1.6**（`mpicc`/`mpirun` 可用；撰写时 2026-07-30 尚无、2026-08-02 复核时环境已补齐——此类工具链是否在架随时间/环境变动），已用 `mpicc` 编译、`mpirun -np 3` 真跑点对点 `MPI_Send`/`MPI_Recv` + 集合 `MPI_Reduce`（见 CP-14.4.4），另以 node v22.22.2 的 `worker_threads` 作同范式对照。
 
 ---
 
@@ -161,19 +161,20 @@ MPI_Barrier  — 栅栏：所有进程都到达此点才一起继续
 
 ### CP-14.4.4 本机状态与范式备用实证
 
-本库编排清单把 MPI 标「待核」，本报告坐实：**本机确无 MPI**——`mpicc`、`mpirun`、`mpiexec` 均不存在，无法在本机做 MPI 实机验证（如实标注"未取"）。MPI 语义取自 MPI 标准文本。为给"进程级显式消息传递"一个可跑的范式感受，用 node v22.22.2 的 `worker_threads`（worker 间无共享堆、仅靠 `postMessage`/`on('message')` 传消息，形态上与 actor 邮箱/MPI 收发同源）作**范式备用**实测——3 个 worker 各算一个值、经消息汇总（10+20+30），真实输出：
+本库编排清单把 MPI 标「待核」。撰写时（2026-07-30）本机尚无 MPI 工具链，2026-08-02 复核时环境已补齐 **Open MPI 4.1.6**（`mpicc`/`mpirun` 可用）——这类工具链是否在架会随时间/环境变动，故此处给出时间戳而非当成永久事实。本机用 `mpicc` 编译、`mpirun -np 3` 真跑一段点对点 + 集合通信：rank 0 用 `MPI_Send` 发一个 token（42）给 rank 1（`MPI_Recv` 接收），三个进程各出 (rank+1)×10 经 `MPI_Reduce`(SUM) 汇总到 rank 0，真实输出（`基线 Open MPI 4.1.6 @2026-08-02`；进程间行序不定）：
 
 ```
-# node worker.js
-total: 60
+$ mpicc mpi_demo.c -o mpi_demo && mpirun --oversubscribe -np 3 ./mpi_demo
+Reduce sum over 3 ranks = 60
+rank1 recv 42 from rank0
 ```
 
-这个 node 例子**不是 MPI**，只是借它演示"独立执行体不共享内存、只发消息、由主体汇总"的消息传递骨架（很接近 MPI 的 `Gather`/`Reduce`）。要真跑 MPI，需在装了 Open MPI/MPICH 的环境用 `mpicc` 编译、`mpirun -np N` 启动——本机不具备，留待环境补齐后验证。
+这正是 CP-14.4 讲的 SPMD + rank/communicator + 点对点/集合通信的最小实跑。作为同范式对照，也可用 node v22.22.2 的 `worker_threads`（worker 间无共享堆、仅靠 `postMessage`/`on('message')` 传消息，形态上与 actor 邮箱/MPI 收发同源）演示同一"独立执行体不共享内存、只发消息、由主体汇总"的骨架——3 个 worker 各算一值经消息汇总得 `total: 60`；它**不是 MPI**，只是同范式的另一副面孔。
 
 #### 来源与时效
 - MPI Standard（MPI Forum）：MPI 4.1（2023-11-02 发布）为当前正式版；4.0（2021-06）引入持久化集合、会话模型等；点对点 `MPI_Send`/`MPI_Recv`/`MPI_Isend`、集合 `MPI_Bcast`/`Scatter`/`Gather`/`Reduce`/`Allreduce`/`Barrier` 语义均取自标准文本（mpi-forum.org，核实 2026-07-30；⚙下一主版 MPI 5.0 在推进中，以 MPI Forum 最新发布为准）。
 - 实现印证：MPICH、Open MPI 官方文档（作"标准 vs 实现分账"的实现侧举例，非承重）。
-- 本机实证：**MPI 未装**（`mpicc`/`mpirun`/`mpiexec` 不存在，坐实「待核」为"未取"）；node v22.22.2 `worker_threads` 消息传递作范式备用，真实输出见正文。
+- 本机实证：Open MPI 4.1.6（`mpicc`/`mpirun`，`基线 @2026-08-02`）真跑 `MPI_Send`/`MPI_Recv` + `MPI_Reduce`，真实输出见正文（撰写时 2026-07-30 本机尚无 MPI、后环境补齐——工具链在架状态随时间变动，已时限化标注）；另以 node v22.22.2 `worker_threads` 作同范式对照。
 - 交叉一致：SPMD + rank/communicator + 点对点/集合通信为 MPI 标准的稳定核心，各实现一致，无冲突。
 
 ## CP-14.5 数据并行 vs 任务并行：划分维度差异与选型

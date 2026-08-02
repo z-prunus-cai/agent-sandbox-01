@@ -15,7 +15,7 @@
 **类型算子**（type operator，又称 type constructor / 构造子，TAPL Ch.29 引言）是一个从类型到类型的函数，例如"给我元素类型 X、还你列表类型 List X"。在 STLC 与 System F 里，像 `List Nat`、`Pair Bool Nat` 这种写法只是**具体类型的缩写**，语言本身并没有把 `List`、`Pair` 当成可以独立存在、可以传递和抽象的对象。Ch.29 的目标是把这种"参数化的类型"提升为**一等的类型级函数**：允许写出
 
 ```
-List = λX. ∀R. R → (X → List X → R) → R
+List = λX. ∀R. R → (X → R → R) → R
 Pair = λX. λY. ∀R. (X → Y → R) → R
 ```
 

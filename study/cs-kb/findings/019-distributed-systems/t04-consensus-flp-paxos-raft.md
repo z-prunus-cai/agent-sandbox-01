@@ -87,7 +87,7 @@ bivalent  — 命运未定：存在能走向 0 的后续，也存在能走向 1 
 第三个误读：**"FLP 里进程真的崩溃了才出问题"**。错。FLP 的杀伤力来自"活着的慢进程和崩溃进程在异步下不可分辨"（大主题1的"慢 vs 死无法区分"）——哪怕没有任何进程真崩溃，只要模型允许有一个可能崩溃，对手就能用"无限延迟一条消息"制造出与"崩溃"不可分辨的局面。真正的敌人是**无界延迟**，不是实际的崩溃。
 
 #### 来源与时效
-- Fischer, Lynch & Paterson「Impossibility of Distributed Consensus with One Faulty Process」JACM 32(2):374–382, 1985（承重一手，核实 2026-07-30）：结论精确表述、bivalency（双值/单值配置）论证、崩溃-停止 + 一进程可能失败的最弱假设。1985 Dijkstra 奖。
+- Fischer, Lynch & Paterson「Impossibility of Distributed Consensus with One Faulty Process」JACM 32(2):374–382, 1985（承重一手，核实 2026-07-30）：结论精确表述、bivalency（双值/单值配置）论证、崩溃-停止 + 一进程可能失败的最弱假设。该文 1985 年发表，2001 年获 PODC Influential Paper Award（该奖 2003 年更名为 Dijkstra 奖）。
 - Lynch《Distributed Algorithms》(1996) 相应章（一手教材）：FLP 的教科书化重述，配置/bivalent 定义与证明骨架，用于交叉核对论文原文措辞。
 - MIT 6.5840 Spring 2026（一手，核实 2026-07-30）：把 FLP 作为"为什么实用协议只保证 safety、liveness 靠假设"的理论背景（本学期无独立 FLP lecture，作为容错讨论的底层前提）。
 - 交叉一致，无冲突。证明细节（第二步的邻接配置引理）本报告按 v3 只取直觉，不展开逐步推导。

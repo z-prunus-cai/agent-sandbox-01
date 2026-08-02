@@ -33,7 +33,7 @@ fn main() {
 }
 ```
 
-`rustc --edition 2024 mono.rs && ./mono` 本机现跑输出 `1 2.5`（示例变体，见下节 LLVM IR）。注意 `Point { x: 1, y: 2 }` 里两个字段都是 `T`，所以必须同类型；想让 `x`、`y` 类型不同得写成两个参数 `Point<T, U>`。这是初学者常踩的坑：`Point { x: 1, y: 2.0 }` 会因 `T` 无法同时是 `i32` 和 `f64` 而报类型不匹配。
+`rustc --edition 2024 mono.rs && ./mono` 本机现跑输出 `1 2`（`id(pi.x)` 是 i32 的 `1`，`id(pf.y)` 是 f64 的 `2.0`——f64 的 `2.0` 用 `{}` 打印为 `2`）。注意 `Point { x: 1, y: 2 }` 里两个字段都是 `T`，所以必须同类型；想让 `x`、`y` 类型不同得写成两个参数 `Point<T, U>`。这是初学者常踩的坑：`Point { x: 1, y: 2.0 }` 会因 `T` 无法同时是 `i32` 和 `f64` 而报类型不匹配。
 
 ### 单态化：编译期为每个用到的具体类型生成一份专门代码
 
@@ -71,7 +71,7 @@ define internal double @_ZN4mono2id17hf9dff96f02d7eed9E(double %x) unnamed_addr 
 
 - 一手：The Rust Programming Language book Ch.10 §「Generic Data Types」「Performance of Code Using Generics」https://doc.rust-lang.org/book/ch10-01-syntax.html
 - 一手：The Rust Reference §「Generic parameters」「Items — Functions（generic functions / monomorphization 语义）」https://doc.rust-lang.org/reference/items/generics.html
-- 本机实证：rustc 1.94.1（`rustc --version` → `rustc 1.94.1 (e408947bf 2026-03-25)`）；`mono.rs` 经 `--emit=llvm-ir` 现跑得 `id` 的 i32 与 f64 两份单态化定义（输出见正文），运行输出 `1 2.5`。
+- 本机实证：rustc 1.94.1（`rustc --version` → `rustc 1.94.1 (e408947bf 2026-03-25)`）；`mono.rs` 经 `--emit=llvm-ir` 现跑得 `id` 的 i32 与 f64 两份单态化定义（输出见正文），运行输出 `1 2`。
 - 交叉核对一致：book「Performance of Code Using Generics」与 Reference 均述「泛型经单态化在编译期具体化、无运行期开销」，无冲突。核实 2026-08-01。
 
 ## R6.2 trait 定义与实现

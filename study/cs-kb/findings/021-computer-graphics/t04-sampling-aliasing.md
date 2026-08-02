@@ -278,14 +278,14 @@ alpha（$\alpha$）是每个像素除 RGB 之外的第四个分量，取值 $[0,
 把前景 A（颜色 $C_a$、不透明度 $\alpha_a$）叠到背景 B（$C_b$、$\alpha_b$）上，最常用的是 **over** 运算符（Porter & Duff, 1984）。输出颜色与输出 alpha：
 
 $$
-C_o = C_a\,\alpha_a + C_b\,\alpha_b\,(1-\alpha_a)
+C_o = \frac{C_a\,\alpha_a + C_b\,\alpha_b\,(1-\alpha_a)}{\alpha_o}
 $$
 
 $$
 \alpha_o = \alpha_a + \alpha_b\,(1-\alpha_a)
 $$
 
-前景按自己的不透明度 $\alpha_a$ 贡献，背景则被前景"挡掉"了 $\alpha_a$ 的比例、只剩 $(1-\alpha_a)$ 透出来。
+前景按自己的不透明度 $\alpha_a$ 贡献，背景则被前景"挡掉"了 $\alpha_a$ 的比例、只剩 $(1-\alpha_a)$ 透出来。分子是"加权混合后的**预乘**颜色"，要得到**直式（非预乘）**输出色 $C_o$ 还需除以输出 alpha $\alpha_o$——这一步分母正是下面预乘表示（G-04.5.3）能省掉的原因：预乘表示里存的就是分子那个量。
 
 用 numpy 验证一个具体例子——把 60% 不透明的红叠在不透明蓝上：
 
