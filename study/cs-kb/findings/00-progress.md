@@ -54,13 +54,15 @@
 | REG  | — | — | P2 | X-GENAI | 生成式 AI 应用（RAG/agents） | — 仅登记（短半衰期，未定型） |
 | REG  | — | — | P2 | X-MLOPS | MLOps / AI 工程 | — 仅登记（实践向，工具链演进快） |
 
-## 计数对账（收尾时填）
+## 计数对账（收尾）
 - 范围：40 门产报告 + 5 项并入 + 6 项仅登记。
-- prompt 数（切块）：**423**（Round 3c 完成；40 文件 × 各大主题一条；```text 块=自报合计=423，已对账）。
-- 报告单元：423 个大主题（1 大主题=1 报告，个别可拆）→ Round 4 逐条取证。
-- 落盘报告数：0 / 423（大主题报告）
-- 质检：0 PASS / 0 MINOR / 0 MAJOR
+- 报告单元：423 个大主题（1 大主题=1 报告）。
+- 落盘报告数：**423 / 423**（全部落盘、提交、推送）。
+- 质检（Round 5 全量对抗）：40/40 课程已审；发现 2 RED + 14 MAJOR + 39 MINOR，RED/MAJOR 全修、MINOR 修高价值批次余登记备查；详见 `../ROUND5-QA-SUMMARY.md`。
+- 导航：主索引见 `INDEX.md`（40 课 × 423 报告按层级组织）。
 
 ## Round 进度
-- ✅ 阶段0 对齐 · ✅ R1 scoping(round1-map) · ✅ R2 定方向(round2-partials) · ✅ R3a 大主题(round3a) · ✅ R3b 小主题(round3b) · ✅ **R3c 造 prompt 库(round-prompts/ 40 文件 423 条 + round3-index.md)**
-- ⏸ 待启动 **Round 4（逐条三条腿/多来源取证，产 v3 报告）**
+- ✅ 阶段0 对齐 · ✅ R1 scoping · ✅ R2 定方向 · ✅ R3a 大主题 · ✅ R3b 小主题 · ✅ R3c 造 prompt 库
+- ✅ **Round 4：423/423 报告逐条多来源取证落盘（v3 教辅格式）**
+- ✅ **Round 5：两层全量对抗质检 + RED/MAJOR 修正**（见 `../ROUND5-QA-SUMMARY.md`）
+- ✅ **Round 6：整合交付**（`INDEX.md` 主索引 + `../ROUND5-QA-SUMMARY.md` 质检总结）
