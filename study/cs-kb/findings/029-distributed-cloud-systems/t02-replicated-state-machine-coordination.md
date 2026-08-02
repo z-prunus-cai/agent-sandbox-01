@@ -1,6 +1,6 @@
 # L6-05·大主题2 复制状态机与协调服务落地
 
-> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜核实日期：2026-08-01 ｜先修：L5-01 分布式系统（复制状态机 D3、共识 Paxos/Raft D4、一致性模型 D5、原子提交 D7）｜一手锚点：Raft 扩展版论文（ATC 2014 + Ongaro 博士论文 2014）§6–7、ZooKeeper 论文（USENIX ATC 2010）、Chubby 论文（OSDI 2006）、Chain Replication 论文（OSDI 2004）、CRAQ 论文（NSDI 2009）、MIT 6.5840 Spring 2026（LEC 6–9、LEC 13）、DDIA 2nd ed（2026-02）ch5/ch8/ch9 ｜成熟度：核心机制 GA；具体共识库/协调服务的读优化与配置变更实现 ⚙演进快
+> 基线 Py3.11.15/np2.4.6/gcc13.3 @2026-07-25 ｜核实日期：2026-08-01 ｜先修：L5-01 分布式系统（复制状态机 D3、共识 Paxos/Raft D4、一致性模型 D5、原子提交 D7）｜一手锚点：Raft 扩展版论文（ATC 2014 + Ongaro 博士论文 2014）§6–7、ZooKeeper 论文（USENIX ATC 2010）、Chubby 论文（OSDI 2006）、Chain Replication 论文（OSDI 2004）、CRAQ 论文（USENIX ATC 2009）、MIT 6.5840 Spring 2026（LEC 6–9、LEC 13）、DDIA 2nd ed（2026-02）ch5/ch8/ch9 ｜成熟度：核心机制 GA；具体共识库/协调服务的读优化与配置变更实现 ⚙演进快
 
 本报告承接上一门课已经证明「复制状态机 + 共识为什么是对的」（安全性 safety、活性 liveness、多数派交集），不再重证这些定理。这里只讲一件事：拿到一个能就单个值达成一致的共识核心之后，工程上要补哪些东西，才能把它做成一个能长期运行、能扩容缩容、能高吞吐读、能被上层系统当作「协调服务」来依赖的真实系统。五个小主题分别对应五个工程支柱：日志不能无限长（快照）、集群成员要能动（成员变更）、读要快又不能读脏（线性一致读）、要能给别人当锁和选主用（协调服务）、以及一条与 quorum 共识并列的强一致复制路线（链式复制）。
 
@@ -269,7 +269,7 @@ Chubby 是 Google 更早的协调服务（OSDI 2006），设计取向与 ZooKeep
 
 ### 2.5.5 CRAQ：让读也能扩展
 
-原始链式复制把读全压在尾节点，尾节点成了读吞吐上限。CRAQ（Chain Replication with Apportioned Queries，NSDI 2009）扩展了它，让链上每个节点都能服务读，从而读吞吐随副本数扩展。做法是每个对象在节点上可以有多个版本，并标记为「干净」（clean，已知是已提交的最新值）或「脏」（dirty，有更新的写正在链中传播、尚未提交）。节点收到读请求时，如果本地版本是干净的，直接返回；如果是脏的，就去问链尾「当前已提交的版本号是多少」，再返回对应版本。
+原始链式复制把读全压在尾节点，尾节点成了读吞吐上限。CRAQ（Chain Replication with Apportioned Queries，USENIX ATC 2009）扩展了它，让链上每个节点都能服务读，从而读吞吐随副本数扩展。做法是每个对象在节点上可以有多个版本，并标记为「干净」（clean，已知是已提交的最新值）或「脏」（dirty，有更新的写正在链中传播、尚未提交）。节点收到读请求时，如果本地版本是干净的，直接返回；如果是脏的，就去问链尾「当前已提交的版本号是多少」，再返回对应版本。
 
 CRAQ 的巧思是：绝大多数时候对象是干净的，读能被任意节点本地满足、无需打扰尾节点，于是读吞吐随节点数线性扩展；只有在某对象正被写、处于脏状态时，读它才需要一次「问尾节点要版本号」的轻量往返。它既保住了链式复制的强一致（脏时以尾节点为准），又解除了「读只能走尾」的吞吐瓶颈。这是「读多写少」负载下的一个漂亮优化。
 
@@ -279,7 +279,7 @@ CRAQ 的巧思是：绝大多数时候对象是干净的，读能被任意节点
 
 #### 来源与时效
 - Chain Replication 论文（R. van Renesse & F. Schneider, "Chain Replication for Supporting High Throughput and Availability", OSDI 2004）——链拓扑、头写尾读、提交定义在尾、头/中/尾故障处理、配置管理者。核实 2026-08-01。
-- CRAQ 论文（J. Terrace & M. Freedman, "Object Storage on CRAQ: High-throughput chain replication for read-mostly workloads", USENIX ATC/NSDI 2009）——clean/dirty 版本标记、任意节点读、脏时问尾。核实 2026-08-01。
+- CRAQ 论文（J. Terrace & M. Freedman, "Object Storage on CRAQ: High-throughput chain replication for read-mostly workloads", USENIX ATC 2009）——clean/dirty 版本标记、任意节点读、脏时问尾。核实 2026-08-01。
 - MIT 6.5840 Spring 2026 schedule，LEC 13「Chain Replication」指定阅读 CR (2004)。核实 2026-08-01。
 - DDIA 2nd ed（2026-02）ch5 关于复制拓扑与强一致复制取舍的论述，交叉参照。核实 2026-08-01。
 - 说明：链式复制依赖一个独立强一致配置管理者，通常由共识/协调服务实现——数据面链式、控制面共识，二者配合。此为跨来源一致结论（原论文 + 后续实践）。

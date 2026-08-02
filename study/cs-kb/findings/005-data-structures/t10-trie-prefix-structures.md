@@ -105,7 +105,7 @@ search card : True
 
 ### 10.3.1 标准 Trie 的空间痛点与「压缩单链路径」的动机
 
-标准 Trie 的软肋是**空间**：每个字符都占一个结点，键很长、分叉又少时会拉出一大串「只有一个孩子、自己也不是词尾」的**单链结点**，每个结点却只贡献一个字符的信息。一个孤零零的长词 `internationalization`（21 字符）在标准 Trie 里要占一整条 21 个结点的链，纯属浪费。
+标准 Trie 的软肋是**空间**：每个字符都占一个结点，键很长、分叉又少时会拉出一大串「只有一个孩子、自己也不是词尾」的**单链结点**，每个结点却只贡献一个字符的信息。一个孤零零的长词 `internationalization`（20 字符）在标准 Trie 里要占一整条 20 个字符结点的链（连 root 共 21 个结点，与下 10.3.2「incl root」口径一致），纯属浪费。
 
 **压缩 Trie（compressed trie）** 也叫**基数树（radix tree）/ Patricia 树**（PATRICIA = Practical Algorithm To Retrieve Information Coded In Alphanumeric，Morrison 1968），核心优化只有一句话：**把「只有一个孩子且自身非词尾」的连续结点链合并成一条边，边上标一个字符串（而非单个字符）**。分叉点（有 ≥2 个孩子）和词尾结点保留，中间的单链塌缩掉。
 
