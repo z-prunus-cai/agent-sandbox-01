@@ -26,7 +26,9 @@ skill 依赖的两份规则放在 `reviews/rules/`，它们是 skill 路径下�
 | `reviews/rules/spock-test-guidelines.md` | `~/.claude/rules/spock-test-guidelines.md` | 视角 3（测试）的强制标准 |
 | `reviews/rules/reference-cache.md` | `~/.claude/rules/reference-cache.md` | 缓存的建立与条目新增流程 |
 
-新容器里这两个文件不会自动存在，每次会话开始时先安装：
+skill 本身放在 `.claude/skills/strict-review/SKILL.md`（上传原文，未改动）。这是 Claude Code 项目级 skill 的标准位置，新会话克隆本分支后会自动加载，可直接用 `/strict-review` 调用，无需安装。
+
+两份规则则不同：新容器里 `~/.claude/rules/` 不会自动存在，每次会话开始时先安装：
 
 ```sh
 mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
