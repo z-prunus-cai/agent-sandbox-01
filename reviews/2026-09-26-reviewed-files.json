@@ -1,0 +1,477 @@
+{
+  "date": "2026-09-26",
+  "base": "lilradish-lite-strangler/lite",
+  "algorithm": "sha256",
+  "reviews": {
+    "backend-infra": {
+      "result": "reviews/2026-09-26-backend-infra.md",
+      "files": [
+        {
+          "path": "build.gradle.kts",
+          "sha256": "719151dfaacc24762358690099d0ae2125260bd5dc1510dc9d96d58ef06a673e"
+        },
+        {
+          "path": "config/allowed-licenses.json",
+          "sha256": "e3e8746a5f4f021769e235e008cb8c8f127c66084db60c5c50d30c986f0777a9"
+        },
+        {
+          "path": "gradle.properties",
+          "sha256": "0802e9ac87c0c985576806840d01783e2d008dd7d50741d7d5b65a0550b61b73"
+        },
+        {
+          "path": "gradle/libs.versions.toml",
+          "sha256": "5c05507d61a3a3ef50526362ef949dd189851cf6b4c5e27fca96b2c8591cf894"
+        },
+        {
+          "path": "lilradish-lite-flyway/build.gradle.kts",
+          "sha256": "6ec91b2008fab8b1720871156ef6baa108e5606b7ca543933158bfc6384874f5"
+        },
+        {
+          "path": "lilradish-lite-flyway/src/dev/resources/application-dev.yaml",
+          "sha256": "637d688c19f6226e867866f7e16a84fcb19e53b4fd5d81dd4cc971ba9a77df90"
+        },
+        {
+          "path": "lilradish-lite-flyway/src/main/java/org/lilradish/lite/migration/MigrationApplication.java",
+          "sha256": "eda591e39912bd5b89d687ca146aa2f303749fc69aaf88442a84e57ad816b02e"
+        },
+        {
+          "path": "lilradish-lite-flyway/src/main/java/org/lilradish/lite/migration/package-info.java",
+          "sha256": "5f4cfa23beec96013233ff993e886990e38e6e8244e337791d24b75ce5469cd7"
+        },
+        {
+          "path": "lilradish-lite-flyway/src/main/resources/application.yaml",
+          "sha256": "a290389d63c99cbc350b65b3b20dfbf495ab3b7a0cf7aed7ac0d580f46c8736b"
+        },
+        {
+          "path": "lilradish-lite-migration/build.gradle.kts",
+          "sha256": "9f9259699ae5d799c7b008d64678f99bd0534ce4b92cb22f75531a6a3e9a7299"
+        },
+        {
+          "path": "lilradish-lite-web/build.gradle.kts",
+          "sha256": "8f13b55b7e41c1e3ef8aca1068e175d1be9029f88fae8fb93c74351b0800e21f"
+        },
+        {
+          "path": "lilradish-lite-web/src/dev/resources/config/application-dev.yaml",
+          "sha256": "9c3a5bf8fbf697d1480d4b0975c2a236ec4974c9a1c859ecb8ac1172e588a788"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/AppLoggingConvention.java",
+          "sha256": "97ba9cbdde0570d878cded82735a997c350de7b78b2dab0f19cfa1cfe24e6636"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/BackendApplication.java",
+          "sha256": "e9a365cd508f857e090198e5772e413f21e9bce69a345bd6a697e1191b367fcd"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/observability/BudgetWindow.java",
+          "sha256": "ee491381e73d7ea43b424cd73ce60b8565a9c2992d26b6fa473913b13afdef88"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/observability/Correlation.java",
+          "sha256": "8b15e8203b043680dbf5bdd30ef2b57376f8382b571e55de1dc269afc2d0f574"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/observability/ServiceSeverity.java",
+          "sha256": "e3d9fa8be93c8d2c42371ccb653442572fd6d6b3e0ffe827391dc35528546b3e"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/observability/package-info.java",
+          "sha256": "61410f6790d494af39d2f2a00c7ab38007b73fcafcdcacd83dccbd3800e4ea24"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/text/ConcealingCharacter.java",
+          "sha256": "3bd4b35e9f359d7651b05033a088e124f8023e1c5e62aa0c7128eaaf066e73e3"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/text/Identifiers.java",
+          "sha256": "5568c4459f893c54015db2a139a200a15bfe6c7d82529b54014ffa6410991df0"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/text/Legibility.java",
+          "sha256": "fb40e1724f7e8e90b4a2b1a9afb1c7e8674c3922e80a106921fc4ad0d33e340d"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/text/package-info.java",
+          "sha256": "9d69026690585111e144013fc4d016f72385e72ff3be1e5b2cb46c5402e9a203"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/CanonicalJson.java",
+          "sha256": "615684fb9f35bf27cd132b1d39e41c9875357e55c2565e481466961f03776414"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/Digest.java",
+          "sha256": "a72eac5c992949aa66a3b724080a9ee028b15c1e3f31c67405ed018838294f8a"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/Encoding.java",
+          "sha256": "de9c0c9bfb769067172206d3570ad518c61fd50c20a38e6b3fd285e7b9652a3f"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/JsonValue.java",
+          "sha256": "d2e73ce153efe7135facb955e634bbc558db1a4b0e6f9260b20762e989575ee6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/StoreLabels.java",
+          "sha256": "dfed3c7be6cf72df7d3cf8ee4a8c433778ea4dbd0f9fce9cf4a829d0733006b0"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/domain/wire/package-info.java",
+          "sha256": "4dc55705753ade995fe0492632cbd34516459badbcacb517c96e2ed42bcea8b6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/package-info.java",
+          "sha256": "22a6303b36cbe966ae4221291bcff0466cd650c83dfb4d018d340d976009c100"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/ActAdmission.java",
+          "sha256": "df902574c4ea967d8634dc2f34877eaccc21a588e46f521055a5d028fc4c5a69"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/ActRequired.java",
+          "sha256": "4d7538ca2543646077e51725a4fa2fff6796629b9a43b1615aa99bf8bc2990ea"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/BoundBodyVeto.java",
+          "sha256": "726d8edb8cf2aa19a62e6bfe14b05b49c504f92ade1ac5d5204b8ee802b9224a"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/CallerAdmission.java",
+          "sha256": "46224420afcffb2c9486a3b5838bd284d59f598f17311e5665c09a87c4d35e99"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/ChangeRequests.java",
+          "sha256": "bfb7b6f7234176c5c57985cfd7f637403599df4b78b7b872943ab7afab38cc91"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/ClientRouteFallback.java",
+          "sha256": "4d9835a27622b0b31a56ec309319bb6f5f64dd115c014b38bde326ed54f03abb"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/GroupMembershipRequired.java",
+          "sha256": "866c893892140e6f1a95c7fb7d6ee8392b83d26c62efea2af6ec6c6a8304d310"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/GroupPermissionRequired.java",
+          "sha256": "d6cc072a730c02fdc8bb2f16a7bdcd827a9adfd53f3e8d34242c1a57c6b185fa"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/JsonBody.java",
+          "sha256": "ac136af065d094757b51bf2f1d8422d8d4df1e6008a834f4ab88de8cbe4daff6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/MembershipReadsVeto.java",
+          "sha256": "59ff4cba8ebeb4e8a6a7b937031eae8af2de7a9209bbfc733a1eae5ef2d87b49"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/MintedIdentifiers.java",
+          "sha256": "0ba9df33ec7585f60a5a26a6af7e469355a7aea1dcfd742d9ee78b2d389f355b"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/NoActRequired.java",
+          "sha256": "7513ce46b982074f3971e17ece09e47eed38c40bbcb60f70b652aa1998e95f4b"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/QueryParameters.java",
+          "sha256": "1109b4aa183bef019112efb9f0546871e9d2d6d49ddcdf56ff96b5fd51594367"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/RefusalOutlet.java",
+          "sha256": "48389ee456a167439cd313b736b2576095cdbbbcae424014ad923670e8a6cb47"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/RequestTrace.java",
+          "sha256": "7f5f65c3d53c9632a716e52417c1bd32f9edee7b4c9049f06a7204fc3db87b79"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/ResponseHardening.java",
+          "sha256": "de18d7f360f9ce564a0c2e5d52f034dded7a018b8048dfb49bdc254dd6fd25d2"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/java/org/lilradish/lite/web/package-info.java",
+          "sha256": "6870447319289d40d2bdede8eb1a906ff9fd6670c979dde253bfcc56babaeaf6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/resources/application.yaml",
+          "sha256": "f83e8dc90d2ac3dc1af59273f03fde3236fb0b1eed60bb36ebc82eb1fde56d92"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/resources/logback-spring.xml",
+          "sha256": "8bc9e6c335c08390b5eff24074ebe8ceab3fff2680d545e7b2e197fba64bcf4f"
+        },
+        {
+          "path": "settings.gradle.kts",
+          "sha256": "b207b26253b8c682f7596319bf5a20f4459d586d4a48c16b05e49db3a64ff86e"
+        }
+      ]
+    },
+    "frontend-infra": {
+      "result": "reviews/2026-09-26-frontend-infra.md",
+      "files": [
+        {
+          "path": "lilradish-lite-web/eslint.config.js",
+          "sha256": "6395c9ae82a5db3905aa02f23305e34ede300e3104e74305ec44101ff50890bf"
+        },
+        {
+          "path": "lilradish-lite-web/package.json",
+          "sha256": "175f121041667f006fbfbf1b10caecfaffcbf3c5ae6595fa985b1a9ad9cff5c2"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/AppShell.tsx",
+          "sha256": "12d5514dc268a8fd410044a25738cf9eb8d52308a12e7bb680dbea9bb48711cc"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/Async.tsx",
+          "sha256": "46d0e9d31abe4f69b060d933303cc774dc69bc3a0e6d3c1003a64d5682c4b6e1"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/Frame.tsx",
+          "sha256": "a34aefa832055c595adb58b5b63628334e8514544fbe3785653de9f950197e59"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/GroupPicker.tsx",
+          "sha256": "9127e726b044cdecc20c84b6e95f47d43d5583056c68bd722a31fd78ee3cdca8"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/Landing.tsx",
+          "sha256": "07edb05582a525b73c4e751a176b8e1919d66c963872ac4991ab8379acb49cf6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/Nav.tsx",
+          "sha256": "b6aa0b5b6918123bd8cb1abfe3fbf59798ef18c4f2bc37f794a4ad1198c1546c"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/ProblemView.tsx",
+          "sha256": "eec1503e412b90fd1262270b4ca5bf22487db660d46563969e50b70d789febc6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/RouteError.tsx",
+          "sha256": "914dbb1ed14e92b82d3d08a9ad53dbc601be505f7df9662638cc821474ba2fed"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/SystemPage.tsx",
+          "sha256": "17a78fc829c4367da6295f94e0da3ffdf55389e8ff94e2caef19dfd66e37e4a7"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/destinations.ts",
+          "sha256": "bc442a1f1720d5c3259b4c253deae5d4e922ce3de8d9d12ff99eb4e5c6c8c150"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/product.ts",
+          "sha256": "51e7a80ab7f287fc788f3872a750e05cc98a5713a25a69f37bbb32c98d4e6a2b"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/refusal.ts",
+          "sha256": "42712d62c3da9b62502885d64350e3e389c858022933abfd098eaea5b4298ff5"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/routes.tsx",
+          "sha256": "b4bc66ebdd84c37d28f6f221e1202f08790a6f409da98fc5a5ed0d4dd93117e7"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/useActedOn.ts",
+          "sha256": "66e2dbf0d453e6e15a91c85baff8989d26fa5148318025008ed7cc9d32cf9863"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/app/useGroupInForce.ts",
+          "sha256": "31a1ad40d788cd339b428b21817e35168b53e3d87c95980ec40dfd4f3184b9df"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/i18n/app.ts",
+          "sha256": "f48a19692d6113da7cc97846f82c95621c140ede8c1d1de35d3b0b7132af3712"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/i18n/en.ts",
+          "sha256": "0618f54f11d3911261fbcdfadea5c40756d6abaedeb35eab8ad9840a62dcd848"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/i18n/intl.ts",
+          "sha256": "19a7e1b80101c20fec13b9d6d75e30dc2e8da3f40c967096a213fc242fd3013a"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/i18n/lib.ts",
+          "sha256": "8722ce301595708908b719cc0b2a3eaf151f468639535d7bed280bdf64ac283f"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/index.html",
+          "sha256": "4dabb4979a93b8ed024888b6f76e37d9f98a104cce9a8296aaa128b985ca509d"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/action/ActButton.tsx",
+          "sha256": "a08a89ad2ea604790dd1b88efb346fcdd25482381d3f017c98b0651af9eb7936"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/action/ActDialog.tsx",
+          "sha256": "515759fa62458e023da4673cca647f9b52e8c7d8618c6a2da60773114cf29156"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/action/Press.tsx",
+          "sha256": "cf04c43be7bfa1871df55483aad2b689d2a886dbb135e545acba453f50c21fd9"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/FilterField.tsx",
+          "sha256": "f4d933db1b6fe91e15b1e35c6cd6f6fa952fa22f9f9540335a9af5c8f1af53db"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/PagingControls.tsx",
+          "sha256": "b22661a86acb3152956151253e27dd19f05d56c4601f6c671dc97de4cc35c7e6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/RowList.tsx",
+          "sha256": "21725f73e826784845f94956047f578b52ee4bce8080f92a0d044b94e71089f6"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/RowPanel.tsx",
+          "sha256": "09bc999c67184734bfdbb7658fb19ab022c90edf7adac025f28848f6fef198b0"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/SortableTable.tsx",
+          "sha256": "25f1ce9216492d552472f97e2e574b4e5de3057a7930503269a958cc5836dd36"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/TaskCard.tsx",
+          "sha256": "6c20c46d43707518b7fe34eb4bbdcb38cd50c7214e84c8a85a927880809632e1"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/ordering.ts",
+          "sha256": "3fb73ecb7e45d1d7a01e8af58cb96386bca0e1d020a105f00d6c38bd5781e674"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/useListAddress.ts",
+          "sha256": "6dbf188770744efeb3586213c4ed1873ca4e5dcfad1ff0421a7594fbdcf7b7bb"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/collection/usePickedRow.ts",
+          "sha256": "00815a1dcefba88359f72993c721f980370e341e04023ba513a5eb60d81b90db"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/direction/isolated.tsx",
+          "sha256": "0261b4f480ee0407f284398bb468000e0cb6b95f4f46c3cdc1469c8b4e584c8f"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/form/Checks.tsx",
+          "sha256": "1c847d01864ed08bc0c11ac38ede064dc638ef9ea2ba3329443f7780e1962000"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/form/Fields.tsx",
+          "sha256": "dae99c85a7b6256d9605b2201968b12cb51c381659c00d07b86da1265e9060e0"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/form/NoteForm.tsx",
+          "sha256": "67a42a35c54ab70e962062c62472518aef4efdc0841ca3ae8b3ee76e6a2956f2"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/heading/PageHeading.tsx",
+          "sha256": "5ef69df634734903946324aac7b62c90ade0a850726d525c048e3812c8bd8a0b"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/layout/parts.ts",
+          "sha256": "bcdb31fbe6adc5d0ba1ba7aa93725e3e98268ef126341609301334bb2939b772"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/navigation/Breadcrumbs.tsx",
+          "sha256": "cf422b60ac5c4825782eb39f523fef6c5fdc56cf14b8cf59feef4cddc47142ba"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/navigation/returnSearch.ts",
+          "sha256": "4653a66cd0b4beefa4cd860290b3ac7e6a4c50d4060b4e236c635c509b0648c0"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/notice/Notice.tsx",
+          "sha256": "810eebdc99329ed825fb9edc277f0b60b3b9aa4ad3fa5fd759b66403374f2c03"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/notice/StatusLine.tsx",
+          "sha256": "eb998bfe27c120f454b27885ab01c74742bb6e321abc061f6aaf10bc4c17d33f"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/provenance/GeneratedOutput.tsx",
+          "sha256": "e551eaf0551f6c7829545172f236aa8c1927063c4c07d0777b16f6d5bd91fdc5"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/address.ts",
+          "sha256": "fc8ed17f909fd0b8e45d97ac38c3e4a6278ea5ca7a5459798d5494c11151b231"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/document.ts",
+          "sha256": "ffe671ec001dc8df1c312a1664f8ef055ebc9b0d90682b85ce324c7f02f31e74"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/http.ts",
+          "sha256": "94f8950f373b9c42b24e7723fa39a7224e89d7fa77851e4b86dcbddad8bcc9ed"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/page.ts",
+          "sha256": "fb04de573c2ea1ffc184dcec513766cc4856a8d1cbf9a7082d20ae188c17d222"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/pagedLoader.ts",
+          "sha256": "0520404b987f42933228855458d3e0b76e1705b4b8d0242a326d728e52a0f657"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/useAction.ts",
+          "sha256": "aaf0848c03fe56004e328d7c384309d4422fcd5db390a6bf43c5194925dc0a42"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/usePagedResource.ts",
+          "sha256": "d8423b3f2955617c66573bb9338bc6a03638fbc2e4c45c36214e769f1e2ede8c"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/request/useResource.ts",
+          "sha256": "c47bea954a8a0f7397ccc3e784e6c35e5133a97c216ef4b07567f06b49c4f016"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/search/FindOne.tsx",
+          "sha256": "818c18683cd81e112b2d6c9f324b8d9821d6ee09df0d4404a945910759d49c23"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/search/useTypingPause.ts",
+          "sha256": "ff0bae7cd73667fbba394c2c54b2067a1f75df33dea7f26708c0881a010f2ad7"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/stream/events.ts",
+          "sha256": "a010bd01d44add01390ae3914086769487ecdcd2775b4ca198802cbd2fc576fb"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/text/legibility.cases.json",
+          "sha256": "c1f165a1722e47b110f61a042fe999f67d115c20a69e53f6257bdd80ab0a9f73"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/text/legibility.ts",
+          "sha256": "160636f9d908c004c319414802b294880bec78c9e335f481bdacf272d2ed9b42"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/text/names.ts",
+          "sha256": "eff411408c81c79ae792d923800bf1945452293312ade0ee08bd1d2a4a9a8201"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/theme/theme.ts",
+          "sha256": "105a7e9857b7557149abb5af2f1aa681281891de784d3cd3cdc71a7e9f0af434"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/lib/time/When.tsx",
+          "sha256": "082c38476be6dc683a72cf0ab26b87f7e542944f0ab145621e8613c973a4cc2b"
+        },
+        {
+          "path": "lilradish-lite-web/src/main/frontend/main.tsx",
+          "sha256": "3e6098737a534c3e088eba2b1c1ae41e2318a040acebe0b9a6e375d92e3fc3e7"
+        },
+        {
+          "path": "lilradish-lite-web/tsconfig.json",
+          "sha256": "51dd5d67711c69b0ded6ebccb1b7e4304af55cb36d43c5a379908dd44a723c79"
+        },
+        {
+          "path": "lilradish-lite-web/tsconfig.mock.json",
+          "sha256": "1ee3bfd0b1f353312ac93ca12d3e2500a86dceac204c5cef1363a313102e6f74"
+        },
+        {
+          "path": "lilradish-lite-web/vite.config.ts",
+          "sha256": "2236233b027554c47362f7776b2e7a6b655ce35761866192dba15182a7b42dc7"
+        },
+        {
+          "path": "lilradish-lite-web/vite.mock.config.ts",
+          "sha256": "324113e6e858f8db7526d2a9387c996404f325e96ef85e618433dc54c2a78559"
+        }
+      ]
+    }
+  }
+}

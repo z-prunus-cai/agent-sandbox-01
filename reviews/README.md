@@ -41,6 +41,7 @@ mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
   - 覆盖信息（审查目标、agent 数量、发现条数、本次生效的降级项）；
   - 每一轮的发现，原样收录，一轮一个代码块，不去重、不改写、不重新排序；
   - 当次提议的缓存新增条目。
+- 同时提交 `reviews/<YYYY-MM-DD>-reviewed-files.json`，列出当日每次审查所审的每个文件的路径和 SHA-256，用来确认结果对应的是哪一版代码。路径相对于 `lilradish-lite-strangler/lite`。
 - 讲解（walkthrough）在对话中进行，不写进结果文件，除非仓库所有者另有要求。
 - 所有审查都只提供判断，不修改被审代码。
 
