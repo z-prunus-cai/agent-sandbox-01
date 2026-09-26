@@ -11,9 +11,26 @@
 ## 2. reference-cache：只提交复建步骤，不提交缓存
 
 - 由 Claude 负责准备 reference-cache（已获授权）。它是 skill 使用的 `.reference-cache/`，按 `<source>/<name>@<version>/` 组织。
-- 缓存内容**不提交**，`.gitignore` 忽略 `.reference-cache/`。
-- **提交的是复建步骤**，放在 `reviews/reference-cache.md`：每个条目写明来源、名称、版本（tag 或 commit）、获取命令，任何人照着做都能重建出同样的缓存。
+- 建缓存、加条目都按 `reviews/rules/reference-cache.md` 执行：版本精确锁定、整树克隆、删掉无用内容、写 `SOURCE`、最后加只读锁，新增条目需先经审批。
+- 云端容器里没有共享缓存库，所以采用该规则中的第 3 种形态：仓库根目录下的本地目录，目录内放一个只含 `*` 的 `.gitignore`。
+- 缓存内容**不提交**，根目录的 `.gitignore` 也忽略 `.reference-cache/`。
+- **提交的是复建步骤**，放在 `reviews/reference-cache.md`：每个条目写明来源、名称、版本（tag 或 commit），以及它 `SOURCE` 里的完整命令链，任何人照着做都能重建出同样的缓存。
 - 每次审查前补齐缺少的条目（预热）；审查后，子 agent 报告的缓存缺口放到下一批补齐。每次新增条目，都同步更新复建步骤。
+
+## 规则文件（随本分支提交）
+
+skill 依赖的两份规则放在 `reviews/rules/`，它们是 skill 路径下对应文件的来源：
+
+| 文件 | skill 读取的位置 | 用途 |
+|---|---|---|
+| `reviews/rules/spock-test-guidelines.md` | `~/.claude/rules/spock-test-guidelines.md` | 视角 3（测试）的强制标准 |
+| `reviews/rules/reference-cache.md` | `~/.claude/rules/reference-cache.md` | 缓存的建立与条目新增流程 |
+
+新容器里这两个文件不会自动存在，每次会话开始时先安装：
+
+```sh
+mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
+```
 
 ## 3. 审查结果按次提交到本分支
 
@@ -28,6 +45,4 @@
 ## 4. 当前环境下的降级项（每次都要写进覆盖信息）
 
 - 环境中没有 `strict-reviewer` 这个 agent 类型，改用通用 agent，并下发 skill 规定的子 agent prompt 原文。
-- `~/.claude/rules/spock-test-guidelines.md` 不存在，测试只按仓库自身体现的做法评判。
-- `~/.claude/rules/reference-cache.md` 不存在，缓存条目以本文件第 2 节为准。
 - 被审代码没有 git 历史，不能用“已暂存文件”作为默认目标，必须明确指定范围。
