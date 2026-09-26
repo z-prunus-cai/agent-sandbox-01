@@ -13,17 +13,18 @@ root=${1:-$repo_root/.reference-cache}
 
 mkdir -p "$root"
 chmod u+w "$root"
-[ -f "$root/.gitignore" ] || printf '*\n' > "$root/.gitignore"
+[ -f "$root/.gitignore" ] || { printf '*\n' > "$root/.gitignore"; chmod a-w "$root/.gitignore"; }
 
 # --- deletions shared by every entry ---------------------------------------------------------
 # Tooling, CI, agent-instruction files, wrappers, lockfiles, tests and every binary: none of it
 # answers a question about how the library behaves or is meant to be used.
 common_deletions=(
   "rm -rf .git"
-  "find . -type d \( -name .github -o -name .circleci -o -name .gitlab -o -name .buildkite -o -name .devcontainer -o -name .vscode -o -name .idea -o -name .husky -o -name .changeset -o -name .yarn -o -name .claude -o -name .cursor -o -name .junie -o -name .mvn -o -name .teamcity -o -name .azure-pipelines -o -name __tests__ -o -name __snapshots__ -o -name __fixtures__ -o -name __mocks__ -o -name e2e -o -name jmh -o -name benchmark -o -name benchmarks -o -name testFixtures -o -name integTest -o -name crossVersionTest -o -name smokeTest -o -name docsTest \) -prune -exec rm -rf {} +"
+  "find . -type d \( -name .github -o -name .circleci -o -name .gitlab -o -name .buildkite -o -name .devcontainer -o -name .vscode -o -name .idea -o -name .husky -o -name .changeset -o -name .yarn -o -name .claude -o -name .cursor -o -name .junie -o -name .mvn -o -name .teamcity -o -name .azure-pipelines -o -name __tests__ -o -name __snapshots__ -o -name __fixtures__ -o -name __mocks__ -o -name e2e -o -name jmh -o -name benchmark -o -name benchmarks -o -name testFixtures -o -name integTest -o -name crossVersionTest -o -name smokeTest -o -name docsTest -o -name fixtures -o -name playground -o -name test-results -o -name skills \) -prune -exec rm -rf {} +"
   "find . -type d \( -path '*/src/test' -o -path '*/src/tests' -o -path ./test -o -path ./tests -o -path './packages/*/test' -o -path './packages/*/tests' -o -path './packages/*/*/test' -o -path './packages/*/*/tests' \) -prune -exec rm -rf {} +"
   "find . -type f \( -name CLAUDE.md -o -name AGENTS.md -o -name GEMINI.md -o -name .cursorrules -o -name .windsurfrules -o -name copilot-instructions.md -o -name gradlew -o -name gradlew.bat -o -name 'gradle-wrapper.*' -o -name mvnw -o -name mvnw.cmd -o -name 'Dockerfile*' -o -name 'docker-compose*' -o -name .gitlab-ci.yml -o -name .travis.yml -o -name appveyor.yml -o -name azure-pipelines.yml -o -name Jenkinsfile -o -name 'renovate.json*' -o -name .editorconfig -o -name .gitattributes -o -name .gitignore -o -name .npmignore -o -name .npmrc -o -name .nvmrc -o -name .node-version -o -name pnpm-lock.yaml -o -name yarn.lock -o -name package-lock.json -o -name 'bun.lock*' -o -name '*.test.*' -o -name '*.spec.ts' -o -name '*.spec.tsx' -o -name '*.spec.js' -o -name '*.spec.jsx' -o -name '*.snap' -o -iname '*.svg' \) -delete"
   "find . -type f -size +0 -exec grep -ILZ . {} + | xargs -0 -r rm -f"
+  "find . -type l -delete"
   "find . -type d -empty -delete"
 )
 
@@ -120,6 +121,8 @@ entry facebook        react@eslint-plugin-react-hooks-7.1.1 $gh/facebook/react  
   --sparse packages/eslint-plugin-react-hooks compiler/packages/babel-plugin-react-compiler/src
 entry mui             material-ui@9.4.0        $gh/mui/material-ui                   v9.4.0 \
   --extra "rm -rf docs/translations docs/public" \
+          "find packages/mui-icons-material/lib -maxdepth 1 -name '*.js' -printf '%f\\n' | sed 's/\\.js\$//' | sort > packages/mui-icons-material/ICON_NAMES.txt" \
+          "rm -rf packages/mui-icons-material/lib packages/mui-icons-material/legacy" \
           "find docs -type f \( -name '*-zh.md' -o -name '*-pt.md' -o -name '*-es.md' -o -name '*-ja.md' \) -delete"
 entry emotion-js      emotion@react-11.14.0    $gh/emotion-js/emotion                @emotion/react@11.14.0
 entry emotion-js      emotion@styled-11.14.1   $gh/emotion-js/emotion                @emotion/styled@11.14.1

@@ -18,7 +18,8 @@ reviews/reference-cache.sh <目录>     # 或指定位置
 ## 与规则的偏差（均经仓库所有者批准）
 
 - **稀疏检出**：规则要求整树克隆。`openjdk/jdk`、`microsoft/TypeScript`、`gradle/gradle` 三个超大仓库，以及两个只需要单个子包的 monorepo 条目，改为只检出与审查相关的路径。各条目的 `SOURCE` 里标注了 `sparse`。
-- **加大删除力度**：除规则列出的 CI、打包、wrapper、编辑器配置、`.git`、二进制文件和 agent 指令文件外，还删掉了所有测试、快照、基准测试、端到端测试、fixture、lockfile、SVG 和非英文文档翻译。二进制文件的判定方式是 `grep -I` 认作二进制，而不只看扩展名。
+- **加大删除力度**：除规则列出的 CI、打包、wrapper、编辑器配置、`.git`、二进制文件和 agent 指令文件外，还删掉了所有测试、快照、基准测试、端到端测试、fixture、playground、测试结果、lockfile、SVG、符号链接、非英文文档翻译，以及仓库自带的 agent `skills` 目录。二进制文件的判定方式是 `grep -I` 认作二进制，而不只看扩展名。
+- **MUI 图标**：`packages/mui-icons-material` 里约 2 万个生成的图标组件（88M）被删掉，只留一份 `ICON_NAMES.txt` 名称索引，用来核实图标是否存在。
 - **版本不确定时多缓存**：logback 同时缓存了 1.5.38 和 1.6.3。
 
 ## 条目
@@ -41,7 +42,7 @@ reviews/reference-cache.sh <目录>     # 或指定位置
 | `openjdk/jdk@25` | `jdk-25-ga` | libprunus `targetJavaVersion = 25` | 稀疏：`src/java.base/share/classes` |
 | `facebook/react@19.3.0` | `v19.3.0` | `package-lock.json` | 整树，删掉 `fixtures`、`compiler` |
 | `facebook/react@eslint-plugin-react-hooks-7.1.1` | `eslint-plugin-react-hooks@7.1.1` | `package-lock.json` | 稀疏：插件本体和它内置的 React Compiler 源码 |
-| `mui/material-ui@9.4.0` | `v9.4.0` | `package-lock.json` | 整树，删掉翻译和静态资源 |
+| `mui/material-ui@9.4.0` | `v9.4.0` | `package-lock.json` | 整树，删掉翻译、静态资源和生成的图标组件 |
 | `emotion-js/emotion@react-11.14.0` | `@emotion/react@11.14.0` | `package-lock.json` | 整树 |
 | `emotion-js/emotion@styled-11.14.1` | `@emotion/styled@11.14.1` | `package-lock.json` | 整树 |
 | `remix-run/react-router@8.4.0` | `react-router@8.4.0` | `package-lock.json` | 整树 |
