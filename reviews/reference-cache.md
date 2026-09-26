@@ -36,9 +36,12 @@ reviews/reference-cache.sh <目录>     # 或指定位置
 | `flyway/flyway@12.4.0` | `flyway-12.4.0` | Boot BOM | 整树 |
 | `jspecify/jspecify@1.0.1` | `v1.0.1` | libprunus 版本目录 | 整树 |
 | `libprunus/libprunus-java-core@089136d` | commit | 0.3.0-SNAPSHOT；项目实际用 0.4.0-SNAPSHOT，未公开 | 整树 |
-| `gradle/gradle@9.7.1` | `v9.7.1` | `gradle-wrapper.properties` | 稀疏：userguide、dsl 文档和 7 个 API 模块的 `src/main` |
+| `gradle/gradle@9.7.1` | `v9.7.1` | `gradle-wrapper.properties` | 稀疏：userguide、dsl 文档和 8 个模块的 `src/main`（含 kotlin-dsl） |
 | `node-gradle/gradle-node-plugin@7.1.0` | `7.1.0` | `libs.versions.toml` | 整树 |
 | `autonomousapps/dependency-analysis-gradle-plugin@3.19.1` | `v3.19.1` | `settings.gradle.kts` | 整树 |
+| `apache/tomcat@11.0.24` | `11.0.24` | Boot BOM `tomcat.version` | 整树 |
+| `jk1/Gradle-License-Report@3.1.4` | `v3.1.4` | libprunus 版本目录 | 整树 |
+| `zonkyio/embedded-postgres@2.2.2` | `v2.2.2` | `libs.versions.toml` | 整树 |
 | `openjdk/jdk@25` | `jdk-25-ga` | libprunus `targetJavaVersion = 25` | 稀疏：`src/java.base/share/classes` |
 | `facebook/react@19.3.0` | `v19.3.0` | `package-lock.json` | 整树，删掉 `fixtures`、`compiler` |
 | `facebook/react@eslint-plugin-react-hooks-7.1.1` | `eslint-plugin-react-hooks@7.1.1` | `package-lock.json` | 稀疏：插件本体和它内置的 React Compiler 源码 |
@@ -55,3 +58,10 @@ reviews/reference-cache.sh <目录>     # 或指定位置
 | `eslint/eslint@js-10.0.1` | commit `84fb885` | `@eslint/js` 10.0.1 的 npm gitHead | 稀疏：`packages/js` |
 | `typescript-eslint/typescript-eslint@8.70.0` | `v8.70.0` | `package-lock.json` | 整树 |
 | `microsoft/TypeScript@6.0.3` | `v6.0.3` | `package-lock.json` | 稀疏：`src/compiler`、`src/lib` |
+| `reactjs/react.dev@44b0b5f` | commit | 上游不打 tag，锁定 2026-09-26 默认分支 HEAD | 整树 |
+| `rolldown/rolldown@1.2.9` | `v1.2.9` | `package-lock.json`（vite 8.3.0 声明 `~1.2.6`） | 整树 |
+
+## 变更记录
+
+- 2026-09-26：首批 29 个条目。
+- 2026-09-26：按审查后的缓存缺口新增 5 个条目（tomcat、Gradle-License-Report、embedded-postgres、react.dev、rolldown）；`gradle/gradle@9.7.1` 的稀疏范围加入 `kotlin-dsl`，该条目已删除重建。

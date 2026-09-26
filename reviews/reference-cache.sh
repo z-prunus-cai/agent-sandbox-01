@@ -108,9 +108,13 @@ entry gradle          gradle@9.7.1             $gh/gradle/gradle                
   --sparse platforms/documentation/docs/src/docs/userguide platforms/documentation/docs/src/docs/dsl \
            subprojects/core-api/src/main platforms/software/dependency-management/src/main \
            platforms/core-configuration/model-core/src/main platforms/core-configuration/file-collections/src/main \
-           platforms/software/testing-base/src/main platforms/jvm/testing-jvm/src/main
+           platforms/software/testing-base/src/main platforms/jvm/testing-jvm/src/main \
+           platforms/core-configuration/kotlin-dsl/src/main
 entry node-gradle     gradle-node-plugin@7.1.0 $gh/node-gradle/gradle-node-plugin    7.1.0
 entry autonomousapps  dependency-analysis-gradle-plugin@3.19.1 $gh/autonomousapps/dependency-analysis-gradle-plugin v3.19.1
+entry apache          tomcat@11.0.24           $gh/apache/tomcat                     11.0.24
+entry jk1             Gradle-License-Report@3.1.4 $gh/jk1/Gradle-License-Report     v3.1.4
+entry zonkyio         embedded-postgres@2.2.2  $gh/zonkyio/embedded-postgres         v2.2.2
 entry openjdk         jdk@25                   $gh/openjdk/jdk                       jdk-25-ga \
   --sparse src/java.base/share/classes
 
@@ -140,6 +144,9 @@ entry eslint          eslint@js-10.0.1         $gh/eslint/eslint                
 entry typescript-eslint typescript-eslint@8.70.0 $gh/typescript-eslint/typescript-eslint v8.70.0
 entry microsoft       TypeScript@6.0.3         $gh/microsoft/TypeScript              v6.0.3 \
   --sparse src/compiler src/lib
+NOTE="react.dev publishes no tags; pinned to the default branch HEAD on 2026-09-26" \
+entry reactjs         react.dev@44b0b5f        $gh/reactjs/react.dev                 commit:44b0b5f10b7f6477bf146d26444717fb4930439f
+entry rolldown        rolldown@1.2.9           $gh/rolldown/rolldown                 v1.2.9
 
 chmod a-w "$root"
 echo "done: $root"
