@@ -42,7 +42,7 @@ mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
   - 每一轮的发现，原样收录，一轮一个代码块，不去重、不改写、不重新排序；
   - 当次提议的缓存新增条目。
 - 同时提交 `reviews/<YYYY-MM-DD>-reviewed-files.json`，列出当日每次审查所审的每个文件的路径和 SHA-256，用来确认结果对应的是哪一版代码。路径相对于 `lilradish-lite-strangler/lite`。
-- 讲解（walkthrough）在对话中进行，不写进结果文件，除非仓库所有者另有要求。
+- 默认不做讲解（相当于 `--no-walkthrough`）：审查到转发发现、提交结果即结束。仓库所有者明确要求时，才在对话中分批讲解，讲解内容不写进结果文件。
 - 所有审查都只提供判断，不修改被审代码。
 
 ## 4. 当前环境下的降级项（每次都要写进覆盖信息）
