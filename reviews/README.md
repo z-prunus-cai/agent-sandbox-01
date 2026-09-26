@@ -1,0 +1,33 @@
+# strict-review 工作约定
+
+本分支用于存放对 `lilradish-lite-strangler` 的 strict-review 审查结果。以下规则由仓库所有者设定，每次审查都要遵守。
+
+## 1. 被审代码只放本地，不入库
+
+- 被审代码由压缩包解压到仓库根目录下的 `lilradish-lite-strangler/`，**禁止提交**。
+- 双重保护：`.gitignore` 忽略该目录；本地 `.git/info/exclude` 也有同样的条目。
+- 审查结果中引用代码时，只写路径和行号，外加定位问题所需的最少片段，不整段复制源码。
+
+## 2. reference-cache：只提交复建步骤，不提交缓存
+
+- 由 Claude 负责准备 reference-cache（已获授权）。它是 skill 使用的 `.reference-cache/`，按 `<source>/<name>@<version>/` 组织。
+- 缓存内容**不提交**，`.gitignore` 忽略 `.reference-cache/`。
+- **提交的是复建步骤**，放在 `reviews/reference-cache.md`：每个条目写明来源、名称、版本（tag 或 commit）、获取命令，任何人照着做都能重建出同样的缓存。
+- 每次审查前补齐缺少的条目（预热）；审查后，子 agent 报告的缓存缺口放到下一批补齐。每次新增条目，都同步更新复建步骤。
+
+## 3. 审查结果按次提交到本分支
+
+- 审查范围由仓库所有者逐次指定。
+- 每次审查的结果提交为 `reviews/<YYYY-MM-DD>-<范围简称>.md`，内容包括：
+  - 覆盖信息（审查目标、agent 数量、发现条数、本次生效的降级项）；
+  - 每一轮的发现，原样收录，一轮一个代码块，不去重、不改写、不重新排序；
+  - 当次提议的缓存新增条目。
+- 讲解（walkthrough）在对话中进行，不写进结果文件，除非仓库所有者另有要求。
+- 所有审查都只提供判断，不修改被审代码。
+
+## 4. 当前环境下的降级项（每次都要写进覆盖信息）
+
+- 环境中没有 `strict-reviewer` 这个 agent 类型，改用通用 agent，并下发 skill 规定的子 agent prompt 原文。
+- `~/.claude/rules/spock-test-guidelines.md` 不存在，测试只按仓库自身体现的做法评判。
+- `~/.claude/rules/reference-cache.md` 不存在，缓存条目以本文件第 2 节为准。
+- 被审代码没有 git 历史，不能用“已暂存文件”作为默认目标，必须明确指定范围。
