@@ -47,4 +47,5 @@ mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
 ## 4. 当前环境下的降级项（每次都要写进覆盖信息）
 
 - 环境中没有 `strict-reviewer` 这个 agent 类型，改用通用 agent，并下发 skill 规定的子 agent prompt 原文。
+- 视角 3（测试）只在审查范围包含测试时才派出。范围排除测试时，每次审查只有 2 个 agent（视角 1 和视角 2 各一个）；skill 规定至少 3 个，这一点写进当次的覆盖信息。
 - 被审代码没有 git 历史，不能用“已暂存文件”作为默认目标，必须明确指定范围。
