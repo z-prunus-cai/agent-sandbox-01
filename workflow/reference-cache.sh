@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Rebuilds the strict-review reference cache (see reviews/rules/reference-cache.md).
+# Rebuilds the strict-review reference cache (see workflow/rules/reference-cache.md).
 #
-#   reviews/reference-cache.sh [cache-root]      # default: <repo root>/.reference-cache
+#   workflow/reference-cache.sh [cache-root]      # default: <repo root>/.reference-cache
 #
 # Repo-local shape: a real directory whose own .gitignore holds `*`. Idempotent: an entry that
 # already exists is skipped. Every command that shapes an entry runs inside that entry and is

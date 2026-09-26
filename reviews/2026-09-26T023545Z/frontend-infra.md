@@ -1,10 +1,12 @@
-# strict-review · frontend-infra · 2026-09-26
+# strict-review · frontend-infra · 2026-09-26T023545Z
 
 ## 覆盖信息
 
 ```
-target: frontend 中与业务无关或低相关的部分，共 66 个文件；每个文件的路径和 SHA-256 见 reviews/2026-09-26-reviewed-files.json（键 frontend-infra）
+target: frontend 中与业务无关或低相关的部分，共 66 个文件；每个文件的路径和 SHA-256 见 reviews/2026-09-26T023545Z/reviewed-files.json（键 frontend-infra）
 agents: 2 (lens 1 x1, lens 2 x1)
+dispatched: 2026-09-26T02:35:45Z
+completed: lens 1 2026-09-26T02:41:25Z, lens 2 2026-09-26T02:41:27Z（派出时刻加上 agent 报告的运行时长）
 findings: 22
 degraded: 未派出第 3 路（测试）——本轮测试不在审查范围内，skill 规定至少 3 个 agent
 degraded: 环境中没有 strict-reviewer agent 类型，改用 general-purpose 并下发 skill 原文 prompt；输出格式由协调方补写

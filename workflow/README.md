@@ -2,6 +2,16 @@
 
 本分支用于存放对 `lilradish-lite-strangler` 的 strict-review 审查结果。以下规则由仓库所有者设定，每次审查都要遵守。
 
+## 0. 目录分工：规则与产出分开
+
+| 目录 | 放什么 | 何时改动 |
+|---|---|---|
+| `workflow/` | 规则与步骤：本约定、`rules/`、reference-cache 复建脚本和条目表 | 规则变化时 |
+| `.claude/skills/strict-review/` | skill 本身 | skill 变化时 |
+| `reviews/<时间戳>/` | 产出：某次审查的结果和受审文件清单 | 每次审查新建一个目录，建好后不再改动 |
+
+产出不写进 `workflow/`，规则也不写进 `reviews/`。
+
 ## 1. 被审代码只放本地，不入库
 
 - 被审代码由压缩包解压到仓库根目录下的 `lilradish-lite-strangler/`，**禁止提交**。
@@ -11,37 +21,38 @@
 ## 2. reference-cache：只提交复建步骤，不提交缓存
 
 - 由 Claude 负责准备 reference-cache（已获授权）。它是 skill 使用的 `.reference-cache/`，按 `<source>/<name>@<version>/` 组织。
-- 建缓存、加条目都按 `reviews/rules/reference-cache.md` 执行：版本精确锁定、整树克隆、删掉无用内容、写 `SOURCE`、最后加只读锁，新增条目需先经审批。
+- 建缓存、加条目都按 `workflow/rules/reference-cache.md` 执行：版本精确锁定、整树克隆、删掉无用内容、写 `SOURCE`、最后加只读锁，新增条目需先经审批。
 - 云端容器里没有共享缓存库，所以采用该规则中的第 3 种形态：仓库根目录下的本地目录，目录内放一个只含 `*` 的 `.gitignore`。
 - 缓存内容**不提交**，根目录的 `.gitignore` 也忽略 `.reference-cache/`。
-- **提交的是复建步骤**，放在 `reviews/reference-cache.md`：每个条目写明来源、名称、版本（tag 或 commit），以及它 `SOURCE` 里的完整命令链，任何人照着做都能重建出同样的缓存。
+- **提交的是复建步骤**，放在 `workflow/reference-cache.md`：每个条目写明来源、名称、版本（tag 或 commit），以及它 `SOURCE` 里的完整命令链，任何人照着做都能重建出同样的缓存。
 - 每次审查前补齐缺少的条目（预热）；审查后，子 agent 报告的缓存缺口放到下一批补齐。每次新增条目，都同步更新复建步骤。
 
-## 规则文件（随本分支提交）
+## 2a. 规则文件（随本分支提交）
 
-skill 依赖的两份规则放在 `reviews/rules/`，它们是 skill 路径下对应文件的来源：
+skill 依赖的两份规则放在 `workflow/rules/`，它们是 skill 路径下对应文件的来源：
 
 | 文件 | skill 读取的位置 | 用途 |
 |---|---|---|
-| `reviews/rules/spock-test-guidelines.md` | `~/.claude/rules/spock-test-guidelines.md` | 视角 3（测试）的强制标准 |
-| `reviews/rules/reference-cache.md` | `~/.claude/rules/reference-cache.md` | 缓存的建立与条目新增流程 |
+| `workflow/rules/spock-test-guidelines.md` | `~/.claude/rules/spock-test-guidelines.md` | 视角 3（测试）的强制标准 |
+| `workflow/rules/reference-cache.md` | `~/.claude/rules/reference-cache.md` | 缓存的建立与条目新增流程 |
 
 skill 本身放在 `.claude/skills/strict-review/SKILL.md`（上传原文，未改动）。这是 Claude Code 项目级 skill 的标准位置，新会话克隆本分支后会自动加载，可直接用 `/strict-review` 调用，无需安装。
 
 两份规则则不同：新容器里 `~/.claude/rules/` 不会自动存在，每次会话开始时先安装：
 
 ```sh
-mkdir -p ~/.claude/rules && cp reviews/rules/*.md ~/.claude/rules/
+mkdir -p ~/.claude/rules && cp workflow/rules/*.md ~/.claude/rules/
 ```
 
 ## 3. 审查结果按次提交到本分支
 
 - 审查范围由仓库所有者逐次指定。
-- 每次审查的结果提交为 `reviews/<YYYY-MM-DD>-<范围简称>.md`，内容包括：
-  - 覆盖信息（审查目标、agent 数量、发现条数、本次生效的降级项）；
+- 每次审查的产出放在 `reviews/<时间戳>/`。时间戳是派出 agent 的 UTC 时刻，格式为 `YYYY-MM-DDTHHMMSSZ`（例如 `2026-09-26T023545Z`）；不用冒号，这样在任何文件系统上都能作为目录名。同一时刻派出的多个范围共用一个目录。
+- 每个范围的结果是 `reviews/<时间戳>/<范围简称>.md`，内容包括：
+  - 覆盖信息（审查目标、agent 数量、派出和完成时刻、发现条数、本次生效的降级项）；
   - 每一轮的发现，原样收录，一轮一个代码块，不去重、不改写、不重新排序；
   - 当次提议的缓存新增条目。
-- 同时提交 `reviews/<YYYY-MM-DD>-reviewed-files.json`，列出当日每次审查所审的每个文件的路径和 SHA-256，用来确认结果对应的是哪一版代码。路径相对于 `lilradish-lite-strangler/lite`。
+- 同目录下提交 `reviewed-files.json`，写明派出时刻，并列出每个范围所审的每个文件的路径和 SHA-256，用来确认结果对应的是哪一版代码。路径相对于 `lilradish-lite-strangler/lite`。
 - 默认不做讲解（相当于 `--no-walkthrough`）：审查到转发发现、提交结果即结束。仓库所有者明确要求时，才在对话中分批讲解，讲解内容不写进结果文件。
 - 所有审查都只提供判断，不修改被审代码。
 

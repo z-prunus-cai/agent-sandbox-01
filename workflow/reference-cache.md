@@ -1,12 +1,12 @@
 # reference-cache 复建步骤
 
-缓存内容不入库，入库的是能完整重建它的步骤。流程规则见 `reviews/rules/reference-cache.md`。
+缓存内容不入库，入库的是能完整重建它的步骤。流程规则见 `workflow/rules/reference-cache.md`。
 
 ## 复建
 
 ```sh
-reviews/reference-cache.sh            # 默认建在 <仓库根>/.reference-cache
-reviews/reference-cache.sh <目录>     # 或指定位置
+workflow/reference-cache.sh            # 默认建在 <仓库根>/.reference-cache
+workflow/reference-cache.sh <目录>     # 或指定位置
 ```
 
 - 采用仓库内本地目录的形态：目录自带只含 `*` 的 `.gitignore`，根目录的 `.gitignore` 也忽略它。
@@ -63,5 +63,5 @@ reviews/reference-cache.sh <目录>     # 或指定位置
 
 ## 变更记录
 
-- 2026-09-26：首批 29 个条目。
-- 2026-09-26：按审查后的缓存缺口新增 5 个条目（tomcat、Gradle-License-Report、embedded-postgres、react.dev、rolldown）；`gradle/gradle@9.7.1` 的稀疏范围加入 `kotlin-dsl`，该条目已删除重建。
+- 2026-09-26T02:33:05Z（65ccc58）：首批 29 个条目。
+- 2026-09-26T02:52:37Z（99dec48）：按审查后的缓存缺口新增 5 个条目（tomcat、Gradle-License-Report、embedded-postgres、react.dev、rolldown）；`gradle/gradle@9.7.1` 的稀疏范围加入 `kotlin-dsl`，该条目已删除重建。
