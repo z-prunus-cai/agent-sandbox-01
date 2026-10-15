@@ -6,6 +6,27 @@
 - 生成 Word：[Apache POI](https://poi.apache.org/)（Apache-2.0）
 - 全部依赖均为 Apache-2.0 / BSD / MIT 许可，JDK 17+，Gradle 构建（已附带 wrapper，无需另装 Gradle）
 
+## 最简用法
+
+两个 Markdown 文档各放在一个标题下，再加一段话（`com.example.md2docx.simple.SimpleExample`，运行 `./gradlew runSimple`）：
+
+```java
+byte[] docx = new MarkdownDocxComposer().compose(List.of(
+        DocSection.of("文档1", doc1),
+        DocSection.of("文档2", doc2),
+        DocSection.of("其他", "这是另一段话。")));
+```
+
+文档自己的标题会自动降一级，排到外层标题下面：
+
+| `examples/simple/doc1.md` 原文 | 生成的 Word |
+|---|---|
+| | 文档1（标题 1） |
+| `# 背景` | 背景（标题 2） |
+| `## 目标` | 目标（标题 3） |
+
+下面的其余内容（目录、编号、模板、嵌套章节等）都是可选功能，不用可以不看。
+
 ## 快速开始
 
 ```bash

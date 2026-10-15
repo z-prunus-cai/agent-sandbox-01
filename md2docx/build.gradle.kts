@@ -68,3 +68,11 @@ application {
     // ./gradlew run --args="in-dir out.docx"
     mainClass = "com.example.md2docx.example.ExampleMain"
 }
+
+// ./gradlew runSimple -> build/simple.docx (minimal example: two Markdown files under their own headings)
+tasks.register<JavaExec>("runSimple") {
+    group = "application"
+    description = "Runs the minimal example in com.example.md2docx.simple."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "com.example.md2docx.simple.SimpleExample"
+}
