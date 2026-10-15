@@ -1,0 +1,24 @@
+---
+# 演示用的“已有部署 playbook”：把版本号和健康检查文件写到 app_dir。
+# 真实项目中这里就是你现有的部署 playbook，接入检查不需要修改它。
+- name: Deploy demo app
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: 创建应用目录
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: 写入版本号
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/VERSION"
+        content: "{{ app_version }}\n"
+        mode: "0644"
+
+    - name: 写入健康检查响应
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/health"
+        content: "status: ok\n"
+        mode: "0644"

@@ -1,0 +1,18 @@
+---
+# 检查：从目标主机能否连通某个依赖端口（数据库、缓存、下游服务等）
+#
+# 参数：
+#   target_host      要连接的主机
+#   target_port      要连接的端口
+#   timeout_seconds  等待端口可用的最长时间
+- name: "check | port_reachable"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "等待 {{ target_host }}:{{ target_port }} 可连接"
+      ansible.builtin.wait_for:
+        host: "{{ target_host }}"
+        port: "{{ target_port | int }}"
+        state: started
+        timeout: "{{ timeout_seconds | int }}"
+        msg: "{{ inventory_hostname }}: {{ timeout_seconds }} 秒内无法连接 {{ target_host }}:{{ target_port }}"

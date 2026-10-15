@@ -1,0 +1,25 @@
+---
+# 检查：应用的 HTTP 健康检查接口返回预期结果
+# 请求由目标主机发出，所以 url 里的 127.0.0.1 指目标主机本机。
+#
+# 参数：
+#   url                      健康检查地址
+#   expected_status          期望的 HTTP 状态码
+#   body_contains            响应体需包含的字符串，留空则不检查
+#   max_attempts             最多请求次数（应用启动需要时间，失败后会重试）
+#   delay_seconds            两次请求的间隔（秒）
+- name: "check | http_health"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "请求 {{ url }}"
+      ansible.builtin.uri:
+        url: "{{ url }}"
+        status_code: "{{ expected_status | int }}"
+        return_content: true
+      register: health
+      until: >-
+        health.status | default(0) == expected_status | int
+        and (body_contains | length == 0 or body_contains in health.content | default(''))
+      retries: "{{ max_attempts | int }}"
+      delay: "{{ delay_seconds | int }}"

@@ -1,0 +1,78 @@
+# 部署检查目录：列出这个项目允许使用的所有检查。
+#
+# 每次部署选择哪些检查、用什么策略、传什么参数，由 Jenkins 构建参数决定；
+# 这里只定义“有哪些检查”以及它们的默认值。没有在这里登记的检查名和参数名
+# 都会被拒绝，防止通过构建参数传入任意 playbook 路径或 Ansible 变量。
+#
+# 字段说明：
+#   description      说明，会打印在构建日志里
+#   phases           允许出现在哪个阶段：pre（部署前）/ post（部署后）
+#   playbook         检查用的 playbook，相对于仓库根目录
+#   policy           检查失败时的默认处理方式：
+#                      abort  阻塞：检查失败即停止流水线（构建 FAILURE）
+#                      warn   非阻塞：标记为 UNSTABLE，继续执行
+#                      ignore 非阻塞：只记录结果，不影响构建状态
+#                      ask    失败时暂停，由人决定继续还是中止
+#   timeout_minutes  整个检查的超时时间，超时视为检查失败
+#   params           允许的参数及默认值；只有这里列出的参数名可以被覆盖
+#   required         必须在本次部署中提供值的参数
+
+# PRE_CHECKS / POST_CHECKS 参数留空时使用的默认检查
+defaults:
+  pre: [disk_space, port_reachable]
+  post: [http_health, app_version]
+
+checks:
+  disk_space:
+    description: 目标主机磁盘剩余空间
+    phases: [pre]
+    playbook: examples/deploy-checks/ansible/checks/disk_space.yml
+    policy: abort
+    timeout_minutes: 5
+    params:
+      path: /
+      min_free_mb: 1024
+
+  port_reachable:
+    description: 目标主机能连通依赖服务的端口
+    phases: [pre, post]
+    playbook: examples/deploy-checks/ansible/checks/port_reachable.yml
+    policy: abort
+    timeout_minutes: 5
+    params:
+      target_host: 127.0.0.1
+      target_port: 18080   # 演示值：真实场景填依赖服务端口，如数据库 5432
+      timeout_seconds: 10
+
+  service_running:
+    description: 目标主机上的系统服务正在运行
+    phases: [pre, post]
+    playbook: examples/deploy-checks/ansible/checks/service_running.yml
+    policy: warn
+    timeout_minutes: 5
+    params:
+      service_name: ""
+    required: [service_name]
+
+  http_health:
+    description: 应用 HTTP 健康检查接口
+    phases: [post]
+    playbook: examples/deploy-checks/ansible/checks/http_health.yml
+    policy: abort
+    timeout_minutes: 10
+    params:
+      url: http://127.0.0.1:18080/health   # 演示值；在目标主机本机上请求
+      expected_status: 200
+      body_contains: ""
+      max_attempts: 10
+      delay_seconds: 3
+
+  app_version:
+    description: 已部署的版本号与本次部署一致
+    phases: [post]
+    playbook: examples/deploy-checks/ansible/checks/app_version.yml
+    policy: warn
+    timeout_minutes: 5
+    params:
+      version_file: /tmp/demo-app/VERSION   # 演示值：与 deploy.yml 的 app_dir 一致
+      expected_version: ""

@@ -1,0 +1,25 @@
+---
+# 检查：目标主机上某路径所在文件系统的剩余空间
+#
+# 参数（通过 Jenkins 传入的 extra vars）：
+#   path         要检查的目录或挂载点
+#   min_free_mb  最少剩余空间（MB）
+- name: "check | disk_space"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "读取 {{ path }} 所在文件系统的使用情况"
+      ansible.builtin.command:
+        argv: [df, -Pm, "{{ path }}"]
+      register: df_out
+      changed_when: false
+      check_mode: false
+
+    - name: "断言剩余空间 >= {{ min_free_mb }} MB"
+      vars:
+        free_mb: "{{ df_out.stdout_lines[-1].split()[3] | int }}"
+      ansible.builtin.assert:
+        that:
+          - free_mb | int >= min_free_mb | int
+        fail_msg: "{{ inventory_hostname }}: {{ path }} 仅剩 {{ free_mb }} MB，要求至少 {{ min_free_mb }} MB"
+        success_msg: "{{ inventory_hostname }}: {{ path }} 剩余 {{ free_mb }} MB"
