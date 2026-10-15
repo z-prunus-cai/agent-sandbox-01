@@ -1,0 +1,423 @@
+// 示例：给已有的 Ansible 部署流水线加上“部署前检查”和“部署后检查”。说明见同目录的 README.md。
+//
+// 文件分为三部分：
+//   1. 检查目录 checkCatalog()：这个项目有哪些检查、默认策略、允许的参数与默认值（按项目修改）
+//   2. 流水线：标记 [新增] 的是接入检查新加的部分，其余代表原有的部署流水线
+//   3. 检查引擎：解析本次部署的选择、运行检查、按策略处理失败（一般不需要修改）
+//
+// 需要的插件：ansible、pipeline-utility-steps（readYaml / writeJSON）、Pipeline。
+
+// ===================================================================================
+// 1. 检查目录
+// ===================================================================================
+
+// 所有检查都在这个 playbook 里，用 tag 区分（tag 名 = 检查名）
+def checksPlaybook() { return 'jenkins-ansible-checks/checks.yml' }
+
+// 检查失败时的处理策略：
+//   abort  阻塞：停止流水线（构建 FAILURE）
+//   warn   非阻塞：标记 UNSTABLE，继续执行
+//   ignore 非阻塞：只记录，不影响构建结果
+//   ask    暂停，由人选择继续（UNSTABLE）或中止（ABORTED）
+//
+// 每个检查的字段：
+//   phases           允许出现在哪个阶段：pre（部署前）/ post（部署后）
+//   policy           默认策略
+//   timeout_minutes  超时时间，超时按检查失败处理
+//   params           允许的参数及默认值。只有这里列出的参数名能被覆盖，防止传入任意 Ansible 变量
+//   required         每次部署必须提供值的参数
+def checkCatalog() {
+    return [
+        // PRE_CHECKS / POST_CHECKS 留空时使用的检查
+        defaults: [pre: ['disk_space', 'port_reachable'], post: ['http_health', 'app_version']],
+        checks  : [
+            disk_space     : [description: '目标主机磁盘剩余空间', phases: ['pre'],
+                              policy: 'abort', timeout_minutes: 5,
+                              params: [path: '/', min_free_mb: 1024]],
+            port_reachable : [description: '目标主机能连通依赖服务的端口', phases: ['pre', 'post'],
+                              policy: 'abort', timeout_minutes: 5,
+                              // 演示值：真实场景填依赖服务的地址，如数据库 5432
+                              params: [target_host: '127.0.0.1', target_port: 18080, timeout_seconds: 10]],
+            service_running: [description: '目标主机上的系统服务正在运行', phases: ['pre', 'post'],
+                              policy: 'warn', timeout_minutes: 5,
+                              params: [service_name: ''], required: ['service_name']],
+            http_health    : [description: '应用 HTTP 健康检查接口', phases: ['post'],
+                              policy: 'abort', timeout_minutes: 10,
+                              // 演示值：演示应用监听 18080
+                              params: [url: 'http://127.0.0.1:18080/health', expected_status: 200,
+                                       body_contains: '', max_attempts: 10, delay_seconds: 3]],
+            app_version    : [description: '已部署的版本号与本次部署一致', phases: ['post'],
+                              policy: 'warn', timeout_minutes: 5,
+                              // 演示值：与 Deploy 阶段的 app_dir 一致
+                              params: [version_file: '/tmp/demo-app/VERSION', expected_version: '']],
+        ],
+    ]
+}
+
+// 检查和部署共用的 ansiblePlaybook 参数。演示用本机作为目标主机；
+// 真实环境改为与部署相同的 inventory、credentialsId、installation 等。
+def ansibleArgs() {
+    return [
+        inventoryContent: 'localhost ansible_connection=local ansible_python_interpreter="{{ ansible_playbook_python }}"',
+        // inventory: 'inventories/prod/hosts.ini',
+        // credentialsId: 'deploy-ssh-key',
+    ]
+}
+
+// ===================================================================================
+// 2. 流水线
+// ===================================================================================
+
+def checkPlan                                                                // [新增]
+def checkResults = []                                                        // [新增]
+
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'APP_VERSION', defaultValue: '1.0.0', description: '要部署的版本')
+
+        // [新增] 本次部署要运行的检查
+        string(name: 'PRE_CHECKS', defaultValue: '', trim: true, description: '''
+部署前检查，逗号分隔，每项格式为 名称[:策略]，策略为 abort（阻塞）| warn | ignore | ask。
+留空使用默认检查，填 none 表示不检查。例：disk_space, service_running:warn''')
+        string(name: 'POST_CHECKS', defaultValue: '', trim: true, description: '''
+部署后检查，格式同 PRE_CHECKS。例：http_health, app_version:abort''')
+        text(name: 'CHECK_PARAMS', defaultValue: '', description: '''
+YAML，按检查名覆盖参数，例：
+disk_space: {path: /var, min_free_mb: 2048}
+http_health: {url: "http://127.0.0.1:8080/ready", max_attempts: 20}''')
+        text(name: 'CHECK_PLAN', defaultValue: '', description: '''
+高级：完整的 YAML 检查计划，非空时忽略上面三个参数。可以让同一检查跑多次（用 id 区分），可以设置 limit / timeout_minutes：
+pre:
+  - disk_space
+  - {name: port_reachable, id: db, policy: warn, params: {target_port: 5432}}
+post:
+  - {name: http_health, policy: ask, limit: web1}''')
+    }
+
+    stages {
+        // [新增] 部署前先解析并校验检查计划：检查名、参数写错时直接失败，不会部署到一半
+        stage('Resolve checks') {
+            steps {
+                script {
+                    checkPlan = resolveChecks(pre: params.PRE_CHECKS, post: params.POST_CHECKS,
+                            params: params.CHECK_PARAMS, plan: params.CHECK_PLAN)
+                }
+            }
+        }
+
+        // [新增]
+        stage('Pre-deploy checks') {
+            when { expression { checkPlan.pre } }
+            steps {
+                script {
+                    runChecks('pre', checkPlan.pre, checkResults, [deploy_version: params.APP_VERSION])
+                }
+            }
+        }
+
+        // 原有的部署步骤（演示用替身：运行 checks.yml 中的 demo_deploy）
+        stage('Deploy') {
+            steps {
+                script {
+                    ansiblePlaybook(ansibleArgs() + [
+                            playbook : checksPlaybook(),
+                            tags     : 'demo_deploy',
+                            extraVars: [app_version: [value: params.APP_VERSION, hidden: false],
+                                        app_dir    : [value: '/tmp/demo-app', hidden: false]],
+                    ])
+                }
+            }
+        }
+
+        // [新增]
+        stage('Post-deploy checks') {
+            when { expression { checkPlan.post } }
+            steps {
+                script {
+                    runChecks('post', checkPlan.post, checkResults, [deploy_version: params.APP_VERSION])
+                }
+            }
+        }
+    }
+
+    post {
+        // [新增] 汇总检查结果并归档 deploy-checks-report.json
+        always {
+            script {
+                reportChecks(checkResults)
+            }
+        }
+        // 部署后的阻塞检查失败也会走到这里，可以在此接入回滚或通知（注意部署前检查失败时并没有部署）
+        // failure { ... }
+    }
+}
+
+// ===================================================================================
+// 3. 检查引擎
+// ===================================================================================
+
+// 解析本次部署要运行的检查，返回 [pre: [...], post: [...]]。计划有误时让构建失败。
+def resolveChecks(Map args) {
+    Map catalog = checkCatalog()
+    List errors = []
+    Map plan = null
+    if (args.plan?.trim()) {
+        if (args.pre?.trim() || args.post?.trim() || args.params?.trim()) {
+            echo '[checks] 已提供 CHECK_PLAN，忽略 PRE_CHECKS / POST_CHECKS / CHECK_PARAMS'
+        }
+        Object rawPlan = readYaml(text: args.plan)
+        if (rawPlan instanceof Map) {
+            plan = buildPlan(rawPlan, catalog, errors)
+        } else {
+            errors << 'CHECK_PLAN 必须是 YAML 映射（key: value）'
+        }
+    } else {
+        Object overrides = args.params?.trim() ? readYaml(text: args.params) : [:]
+        if (overrides instanceof Map) {
+            plan = buildPlan(shorthandPlan(args.pre, args.post, overrides, catalog, errors), catalog, errors)
+        } else {
+            errors << 'CHECK_PARAMS 必须是 YAML 映射（key: value）'
+        }
+    }
+    if (errors) {
+        error "[checks] 检查计划有误：\n  - " + errors.join('\n  - ')
+    }
+    echo describePlan(plan)
+    return plan
+}
+
+// 依次运行一个阶段的检查，每个检查一个 stage；结果追加到 results
+def runChecks(String phase, List checks, List results, Map context) {
+    for (int i = 0; i < checks.size(); i++) {
+        Map check = checks[i]
+        stage("${phase}: ${check.id}") {
+            runOneCheck(check, results, context)
+        }
+    }
+}
+
+def runOneCheck(Map check, List results, Map context) {
+    echo "[checks] ${check.id}（${check.description}）策略=${check.policy} 参数=${check.params}"
+
+    // 参数写进 JSON 文件，用 -e @file 传给 Ansible，这样能保留数字、布尔、列表的类型。
+    // ansiblePlaybook 的 extraVars 只支持标量，而且会把数字变成字符串。
+    String varsFile = ".deploy-checks/${check.phase}-${check.id}.json"
+    writeJSON file: varsFile, json: context + check.params + [check_id: check.id, check_phase: check.phase]
+
+    Map args = ansibleArgs() + [playbook: checksPlaybook(), tags: check.name,
+                                extras  : "-e @${varsFile}"]
+    if (check.limit) {
+        args.limit = check.limit
+    }
+
+    long started = System.currentTimeMillis()
+    String failure = null
+    try {
+        timeout(time: check.timeoutMinutes, unit: 'MINUTES') {
+            ansiblePlaybook(args)
+        }
+    } catch (hudson.AbortException e) {
+        // ansible-playbook 返回非 0（断言失败、主机不可达等）时，插件抛出 AbortException
+        failure = e.message
+    } catch (InterruptedException e) {
+        // 超时按检查失败处理；手动中止构建照常抛出。timeout 取消 ansiblePlaybook 时插件抛出的是
+        // 普通 InterruptedException，不带超时原因，所以用已耗时判断
+        if (System.currentTimeMillis() - started < check.timeoutMinutes * 60000L) {
+            throw e
+        }
+        failure = "超过 ${check.timeoutMinutes} 分钟未完成"
+    }
+
+    Map result = [id    : check.id, name: check.name, phase: check.phase, policy: check.policy,
+                  params: check.params, seconds: (int) ((System.currentTimeMillis() - started) / 1000)]
+    results << result
+    if (failure == null) {
+        result.status = 'PASSED'
+        return
+    }
+    result.status = 'FAILED'
+    result.message = failure
+    String message = "检查 ${check.id} 未通过：${failure}"
+    switch (check.policy) {
+        case 'abort':
+            result.outcome = 'aborted'
+            error "${message}（阻塞检查，停止流水线）"
+            break
+        case 'warn':
+            result.outcome = 'continued'
+            unstable "${message}（非阻塞检查，继续执行）"
+            break
+        case 'ignore':
+            result.outcome = 'ignored'
+            echo "[checks] ${message}（已忽略）"
+            break
+        case 'ask':
+            result.outcome = 'aborted'      // 点击“中止”或 30 分钟无人处理都会中止构建
+            timeout(time: 30, unit: 'MINUTES') {
+                input message: "${message}\n是否继续？", ok: '继续'
+            }
+            result.outcome = 'continued'
+            unstable "${message}（人工确认继续）"
+            break
+    }
+}
+
+// 打印结果汇总，并归档 deploy-checks-report.json
+def reportChecks(List results) {
+    if (!results) {
+        return
+    }
+    echo formatReport(results)
+    writeJSON file: 'deploy-checks-report.json', json: results, pretty: 4
+    archiveArtifacts artifacts: 'deploy-checks-report.json'
+}
+
+// 把 PRE_CHECKS / POST_CHECKS / CHECK_PARAMS 转成与 CHECK_PLAN 相同的结构；发现的问题追加到 errors
+@NonCPS
+Map shorthandPlan(String pre, String post, Map overrides, Map catalog, List errors) {
+    Map plan = [:]
+    [pre: pre, post: post].each { phase, text ->
+        String value = text?.trim()
+        List names
+        if (!value) {
+            names = catalog.defaults[phase] ?: []
+        } else if (value.equalsIgnoreCase('none')) {
+            names = []
+        } else {
+            names = value.tokenize(', ')
+        }
+        plan[phase] = names.collect { String item ->
+            List parts = item.tokenize(':')
+            Map entry = [name: parts[0]]
+            if (parts.size() > 1) {
+                entry.policy = parts[1]
+            }
+            if (overrides[parts[0]] != null) {
+                entry.params = overrides[parts[0]]
+            }
+            return entry
+        }
+    }
+    List selected = (plan.pre + plan.post).collect { it.name }
+    List unused = overrides.keySet().findAll { !(it in selected) } as List
+    if (unused) {
+        errors << "CHECK_PARAMS 中的 ${unused} 不在本次选择的检查里"
+    }
+    return plan
+}
+
+// 校验计划，并与目录中的默认值合并；发现的问题追加到 errors
+@NonCPS
+Map buildPlan(Map rawPlan, Map catalog, List errors) {
+    List entryKeys = ['name', 'id', 'policy', 'params', 'limit', 'timeout_minutes']
+    List policies = ['abort', 'warn', 'ignore', 'ask']
+    Map plan = [pre: [], post: []]
+    List unknownPhases = rawPlan.keySet().findAll { !(it in ['pre', 'post']) } as List
+    if (unknownPhases) {
+        errors << "未知阶段 ${unknownPhases}，只支持 pre / post"
+    }
+    ['pre', 'post'].each { String phase ->
+        Object entries = rawPlan[phase]
+        if (entries == null) {
+            return
+        }
+        if (!(entries instanceof List)) {
+            errors << "${phase} 必须是列表"
+            return
+        }
+        List ids = []
+        entries.eachWithIndex { Object item, int index ->
+            String where = "${phase}[${index}]"
+            Object entry = item instanceof String ? [name: item] : item
+            if (!(entry instanceof Map) || !entry.name) {
+                errors << "${where}：应为检查名，或包含 name 的映射"
+                return
+            }
+            List badKeys = entry.keySet().findAll { !(it in entryKeys) } as List
+            if (badKeys) {
+                errors << "${where}：不支持的字段 ${badKeys}，可用字段 ${entryKeys}"
+            }
+            Map definition = catalog.checks[entry.name]
+            if (definition == null) {
+                errors << "${where}：未知检查 '${entry.name}'，可用检查 ${catalog.checks.keySet()}"
+                return
+            }
+            if (!(phase in definition.phases)) {
+                errors << "${where}：检查 '${entry.name}' 不能用于 ${phase}，只能用于 ${definition.phases}"
+            }
+            String id = (entry.id ?: entry.name).toString()
+            if (!(id ==~ /[A-Za-z0-9_.-]+/)) {
+                errors << "${where}：id '${id}' 只能包含字母、数字、_ . -"
+            } else if (id in ids) {
+                errors << "${where}：id '${id}' 重复；同一检查运行多次时请用 id 区分"
+            }
+            ids << id
+            String policy = (entry.policy ?: definition.policy).toString()
+            if (!(policy in policies)) {
+                errors << "${where}：未知策略 '${policy}'，可用策略 ${policies}"
+            }
+            Object given = entry.params ?: [:]
+            if (!(given instanceof Map)) {
+                errors << "${where}：params 必须是映射"
+                return
+            }
+            List unknownParams = given.keySet().findAll { !definition.params.containsKey(it) } as List
+            if (unknownParams) {
+                errors << "${where}：检查 '${entry.name}' 不接受参数 ${unknownParams}，可用参数 ${definition.params.keySet()}"
+            }
+            Map merged = definition.params + given
+            (definition.required ?: []).each { String key ->
+                if (merged[key] == null || merged[key].toString().trim().isEmpty()) {
+                    errors << "${where}：检查 '${entry.name}' 必须提供参数 ${key}"
+                }
+            }
+            given.each { key, value ->
+                if (containsTemplate(value)) {
+                    // Ansible 会渲染 extra vars 中的 Jinja 表达式，可被用来在 Jenkins 节点上执行命令
+                    errors << "${where}：参数 ${key} 不能包含 Jinja 模板语法（{{ / {% / {#）"
+                }
+            }
+            plan[phase] << [id            : id, name: entry.name.toString(), phase: phase,
+                            description   : definition.description, policy: policy, params: merged,
+                            limit         : entry.limit?.toString(),
+                            timeoutMinutes: (entry.timeout_minutes ?: definition.timeout_minutes) as int]
+        }
+    }
+    return plan
+}
+
+@NonCPS
+boolean containsTemplate(Object value) {
+    if (value instanceof Map) {
+        return value.any { k, v -> containsTemplate(k) || containsTemplate(v) }
+    }
+    if (value instanceof Collection) {
+        return value.any { containsTemplate(it) }
+    }
+    String text = value?.toString() ?: ''
+    return text.contains('{{') || text.contains('{%') || text.contains('{#')
+}
+
+@NonCPS
+String describePlan(Map plan) {
+    List lines = ['[checks] 本次部署的检查计划：']
+    ['pre', 'post'].each { String phase ->
+        lines << "  ${phase}:${plan[phase] ? '' : ' （无）'}"
+        plan[phase].each { Map c ->
+            lines << "    - ${c.id} [${c.policy}] ${c.params}${c.limit ? ' limit=' + c.limit : ''}"
+        }
+    }
+    return lines.join('\n')
+}
+
+@NonCPS
+String formatReport(List results) {
+    List lines = ['[checks] 检查结果：']
+    results.each { Map r ->
+        lines << "  ${r.phase.padRight(5)} ${r.id.padRight(20)} ${r.policy.padRight(7)} ${r.status.padRight(7)}" +
+                "${r.seconds.toString().padLeft(4)}s${r.outcome ? ' -> ' + r.outcome : ''}"
+    }
+    return lines.join('\n')
+}

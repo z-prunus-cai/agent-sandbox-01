@@ -1,0 +1,132 @@
+---
+# 部署检查：每个 play 是一个检查，用 tag 选择要运行哪一个（tag 名 = 检查名）。
+# 检查只负责判断条件是否满足，不满足时让 playbook 失败；失败后是停止还是继续，由 Jenkinsfile 决定。
+# 参数通过 extra vars 传入，参数名和默认值登记在 Jenkinsfile 的 checkCatalog() 中。
+#
+# 不经过 Jenkins 也可以直接运行，例如：
+#   ansible-playbook -i localhost, -c local checks.yml -t disk_space -e '{"path": "/", "min_free_mb": 1024}'
+#
+# 注意：参数名不要使用 Ansible 的保留字（如 port、retries），否则会被当成关键字并产生警告。
+
+# 检查：目标主机上某路径所在文件系统的剩余空间
+# 参数：path 要检查的目录或挂载点；min_free_mb 最少剩余空间（MB）
+- name: "check | disk_space"
+  hosts: all
+  gather_facts: false
+  tags: [disk_space]
+  tasks:
+    - name: "读取 {{ path }} 所在文件系统的使用情况"
+      ansible.builtin.command:
+        argv: [df, -Pm, "{{ path }}"]
+      register: df_out
+      changed_when: false
+      check_mode: false
+
+    - name: "断言剩余空间 >= {{ min_free_mb }} MB"
+      vars:
+        free_mb: "{{ df_out.stdout_lines[-1].split()[3] | int }}"
+      ansible.builtin.assert:
+        that:
+          - free_mb | int >= min_free_mb | int
+        fail_msg: "{{ inventory_hostname }}: {{ path }} 仅剩 {{ free_mb }} MB，要求至少 {{ min_free_mb }} MB"
+        success_msg: "{{ inventory_hostname }}: {{ path }} 剩余 {{ free_mb }} MB"
+
+# 检查：从目标主机能否连通某个依赖端口（数据库、缓存、下游服务等）
+# 参数：target_host / target_port 要连接的地址；timeout_seconds 等待端口可用的最长时间
+- name: "check | port_reachable"
+  hosts: all
+  gather_facts: false
+  tags: [port_reachable]
+  tasks:
+    - name: "等待 {{ target_host }}:{{ target_port }} 可连接"
+      ansible.builtin.wait_for:
+        host: "{{ target_host }}"
+        port: "{{ target_port | int }}"
+        state: started
+        timeout: "{{ timeout_seconds | int }}"
+        msg: "{{ inventory_hostname }}: {{ timeout_seconds }} 秒内无法连接 {{ target_host }}:{{ target_port }}"
+
+# 检查：目标主机上的某个系统服务处于 running 状态
+# 参数：service_name 服务名，如 nginx（会同时匹配 nginx 和 nginx.service）
+- name: "check | service_running"
+  hosts: all
+  gather_facts: false
+  tags: [service_running]
+  tasks:
+    - name: 收集服务状态
+      ansible.builtin.service_facts:
+
+    - name: "断言服务 {{ service_name }} 正在运行"
+      vars:
+        svc: >-
+          {{ ansible_facts.services[service_name]
+             | default(ansible_facts.services[service_name ~ '.service'] | default({})) }}
+      ansible.builtin.assert:
+        that:
+          - svc.state | default('missing') == 'running'
+        fail_msg: "{{ inventory_hostname }}: 服务 {{ service_name }} 状态为 {{ svc.state | default('不存在') }}"
+        success_msg: "{{ inventory_hostname }}: 服务 {{ service_name }} 正在运行"
+
+# 检查：应用的 HTTP 健康检查接口返回预期结果。请求由目标主机发出，url 中的 127.0.0.1 指目标主机本机。
+# 参数：url 健康检查地址；expected_status 期望的状态码；body_contains 响应体需包含的字符串（留空不检查）；
+#       max_attempts 最多请求次数（应用启动需要时间）；delay_seconds 两次请求的间隔
+- name: "check | http_health"
+  hosts: all
+  gather_facts: false
+  tags: [http_health]
+  tasks:
+    - name: "请求 {{ url }}"
+      ansible.builtin.uri:
+        url: "{{ url }}"
+        status_code: "{{ expected_status | int }}"
+        return_content: true
+      register: health
+      until: >-
+        health.status | default(0) == expected_status | int
+        and (body_contains | length == 0 or body_contains in health.content | default(''))
+      retries: "{{ max_attempts | int }}"
+      delay: "{{ delay_seconds | int }}"
+
+# 检查：目标主机上已部署的版本号与本次部署的版本一致
+# 参数：version_file 记录版本号的文件；expected_version 期望的版本号，留空时使用 Jenkins 自动传入的 deploy_version
+- name: "check | app_version"
+  hosts: all
+  gather_facts: false
+  tags: [app_version]
+  tasks:
+    - name: "读取 {{ version_file }}"
+      ansible.builtin.slurp:
+        src: "{{ version_file }}"
+      register: version_raw
+
+    - name: 断言版本号一致
+      vars:
+        actual: "{{ version_raw.content | b64decode | trim }}"
+        expected: "{{ expected_version if expected_version | string | length > 0 else deploy_version }}"
+      ansible.builtin.assert:
+        that:
+          - actual == expected
+        fail_msg: "{{ inventory_hostname }}: 实际版本 {{ actual }}，期望 {{ expected }}"
+        success_msg: "{{ inventory_hostname }}: 版本 {{ actual }}"
+
+# 演示用的“原有部署”：把版本号和健康检查文件写到 app_dir。
+# 带 never 标签，只有显式指定 -t demo_deploy 才会运行。真实项目中用你自己的部署 playbook。
+- name: "demo | deploy"
+  hosts: all
+  gather_facts: false
+  tags: [never, demo_deploy]
+  tasks:
+    - name: 创建应用目录
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: 写入版本号和健康检查响应
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/{{ item.file }}"
+        content: "{{ item.content }}\n"
+        mode: "0644"
+      loop:
+        - {file: VERSION, content: "{{ app_version }}"}
+        - {file: health, content: "status: ok"}
