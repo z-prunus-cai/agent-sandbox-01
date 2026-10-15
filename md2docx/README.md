@@ -4,14 +4,16 @@
 
 - 解析：[commonmark-java](https://github.com/commonmark/commonmark-java)（BSD-2-Clause）
 - 生成 Word：[Apache POI](https://poi.apache.org/)（Apache-2.0）
-- 全部依赖均为 Apache-2.0 / BSD / MIT 许可，JDK 17+
+- 全部依赖均为 Apache-2.0 / BSD / MIT 许可，JDK 17+，Gradle 构建（已附带 wrapper，无需另装 Gradle）
 
 ## 快速开始
 
 ```bash
-mvn test                          # 单元测试
-mvn test -Pschema-validation      # 额外用完整 ECMA-376 schema 校验生成的 docx
-mvn -q compile exec:java          # 用 examples/report 下的 4 个 md 生成 target/example-report.docx
+./gradlew build        # 编译 + 单元测试（test）+ OOXML schema 校验（schemaTest）
+./gradlew test         # 只跑单元测试
+./gradlew schemaTest   # 只跑 schema 校验
+./gradlew run          # 用 examples/report 下的 4 个 md 生成 build/example-report.docx
+./gradlew run --args="<md 目录> <输出.docx>"
 ```
 
 ```java
@@ -116,7 +118,7 @@ Markdown 来自用户或 LLM 时，以下默认值可以防止被滥用：
 
 ## 如何确认"能正常渲染"
 
-- `mvn test -Pschema-validation`：把 poi-ooxml-lite 换成 poi-ooxml-full，用 ECMA-376 schema 校验生成文档的 document、styles、numbering、footnotes、settings、footer 等部件，任何一个元素顺序或属性错误都会让测试失败。默认构建会跳过这个测试，因为 lite 包里缺少部分 schema 类。
+- `schemaTest` 测试套件（`src/schemaTest`）：用 ECMA-376 schema 校验生成文档的 document、styles、numbering、footnotes、settings、footer 等部件，任何一个元素顺序或属性错误都会让测试失败。它已挂在 `check` 上，`./gradlew build` 会自动执行。这个套件的类路径把 poi-ooxml-lite 换成了 poi-ooxml-full，因为 lite 包只包含 POI 自身用到的 schema 类；库本身发布时依赖的仍是 lite。
 - 单元测试覆盖：标题层级、跨片段脚注、列表重新编号、跨片段锚点、图片路径安全、宽图缩放、目录、分页、模板样式匹配、异常输入。
 - 示例文档已在 LibreOffice 中渲染核对。**目前还没有在 Microsoft Word 和 WPS 中人工打开验证**，上线前建议各打开一次。
 
@@ -128,6 +130,9 @@ Markdown 来自用户或 LLM 时，以下默认值可以防止被滥用：
 ## 代码结构
 
 ```
+build.gradle.kts                 构建脚本：依赖、test / schemaTest 两个测试套件、run 任务
+src/schemaTest/java/...          OOXML schema 校验测试
+src/test/java/...                单元测试
 src/main/java/com/example/md2docx/
 ├── MarkdownDocxComposer.java   入口
 ├── DocSection.java             大纲节点（标题 / 正文 / 子章节）

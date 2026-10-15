@@ -11,16 +11,16 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Builds {@code target/example-report.docx} from the Markdown files in {@code examples/report}.
+ * Builds {@code build/example-report.docx} from the Markdown files in {@code examples/report}.
  *
- * <pre>mvn -q compile exec:java                       # default paths
- * mvn -q compile exec:java -Dexec.args="in-dir out.docx"</pre>
+ * <pre>./gradlew run                            # default paths
+ * ./gradlew run --args="in-dir out.docx"</pre>
  */
 public final class ExampleMain {
 
     public static void main(String[] args) throws IOException {
         Path dir = Path.of(args.length > 0 ? args[0] : "examples/report");
-        Path out = Path.of(args.length > 1 ? args[1] : "target/example-report.docx");
+        Path out = Path.of(args.length > 1 ? args[1] : "build/example-report.docx");
 
         ComposeOptions options = ComposeOptions.builder()
                 .title("订单中心技术方案")

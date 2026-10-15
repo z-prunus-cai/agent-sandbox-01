@@ -16,12 +16,11 @@ import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Validates every WordprocessingML part of generated documents against the ECMA-376 schemas.
- * Needs the complete schema classes, which the default poi-ooxml-lite jar does not contain:
- * <pre>mvn test -Pschema-validation</pre>
+ * Runs in the {@code schemaTest} suite ({@code ./gradlew schemaTest}, also part of {@code check}), whose classpath
+ * replaces poi-ooxml-lite with poi-ooxml-full: lite only contains the schema classes POI itself uses.
  */
 class OoxmlSchemaValidationTest {
 
@@ -29,7 +28,7 @@ class OoxmlSchemaValidationTest {
 
     @Test
     void generatedDocumentsConformToTheSchema() throws Exception {
-        assumeTrue(fullSchemasPresent(), "run with -Pschema-validation (needs poi-ooxml-full)");
+        assertTrue(fullSchemasPresent(), "poi-ooxml-full must be on the classpath instead of poi-ooxml-lite");
 
         Path dir = Path.of("examples/report");
         List<DocSection> sections = List.of(
