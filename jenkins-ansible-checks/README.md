@@ -208,6 +208,34 @@ stage('Pre-check: disk') {
   post  app_version          abort   FAILED     1s -> aborted
 ```
 
+### Jenkins 界面上的显示
+
+以下内容在 Jenkins 2.580.1 上实际截图确认过。
+
+**构建参数页（Build with Parameters）**：4 个参数依次显示为两个单行输入框（`PRE_CHECKS`、`POST_CHECKS`）和两个多行文本框（`CHECK_PARAMS`、`CHECK_PLAN`），每个参数下方显示 Jenkinsfile 中写的说明和示例。
+
+**构建结果**：构建列表中的图标与策略对应。全部通过或 `ignore` 显示绿色 ✓；`warn` 或 `ask` 选择继续显示橙色 !（UNSTABLE）；`abort` 显示红色 ✗；`ask` 选择中止或手动中止显示灰色（ABORTED）。
+
+**Pipeline Graph View**（[pipeline-graph-view](https://plugins.jenkins.io/pipeline-graph-view/) 插件，构建页面的 “Stages” 入口；新版本 Jenkins 推荐使用）：**显示效果最好，推荐使用。**
+
+- 顶部的流程图中，每个检查是一个独立节点，按阶段分组，例如 `Pre-deploy… (3)` 下面是 `pre: disk_space`、`pre: db`、`pre: web`。节点的颜色和图标就是检查结果：通过为绿色 ✓，`warn` 失败为橙色 !，`abort` 失败为红色 ✗。
+- 阻塞检查失败后，后面的 `Deploy`、`Post-deploy checks` 显示为“已跳过”（»），流程图中会画一条绕过它们的线。
+- 左侧是树形列表，同样按阶段嵌套显示每个检查及其耗时。点击某个检查，右侧会显示它的步骤和日志；打开失败的构建时，会自动定位到失败的那一步。
+- `ask` 等待期间，该检查节点显示为蓝色暂停图标，右侧直接显示提示“检查 xxx 未通过：… 是否继续？”以及 **继续** / **Abort** 两个按钮，点击即可，不需要打开控制台。
+
+**Stage View**（经典的 [pipeline-stage-view](https://plugins.jenkins.io/pipeline-stage-view/) 插件，job 首页的表格）：**能用，但不适合这种动态的 stage。**
+
+- 嵌套的检查 stage 会被平铺成与 `Deploy` 同级的列，例如 `Pre-deploy checks | pre: disk_space | Deploy | …`。
+- 列由最近一次构建决定。每次选择的检查不同，列就不同；而 Stage View 只显示与最近一次构建 stage 结构相同的构建。所以实测中，经常**只显示最近一次构建那一行**，没法横向对比历史构建。
+- `ask` 等待期间，对应格子显示为蓝色斜纹，标注 “paused for …”。
+
+**控制台日志**：每个检查开始时打印一行 `[checks] <id>（说明）策略=… 参数=…`，末尾打印检查结果汇总表。有两点要注意：
+
+- 检查失败时，插件会打印 `FATAL: command execution failed` 和 Java 堆栈（见第 6 节第 3 条）。这些信息在 Graph View 的步骤日志里也能看到，但不代表构建失败。
+- 所有检查都在同一个 `checks.yml` 中，所以没被选中的检查也会打印一行空的 `PLAY [check | xxx]` 标题，下面没有任何任务。这不影响结果。
+
+**归档文件**：job 首页和构建页面上有 `deploy-checks-report.json` 的链接，点 “view” 可以直接在浏览器中查看。
+
 ### 不经过 Jenkins 单独运行检查
 
 检查就是普通的 playbook，用 `-t` 选择检查，用 `-e` 传参数：

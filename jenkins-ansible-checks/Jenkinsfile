@@ -78,17 +78,13 @@ pipeline {
         string(name: 'APP_VERSION', defaultValue: '1.0.0', description: '要部署的版本')
 
         // [新增] 本次部署要运行的检查
-        string(name: 'PRE_CHECKS', defaultValue: '', trim: true, description: '''
-部署前检查，逗号分隔，每项格式为 名称[:策略]，策略为 abort（阻塞）| warn | ignore | ask。
+        string(name: 'PRE_CHECKS', defaultValue: '', trim: true, description: '''部署前检查，逗号分隔，每项格式为 名称[:策略]，策略为 abort（阻塞）| warn | ignore | ask。
 留空使用默认检查，填 none 表示不检查。例：disk_space, service_running:warn''')
-        string(name: 'POST_CHECKS', defaultValue: '', trim: true, description: '''
-部署后检查，格式同 PRE_CHECKS。例：http_health, app_version:abort''')
-        text(name: 'CHECK_PARAMS', defaultValue: '', description: '''
-YAML，按检查名覆盖参数，例：
+        string(name: 'POST_CHECKS', defaultValue: '', trim: true, description: '''部署后检查，格式同 PRE_CHECKS。例：http_health, app_version:abort''')
+        text(name: 'CHECK_PARAMS', defaultValue: '', description: '''YAML，按检查名覆盖参数，例：
 disk_space: {path: /var, min_free_mb: 2048}
 http_health: {url: "http://127.0.0.1:8080/ready", max_attempts: 20}''')
-        text(name: 'CHECK_PLAN', defaultValue: '', description: '''
-高级：完整的 YAML 检查计划，非空时忽略上面三个参数。可以让同一检查跑多次（用 id 区分），可以设置 limit / timeout_minutes：
+        text(name: 'CHECK_PLAN', defaultValue: '', description: '''高级：完整的 YAML 检查计划，非空时忽略上面三个参数。可以让同一检查跑多次（用 id 区分），可以设置 limit / timeout_minutes：
 pre:
   - disk_space
   - {name: port_reachable, id: db, policy: warn, params: {target_port: 5432}}
