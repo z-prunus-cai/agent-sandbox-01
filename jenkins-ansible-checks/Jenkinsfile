@@ -5,7 +5,8 @@
 //   2. 流水线：标记 [新增] 的是接入检查新加的部分，其余代表原有的部署流水线
 //   3. 检查引擎：解析本次部署的选择、运行检查、按策略处理失败（一般不需要修改）
 //
-// 需要的插件：ansible、pipeline-utility-steps（readYaml / writeJSON）、Pipeline。
+// 需要的插件：ansible、pipeline-utility-steps（readYaml / writeJSON）、uno-choice（Active Choices，
+// 提供可多选的检查列表和随选择变化的参数表单）、Pipeline。
 
 // ===================================================================================
 // 1. 检查目录
@@ -24,32 +25,42 @@ def checksPlaybook() { return 'jenkins-ansible-checks/checks.yml' }
 //   phases           允许出现在哪个阶段：pre（部署前）/ post（部署后）
 //   policy           默认策略
 //   timeout_minutes  超时时间，超时按检查失败处理
-//   params           允许的参数及默认值。只有这里列出的参数名能被覆盖，防止传入任意 Ansible 变量
+//   params           允许的参数及默认值。只有这里列出的参数名能被覆盖，防止传入任意 Ansible 变量。
+//                    数字类型的默认值在表单中显示为数字输入框，提交后也按数字传给 Ansible
+//   labels           参数在表单中显示的说明
 //   required         每次部署必须提供值的参数
 def checkCatalog() {
     return [
-        // PRE_CHECKS / POST_CHECKS 留空时使用的检查
+        // 构建参数页上默认勾选的检查
         defaults: [pre: ['disk_space', 'port_reachable'], post: ['http_health', 'app_version']],
         checks  : [
             disk_space     : [description: '目标主机磁盘剩余空间', phases: ['pre'],
                               policy: 'abort', timeout_minutes: 5,
-                              params: [path: '/', min_free_mb: 1024]],
+                              params: [path: '/', min_free_mb: 1024],
+                              labels: [path: '要检查的目录或挂载点', min_free_mb: '最少剩余空间（MB）']],
             port_reachable : [description: '目标主机能连通依赖服务的端口', phases: ['pre', 'post'],
                               policy: 'abort', timeout_minutes: 5,
                               // 演示值：真实场景填依赖服务的地址，如数据库 5432
-                              params: [target_host: '127.0.0.1', target_port: 18080, timeout_seconds: 10]],
+                              params: [target_host: '127.0.0.1', target_port: 18080, timeout_seconds: 10],
+                              labels: [target_host: '依赖服务地址', target_port: '依赖服务端口',
+                                       timeout_seconds: '等待端口可用的最长时间（秒）']],
             service_running: [description: '目标主机上的系统服务正在运行', phases: ['pre', 'post'],
                               policy: 'warn', timeout_minutes: 5,
-                              params: [service_name: ''], required: ['service_name']],
+                              params: [service_name: ''], required: ['service_name'],
+                              labels: [service_name: '服务名，如 nginx']],
             http_health    : [description: '应用 HTTP 健康检查接口', phases: ['post'],
                               policy: 'abort', timeout_minutes: 10,
                               // 演示值：演示应用监听 18080
                               params: [url: 'http://127.0.0.1:18080/health', expected_status: 200,
-                                       body_contains: '', max_attempts: 10, delay_seconds: 3]],
+                                       body_contains: '', max_attempts: 10, delay_seconds: 3],
+                              labels: [url: '健康检查地址（在目标主机上请求）', expected_status: '期望的 HTTP 状态码',
+                                       body_contains: '响应需包含的文字，留空不检查', max_attempts: '最多请求次数',
+                                       delay_seconds: '两次请求的间隔（秒）']],
             app_version    : [description: '已部署的版本号与本次部署一致', phases: ['post'],
                               policy: 'warn', timeout_minutes: 5,
                               // 演示值：与 Deploy 阶段的 app_dir 一致
-                              params: [version_file: '/tmp/demo-app/VERSION', expected_version: '']],
+                              params: [version_file: '/tmp/demo-app/VERSION', expected_version: ''],
+                              labels: [version_file: '记录版本号的文件', expected_version: '期望的版本号，留空则为 APP_VERSION']],
         ],
     ]
 }
@@ -68,37 +79,26 @@ def ansibleArgs() {
 // 2. 流水线
 // ===================================================================================
 
+// 构建参数用 properties() 定义，而不是 pipeline 中的 parameters {}：检查列表和参数表单要根据
+// checkCatalog() 生成。原有的参数（如 APP_VERSION）也一起移到这里，两种写法不能同时使用。
+properties([parameters([
+        string(name: 'APP_VERSION', defaultValue: '1.0.0', description: '要部署的版本'),
+] + checkParameters())])                                                     // [新增] checkParameters()
+
 def checkPlan                                                                // [新增]
 def checkResults = []                                                        // [新增]
 
 pipeline {
     agent any
 
-    parameters {
-        string(name: 'APP_VERSION', defaultValue: '1.0.0', description: '要部署的版本')
-
-        // [新增] 本次部署要运行的检查
-        string(name: 'PRE_CHECKS', defaultValue: '', trim: true, description: '''部署前检查，逗号分隔，每项格式为 名称[:策略]，策略为 abort（阻塞）| warn | ignore | ask。
-留空使用默认检查，填 none 表示不检查。例：disk_space, service_running:warn''')
-        string(name: 'POST_CHECKS', defaultValue: '', trim: true, description: '''部署后检查，格式同 PRE_CHECKS。例：http_health, app_version:abort''')
-        text(name: 'CHECK_PARAMS', defaultValue: '', description: '''YAML，按检查名覆盖参数，例：
-disk_space: {path: /var, min_free_mb: 2048}
-http_health: {url: "http://127.0.0.1:8080/ready", max_attempts: 20}''')
-        text(name: 'CHECK_PLAN', defaultValue: '', description: '''高级：完整的 YAML 检查计划，非空时忽略上面三个参数。可以让同一检查跑多次（用 id 区分），可以设置 limit / timeout_minutes：
-pre:
-  - disk_space
-  - {name: port_reachable, id: db, policy: warn, params: {target_port: 5432}}
-post:
-  - {name: http_health, policy: ask, limit: web1}''')
-    }
-
     stages {
         // [新增] 部署前先解析并校验检查计划：检查名、参数写错时直接失败，不会部署到一半
         stage('Resolve checks') {
             steps {
                 script {
-                    checkPlan = resolveChecks(pre: params.PRE_CHECKS, post: params.POST_CHECKS,
-                            params: params.CHECK_PARAMS, plan: params.CHECK_PLAN)
+                    checkPlan = resolveChecks(pre: params.PRE_CHECKS, preOptions: params.PRE_CHECK_OPTIONS,
+                            post: params.POST_CHECKS, postOptions: params.POST_CHECK_OPTIONS,
+                            plan: params.CHECK_PLAN)
                 }
             }
         }
@@ -154,15 +154,112 @@ post:
 // 3. 检查引擎
 // ===================================================================================
 
+// 构建参数页上的检查参数（需要 Active Choices 插件）：
+//   PRE_CHECKS / POST_CHECKS                 可多选的检查列表，默认选中 checkCatalog() 中的 defaults
+//   PRE_CHECK_OPTIONS / POST_CHECK_OPTIONS   随选择变化的表单：每个选中的检查一组，包含失败处理方式和参数输入框
+//   CHECK_PLAN                               YAML 格式的完整计划，非空时忽略上面四个参数；供 API / 上游 job 触发时使用
+// 列表和表单由 Groovy 脚本在打开参数页时生成，脚本中嵌入了 checkCatalog() 的内容，在沙箱中运行，不需要审批。
+def checkParameters() {
+    String catalog = groovyLiteral(checkCatalog())
+    List result = []
+    [[phase: 'pre', title: '部署前'], [phase: 'post', title: '部署后']].each { Map p ->
+        String name = p.phase.toUpperCase() + '_CHECKS'
+        String optionsName = p.phase.toUpperCase() + '_CHECK_OPTIONS'
+        result << activeChoice(name: name, randomName: 'choice-' + p.phase + '-checks',
+                description: "${p.title}检查，可多选（按住 Ctrl 或 ⌘ 点击）。不选表示不检查",
+                choiceType: 'PT_MULTI_SELECT', filterable: false, filterLength: 1,
+                script: groovyScript(script: [classpath: [], sandbox: true, script: choicesScript(catalog, p.phase)],
+                        fallbackScript: [classpath: [], sandbox: true, script: 'return ["（检查列表生成失败）"]']))
+        result << activeChoiceHtml(name: optionsName, randomName: 'choice-' + p.phase + '-check-options',
+                description: "所选${p.title}检查的失败处理方式和参数",
+                choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: name,
+                script: groovyScript(script: [classpath: [], sandbox: true, script: optionsScript(catalog, name)],
+                        fallbackScript: [classpath: [], sandbox: true, script: 'return "（表单生成失败）"']))
+    }
+    result << text(name: 'CHECK_PLAN', defaultValue: '', description: '''高级：YAML 格式的完整检查计划，非空时忽略上面的选择和表单。供 API / 上游 job 触发时使用，也可以让同一检查跑多次（用 id 区分）、设置 limit / timeout_minutes：
+pre:
+  - disk_space
+  - {name: port_reachable, id: db, policy: warn, params: {target_port: 5432}}
+post:
+  - {name: http_health, policy: ask, limit: web1}''')
+    return result
+}
+
+// 生成检查列表的脚本：返回 [检查名: 显示文字]，默认选中的项在显示文字后加 :selected（Active Choices 的约定）
+@NonCPS
+String choicesScript(String catalog, String phase) {
+    return """def catalog = ${catalog}
+def result = [:]
+catalog.checks.each { name, c ->
+    if ('${phase}' in c.phases) {
+        result[name] = name + ' — ' + c.description + (name in catalog.defaults['${phase}'] ? ':selected' : '')
+    }
+}
+return result
+"""
+}
+
+// 生成参数表单的脚本。每个输入框前面放一个隐藏的标记 @@检查名.字段，提交时 Active Choices 会把
+// 所有 name="value" 的输入框用逗号连成一个字符串，用标记切分，参数值里有逗号也不会错位
+@NonCPS
+String optionsScript(String catalog, String refParam) {
+    return """def catalog = ${catalog}
+def policies = [abort: '阻塞：失败即停止流水线', warn: '非阻塞：标记为不稳定后继续',
+                ignore: '非阻塞：只记录，不影响结果', ask: '失败时暂停，由人决定是否继续']
+def esc = { v -> String.valueOf(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;') }
+def selected = String.valueOf(${refParam} ?: '').tokenize(',').collect { it.trim() }.findAll { catalog.checks[it] }
+if (!selected) {
+    return '<div style="color:#6b7280">未选择检查</div>'
+}
+def html = []
+selected.each { name ->
+    def c = catalog.checks[name]
+    html << '<div style="border:1px solid #d1d5db;border-radius:6px;padding:10px 14px;margin:0 0 10px 0">'
+    html << '<div style="margin-bottom:8px"><b>' + esc(name) + '</b> <span style="color:#6b7280">' + esc(c.description) + '</span></div>'
+    html << '<table>'
+    html << '<tr><td style="padding:3px 12px 3px 0;white-space:nowrap">失败时</td><td style="padding:3px 0">'
+    html << '<input type="hidden" name="value" value="@@' + esc(name) + '.policy">'
+    html << '<select name="value" class="jenkins-select__input">'
+    policies.each { p, label ->
+        html << '<option value="' + p + '"' + (p == c.policy ? ' selected' : '') + '>' + p + '（' + label + '）</option>'
+    }
+    html << '</select></td></tr>'
+    c.params.each { key, value ->
+        def required = key in (c.required ?: [])
+        def label = (c.labels ?: [:])[key] ?: ''
+        html << '<tr><td style="padding:3px 12px 3px 0;white-space:nowrap">' + esc(key) + (required ? ' <span style="color:#dc2626">*</span>' : '') + '</td><td style="padding:3px 0">'
+        html << '<input type="hidden" name="value" value="@@' + esc(name) + '.' + esc(key) + '">'
+        html << '<input type="' + (value instanceof Number ? 'number' : 'text') + '" name="value" value="' + esc(value) + '" class="jenkins-input" style="width:360px">'
+        html << ' <span style="color:#6b7280">' + esc(label) + '</span></td></tr>'
+    }
+    html << '</table></div>'
+}
+return html.join('')
+"""
+}
+
+// 把 Map / List / 字符串 / 数字转成 Groovy 字面量，用于嵌入参数脚本
+@NonCPS
+String groovyLiteral(Object value) {
+    if (value instanceof Map) {
+        return value ? '[' + value.collect { k, v -> groovyLiteral(k.toString()) + ': ' + groovyLiteral(v) }.join(', ') + ']' : '[:]'
+    }
+    if (value instanceof Collection) {
+        return '[' + value.collect { groovyLiteral(it) }.join(', ') + ']'
+    }
+    if (value instanceof Number || value instanceof Boolean || value == null) {
+        return String.valueOf(value)
+    }
+    return "'" + value.toString().replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n') + "'"
+}
+
 // 解析本次部署要运行的检查，返回 [pre: [...], post: [...]]。计划有误时让构建失败。
 def resolveChecks(Map args) {
     Map catalog = checkCatalog()
     List errors = []
     Map plan = null
     if (args.plan?.trim()) {
-        if (args.pre?.trim() || args.post?.trim() || args.params?.trim()) {
-            echo '[checks] 已提供 CHECK_PLAN，忽略 PRE_CHECKS / POST_CHECKS / CHECK_PARAMS'
-        }
+        echo '[checks] 已提供 CHECK_PLAN，忽略构建参数页上的检查选择和表单'
         Object rawPlan = readYaml(text: args.plan)
         if (rawPlan instanceof Map) {
             plan = buildPlan(rawPlan, catalog, errors)
@@ -170,12 +267,9 @@ def resolveChecks(Map args) {
             errors << 'CHECK_PLAN 必须是 YAML 映射（key: value）'
         }
     } else {
-        Object overrides = args.params?.trim() ? readYaml(text: args.params) : [:]
-        if (overrides instanceof Map) {
-            plan = buildPlan(shorthandPlan(args.pre, args.post, overrides, catalog, errors), catalog, errors)
-        } else {
-            errors << 'CHECK_PARAMS 必须是 YAML 映射（key: value）'
-        }
+        Map rawPlan = [pre : selectionPlan(args.pre, args.preOptions, catalog, errors),
+                       post: selectionPlan(args.post, args.postOptions, catalog, errors)]
+        plan = buildPlan(rawPlan, catalog, errors)
     }
     if (errors) {
         error "[checks] 检查计划有误：\n  - " + errors.join('\n  - ')
@@ -270,38 +364,74 @@ def reportChecks(List results) {
     archiveArtifacts artifacts: 'deploy-checks-report.json'
 }
 
-// 把 PRE_CHECKS / POST_CHECKS / CHECK_PARAMS 转成与 CHECK_PLAN 相同的结构；发现的问题追加到 errors
+// 把一个阶段的检查选择（"a,b"）和表单内容转成与 CHECK_PLAN 相同的结构。
+// 通过 API 触发时也可以只传选择，此时使用默认策略和参数；检查名后可加 :策略，如 "disk_space:warn"
 @NonCPS
-Map shorthandPlan(String pre, String post, Map overrides, Map catalog, List errors) {
-    Map plan = [:]
-    [pre: pre, post: post].each { phase, text ->
-        String value = text?.trim()
-        List names
-        if (!value) {
-            names = catalog.defaults[phase] ?: []
-        } else if (value.equalsIgnoreCase('none')) {
-            names = []
-        } else {
-            names = value.tokenize(', ')
+List selectionPlan(String selection, String options, Map catalog, List errors) {
+    Map values = parseOptions(options)
+    return (selection ?: '').tokenize(',').collect { it.trim() }.findAll { it }.collect { String item ->
+        List parts = item.tokenize(':')
+        String name = parts[0]
+        Map entry = [name: name]
+        if (parts.size() > 1) {
+            entry.policy = parts[1]
         }
-        plan[phase] = names.collect { String item ->
-            List parts = item.tokenize(':')
-            Map entry = [name: parts[0]]
-            if (parts.size() > 1) {
-                entry.policy = parts[1]
+        if (values[name + '.policy']) {
+            entry.policy = values[name + '.policy']
+        }
+        Map defaults = catalog.checks[name]?.params ?: [:]
+        Map params = [:]
+        values.each { String key, String value ->
+            if (key.startsWith(name + '.') && key != name + '.policy') {
+                String field = key.substring(name.length() + 1)
+                params[field] = convertValue(value, defaults[field], "${name}.${field}", errors)
             }
-            if (overrides[parts[0]] != null) {
-                entry.params = overrides[parts[0]]
-            }
-            return entry
+        }
+        if (params) {
+            entry.params = params
+        }
+        return entry
+    }
+}
+
+// 表单提交的内容形如 "@@disk_space.policy,abort,@@disk_space.path,/var"，转成 [disk_space.policy: abort, ...]。
+// Active Choices 拼接时会按 JSON 字符串转义每个值（" 变成 \"，\ 变成 \\），这里还原
+@NonCPS
+Map parseOptions(String text) {
+    Map values = [:]
+    (text ?: '').split('(?:^|,)@@').each { String part ->
+        int comma = part.indexOf(',')
+        if (comma > 0) {
+            values[part.substring(0, comma)] = jsonUnescape(part.substring(comma + 1))
+        } else if (part) {
+            values[part] = ''
         }
     }
-    List selected = (plan.pre + plan.post).collect { it.name }
-    List unused = overrides.keySet().findAll { !(it in selected) } as List
-    if (unused) {
-        errors << "CHECK_PARAMS 中的 ${unused} 不在本次选择的检查里"
+    return values
+}
+
+@NonCPS
+String jsonUnescape(String text) {
+    Map simple = ['"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t']
+    return text.replaceAll(/\\(u[0-9a-fA-F]{4}|.)/) { String all, String code ->
+        code.length() == 5 ? String.valueOf((char) Integer.parseInt(code.substring(1), 16)) : (simple[code] ?: all)
     }
-    return plan
+}
+
+// 表单中的值都是字符串，按目录中默认值的类型转换
+@NonCPS
+Object convertValue(String value, Object defaultValue, String label, List errors) {
+    if (defaultValue instanceof Number) {
+        if (value.trim() ==~ /-?\d+/) {
+            return value.trim().toLong()
+        }
+        errors << "参数 ${label} 应为整数，实际为 '${value}'"
+        return value
+    }
+    if (defaultValue instanceof Boolean) {
+        return value.trim().equalsIgnoreCase('true')
+    }
+    return value
 }
 
 // 校验计划，并与目录中的默认值合并；发现的问题追加到 errors

@@ -26,24 +26,24 @@
 
 - **检查写在 Ansible 里，只判断“通过 / 不通过”**：每个检查是 `checks.yml` 中的一个 play，用 `assert`、`wait_for`、`uri` 等模块判断条件，不满足就失败。
 - **失败后怎么处理由 Jenkins 决定**：每个检查有一个策略（`abort` / `warn` / `ignore` / `ask`），同一个检查这次可以是阻塞的，下次可以是非阻塞的，不需要改 playbook。
-- **用构建参数选择检查**：在 `PRE_CHECKS` / `POST_CHECKS` 中写检查名（可附带策略），在 `CHECK_PARAMS` 中写参数。
+- **在构建参数页上选择检查**：部署前、部署后检查各有一个可多选的列表，选中哪些检查，下方就只显示这些检查的“失败时怎么处理”和参数输入框（用 [Active Choices](https://plugins.jenkins.io/uno-choice/) 插件实现）。通过 API 或上游 job 触发时，改用 YAML 格式的 `CHECK_PLAN` 参数。
 - **只接受登记过的检查名和参数名**：所有检查及其允许的参数都登记在 Jenkinsfile 的 `checkCatalog()` 中，其他的一律拒绝。这是为了安全，原因见[第 6 节](#6-调研发现插件与-ansible-的实际行为)。
 
 ---
 
 ## 2. 每次部署怎么选
 
-构建参数：
+在 “Build with Parameters” 页面上：
 
-| 参数 | 格式 | 示例 |
-| --- | --- | --- |
-| `PRE_CHECKS` | `名称[:策略]`，用逗号或空格分隔。留空使用默认检查，填 `none` 表示不检查 | `disk_space, service_running:warn` |
-| `POST_CHECKS` | 同上 | `http_health, app_version:abort` |
-| `CHECK_PARAMS` | YAML，按检查名覆盖参数 | `disk_space: {path: /var, min_free_mb: 2048}` |
-| `CHECK_PLAN` | 高级用法：YAML 格式的完整计划，非空时忽略上面三个参数。可以让同一检查跑多次（用 `id` 区分），也可以单独设置 `limit`、`timeout_minutes` | 见下 |
+1. **`PRE_CHECKS`**：部署前检查的多选列表，按住 Ctrl（macOS 上是 ⌘）点击可以选多个。默认选中 `checkCatalog()` 中 `defaults` 列出的检查，全部取消表示不做部署前检查。
+2. **`PRE_CHECK_OPTIONS`**：根据上面的选择**实时生成**的表单，每个选中的检查一组：
+   - “失败时”下拉框：`abort` / `warn` / `ignore` / `ask`，默认值为该检查的默认策略；
+   - 该检查的每个参数一个输入框，预先填好默认值，旁边显示说明；数字参数是数字输入框；必填参数标红色 `*`。
+   没有选中的检查不会出现在表单里；取消选择后，它的输入框随之消失。
+3. **`POST_CHECKS`** / **`POST_CHECK_OPTIONS`**：部署后检查，用法相同。
+4. **`CHECK_PLAN`**：YAML 格式的完整计划，一般留空。非空时忽略上面四个参数，主要用于 API 或上游 job 触发，也可以让同一检查跑多次（用 `id` 区分）、单独设置 `limit`、`timeout_minutes`：
 
 ```yaml
-# CHECK_PLAN 示例
 pre:
   - disk_space                                     # 全部用默认值
   - {name: port_reachable, id: db,    policy: warn, params: {target_port: 5432}}
@@ -53,24 +53,16 @@ post:
   - {name: app_version, policy: abort}
 ```
 
-常见用法：
-
-| 想要的效果 | 参数 |
-| --- | --- |
-| 使用默认检查 | 全部留空 |
-| 部署前只查磁盘，部署后不检查 | `PRE_CHECKS=disk_space`，`POST_CHECKS=none` |
-| 服务检查不通过也继续部署 | `PRE_CHECKS=disk_space, service_running:warn` |
-| 健康检查失败时人工决定 | `POST_CHECKS=http_health:ask` |
-| 修改检查参数 | `CHECK_PARAMS` 填 `disk_space: {path: /var, min_free_mb: 4096}` |
-
-从其他 job 触发时，传的也是这些参数：
+从其他 job 或 API 触发时，Active Choices 参数没有界面可用（插件文档也说明这些参数是给人在页面上填写的），建议传 `CHECK_PLAN`。也可以直接给 `PRE_CHECKS` / `POST_CHECKS` 传逗号分隔的检查名，这时使用默认参数，检查名后可以加 `:策略`：
 
 ```groovy
 build job: 'deploy', parameters: [
     string(name: 'APP_VERSION', value: '1.2.3'),
-    string(name: 'PRE_CHECKS', value: 'disk_space'),
-    string(name: 'POST_CHECKS', value: 'http_health:warn'),
-    text(name: 'CHECK_PARAMS', value: 'disk_space: {min_free_mb: 4096}'),
+    string(name: 'PRE_CHECKS', value: 'disk_space,port_reachable:warn'),   // 使用默认参数
+    text(name: 'CHECK_PLAN', value: '''
+post:
+  - {name: http_health, policy: warn, params: {max_attempts: 20}}
+'''),                                                                       // 非空时以它为准
 ]
 ```
 
@@ -137,26 +129,40 @@ stage('Pre-check: disk') {
 
 ### 3.2 每次部署任意选择
 
-`Resolve checks` 阶段最先运行：它把参数解析成本次的检查计划，并与 `checkCatalog()` 核对。检查名拼错、阶段不对、策略不存在、参数不认识、缺少必填参数、id 重复等问题会**一次全部列出**，构建在部署开始前就失败，不会部署到一半才发现配置写错。
+检查列表和参数表单由 Active Choices 插件的两类参数实现：
 
-之后每个检查是一个子 stage（如 `pre: disk_space`），在 Stage View / Blue Ocean 里分别显示，失败的检查会显示为黄色或红色。
+| 参数 | Active Choices 类型 | 作用 |
+| --- | --- | --- |
+| `PRE_CHECKS` / `POST_CHECKS` | `activeChoice`，`PT_MULTI_SELECT`（多选列表） | Groovy 脚本从 `checkCatalog()` 生成选项，`defaults` 中的检查默认选中 |
+| `PRE_CHECK_OPTIONS` / `POST_CHECK_OPTIONS` | `activeChoiceHtml`，`ET_FORMATTED_HTML`，引用 `PRE_CHECKS` / `POST_CHECKS` | 选择变化时重新运行脚本，按选中的检查生成 HTML 表单 |
 
-除了文本参数，也可以用别的方式选择检查：
+两个脚本都由 Jenkinsfile 第 3 部分的 `checkParameters()` 生成，并把 `checkCatalog()` 的内容嵌入脚本中，所以**检查目录只需维护一份**：新增检查或参数后，列表和表单自动跟着变化。脚本在 Groovy 沙箱中运行，不需要管理员审批。
 
-- 每个检查一个 `booleanParam`：界面上是勾选框，最直观；但策略和参数要另外配置，每新增一个检查都要改参数定义。
-- [Active Choices](https://plugins.jenkins.io/uno-choice/) 插件：可以根据检查目录动态生成多选框。需要安装插件，并审批它的 Groovy 脚本。
+如果更喜欢勾选框而不是多选列表，把 `checkParameters()` 中的 `PT_MULTI_SELECT` 改成 `PT_CHECKBOX` 即可。Jenkins 没有“下拉后勾选多项”的控件，多选列表需要按住 Ctrl / ⌘ 点击。
+
+表单的值是怎么传给流水线的：Active Choices 会把表单中所有 `name="value"` 的输入框的值用逗号连成一个字符串。如果参数值本身含逗号，直接按逗号切分就会错位。所以每个输入框前都放了一个隐藏的标记字段（如 `@@disk_space.path`），提交后的值形如：
+
+```
+@@disk_space.policy,abort,@@disk_space.path,/var,@@disk_space.min_free_mb,2048
+```
+
+`parseOptions()` 按 `,@@` 切分，所以值中的逗号不受影响。插件拼接时还会按 JSON 规则转义引号和反斜杠，解析时会还原；随后按 `checkCatalog()` 中默认值的类型把数字参数转回数字。
+
+`Resolve checks` 阶段最先运行：它把这些参数解析成本次的检查计划，并与 `checkCatalog()` 核对。检查名拼错、阶段不对、策略不存在、参数不认识、必填参数为空、数字参数不是数字、id 重复等问题会**一次全部列出**，构建在部署开始前就失败，不会部署到一半才发现配置写错。
+
+之后每个检查是一个子 stage（如 `pre: disk_space`），在 Pipeline Graph View 中分别显示，见第 5 节。
 
 ### 3.3 检查参数
 
 每个检查的参数按以下顺序合并，后面的覆盖前面的：
 
 1. `checkCatalog()` 中该检查 `params` 的默认值。**这里同时也是白名单**，没有列出的参数名会被拒绝；
-2. 本次部署的 `CHECK_PARAMS`，或 `CHECK_PLAN` 中该条目的 `params`；
+2. 本次部署在表单中填写的值，或 `CHECK_PLAN` 中该条目的 `params`；
 3. 流水线自动加入的变量：`deploy_version`（即 `APP_VERSION`）、`check_id`、`check_phase`。
 
 合并后的参数写入工作区的 `.deploy-checks/<阶段>-<id>.json`，再通过 `-e @文件` 传给 Ansible。用文件传，是因为插件的 `extraVars` 只支持字符串、数字、布尔，而且会把数字变成字符串（见第 6 节）；用 JSON 文件则数字、布尔、列表都能保持原类型。
 
-注意：默认值也是以 extra vars 的形式传入的，在 Ansible 中优先级最高，会覆盖 inventory 的 `group_vars` / `host_vars`。如果某个参数需要按环境取不同的值，可以在 Jenkinsfile 中按环境决定 `CHECK_PARAMS` 的默认值；或者修改引擎，不传值为 `null` 的参数，同时让 playbook 回退到 inventory 变量（如 `{{ target_port | default(db_port) }}`）。
+注意：默认值也是以 extra vars 的形式传入的，在 Ansible 中优先级最高，会覆盖 inventory 的 `group_vars` / `host_vars`。如果某个参数需要按环境取不同的值，可以在 `checkCatalog()` 中按环境给出不同的默认值；或者修改引擎，不传值为 `null` 的参数，同时让 playbook 回退到 inventory 变量（如 `{{ target_port | default(db_port) }}`）。
 
 ### 3.4 超时
 
@@ -166,17 +172,17 @@ stage('Pre-check: disk') {
 
 ## 4. 接入到已有流水线
 
-1. 把 `checks.yml` 放进部署仓库，删掉不需要的检查，或按第 5 节新增检查。删掉最后那个 `demo | deploy` play。
-2. 把 Jenkinsfile 的第 1 部分（检查目录）和第 3 部分（检查引擎）复制到你的 Jenkinsfile 中，然后修改：
+1. 安装插件：`ansible`、`pipeline-utility-steps`（提供 `readYaml` / `writeJSON`）、`uno-choice`（Active Choices）、Pipeline（`workflow-aggregator`）。建议同时安装 `pipeline-graph-view`，用来查看每个检查的结果（见第 5 节）。
+2. 把 `checks.yml` 放进部署仓库，删掉不需要的检查，或按第 5 节新增检查。删掉最后那个 `demo | deploy` play。
+3. 把 Jenkinsfile 的第 1 部分（检查目录）和第 3 部分（检查引擎）复制到你的 Jenkinsfile 中，然后修改：
    - `checksPlaybook()`：改为 `checks.yml` 在仓库中的路径；
-   - `checkCatalog()`：改为你的检查和默认值；
+   - `checkCatalog()`：改为你的检查、默认值和参数说明；
    - `ansibleArgs()`：改为与部署相同的 `inventory`、`credentialsId`、`installation` 等。
-3. 在你的流水线中加入第 2 部分标记 `[新增]` 的内容：两个变量、4 个参数、`Resolve checks` / `Pre-deploy checks` / `Post-deploy checks` 三个 stage，以及 `post { always { reportChecks(...) } }`。原有的 Deploy stage 不用动。
-4. 运行一次，让 Jenkins 记录新增的参数。`parameters {}` 在第一次构建之后才会出现在 “Build with Parameters” 页面上。
+4. 把原有的 `parameters { ... }` 改写成文件开头的 `properties([parameters([...] + checkParameters())])`。检查参数需要根据检查目录生成，只能用 `properties()` 定义；而 `properties()` 和 `parameters {}` 不能同时使用，所以原有参数也要一起移过来（写法基本相同，只是参数之间用逗号分隔）。
+5. 在流水线中加入第 2 部分标记 `[新增]` 的内容：两个变量、`Resolve checks` / `Pre-deploy checks` / `Post-deploy checks` 三个 stage，以及 `post { always { reportChecks(...) } }`。原有的 Deploy stage 不用动。
+6. 运行一次，让 Jenkins 记录新的参数定义。之后 “Build with Parameters” 页面上就会出现检查列表和表单。
 
-需要的插件：`ansible`、`pipeline-utility-steps`（提供 `readYaml` / `writeJSON`）、Pipeline（`workflow-aggregator`）。
-
-检查引擎能在 Groovy 沙箱中运行，**不需要任何脚本审批**。如果有多条流水线要共用，可以把第 3 部分移到共享库的 `vars/` 中。
+所有脚本（流水线本身和参数页上的两个脚本）都能在 Groovy 沙箱中运行，**不需要任何脚本审批**。如果有多条流水线要共用，可以把第 3 部分移到共享库的 `vars/` 中。
 
 ---
 
@@ -186,16 +192,17 @@ stage('Pre-check: disk') {
 
 演示把 Jenkins 节点本机当作目标主机（`ansibleArgs()` 中的 `inventoryContent`），不需要其他服务器。
 
-1. 在 Jenkins 节点上安装 `ansible-core`，确保 `ansible-playbook` 在 PATH 中；安装上面列出的插件。
+1. 在 Jenkins 节点上安装 `ansible-core`，确保 `ansible-playbook` 在 PATH 中；安装第 4 节列出的插件。
 2. 启动演示应用，供部署后检查访问：
    ```bash
    mkdir -p /tmp/demo-app && cd /tmp/demo-app && python3 -m http.server 18080
    ```
 3. 新建一个 Pipeline job，选择 “Pipeline script from SCM”，仓库填本仓库，Script Path 填 `jenkins-ansible-checks/Jenkinsfile`。
-4. 点 “Build Now” 运行一次（使用默认检查，结果应为 SUCCESS）。之后用 “Build with Parameters” 试试第 2 节的各种组合，例如：
-   - `PRE_CHECKS=disk_space, service_running:warn`，`CHECK_PARAMS=service_running: {service_name: nginx}`：没有 nginx 时构建为 UNSTABLE，部署照常执行；
-   - `CHECK_PARAMS=disk_space: {min_free_mb: 99999999}`：构建为 FAILURE，部署被跳过；
-   - `POST_CHECKS=http_health:ask`，并停掉演示应用：构建会暂停，等你选择继续或中止。
+4. 点 “Build Now” 运行一次，让 Jenkins 记录参数定义（这次不运行任何检查）。之后打开 “Build with Parameters”，可以试试：
+   - 默认选择直接点 Build：部署前 2 项、部署后 2 项检查全部通过，结果为 SUCCESS；
+   - 部署前多选 `service_running`，在表单中把 `service_name` 填为 `nginx`，“失败时”保持 `warn`：没有 nginx 时构建为 UNSTABLE，部署照常执行；
+   - 把 `disk_space` 的 `min_free_mb` 改为 `99999999`：构建为 FAILURE，部署被跳过；
+   - 把 `http_health` 的“失败时”改为 `ask`，并停掉演示应用：构建会暂停，等你选择继续或中止。
 
 每次构建都会归档 `deploy-checks-report.json`，内容是每个检查的 id、阶段、策略、参数、耗时、结果，以及失败后的处理（`continued` / `ignored` / `aborted`）。控制台日志末尾有汇总：
 
@@ -212,7 +219,7 @@ stage('Pre-check: disk') {
 
 以下内容在 Jenkins 2.580.1 上实际截图确认过。
 
-**构建参数页（Build with Parameters）**：4 个参数依次显示为两个单行输入框（`PRE_CHECKS`、`POST_CHECKS`）和两个多行文本框（`CHECK_PARAMS`、`CHECK_PLAN`），每个参数下方显示 Jenkinsfile 中写的说明和示例。
+**构建参数页（Build with Parameters）**：从上到下依次是 `APP_VERSION`；`PRE_CHECKS` 多选列表，每项显示“检查名 — 说明”，默认检查已选中（灰色底）；`PRE_CHECK_OPTIONS`，每个选中的检查一个带边框的分组，组内第一行是“失败时”下拉框，下面是各参数的输入框，输入框下方是参数说明；`POST_CHECKS` / `POST_CHECK_OPTIONS` 同上；最后是 `CHECK_PLAN` 多行文本框。改变列表中的选择后，下方表单会立即刷新，只显示选中的检查。
 
 **构建结果**：构建列表中的图标与策略对应。全部通过或 `ignore` 显示绿色 ✓；`warn` 或 `ask` 选择继续显示橙色 !（UNSTABLE）；`abort` 显示红色 ✗；`ask` 选择中止或手动中止显示灰色（ABORTED）。
 
@@ -279,6 +286,17 @@ ansible-playbook -i localhost, -c local checks.yml -t http_health \
 
 还有一个 Jenkins 沙箱的限制：Jenkinsfile 中不能 `new` 一个异常（例如 `new IllegalArgumentException(...)`），否则需要管理员审批。所以示例的校验函数把问题收集到列表里，最后统一调用 `error` 步骤。
 
+Active Choices 插件（2.8.11，根据源码 [jenkinsci/active-choices-plugin](https://github.com/jenkinsci/active-choices-plugin) 和实测）：
+
+| # | 事实 | 依据 | 影响 |
+| - | --- | --- | --- |
+| 1 | 动态 HTML 参数（`ET_FORMATTED_HTML`）的输出会经过 HTML 过滤：允许 `input` / `select` / `option` / `textarea` 和 `style` 等属性，**不允许 `<script>` 和 `onchange` 之类的事件属性** | `SafeHtmlExtendedMarkupFormatter.java` | 表单不能依赖自定义 JavaScript，示例只用普通输入框和下拉框 |
+| 2 | 提交时，参数中所有 `name="value"` 的输入框被收集成 JSON 数组，再用 `join(",", true)` 连成一个字符串：值之间用逗号分隔，值内的 `"`、`\` 按 JSON 规则转义 | `AbstractUnoChoiceParameter.java:168-180`；构建 #23 | 示例在每个输入框前加隐藏标记 `@@检查名.字段` 来切分，并还原转义（构建 #25 验证了含逗号、引号、反斜杠、中文的值原样传到 Ansible） |
+| 3 | 列表默认选中项通过在选项上加后缀 `:selected` 指定；脚本返回 Map 时，后缀要加在 Map 的值（显示文字）上，加在键上无效 | `selectContent.jelly` 中 `isSelected(iter.value)`；实测 | 见 `choicesScript()` |
+| 4 | 沙箱中不允许对 `StringBuilder` 使用 `<<` | 实测（`RejectedAccessException`） | 生成 HTML 时改用 List 拼接 |
+| 5 | 脚本出错时插件不在日志中报错，页面上直接显示 fallback 脚本的结果 | 实测 | 调试时可以在 “Script Console” 中用 `p.script.secureScript.evaluate(...)` 运行参数脚本，查看具体异常 |
+| 6 | 插件文档说明这些参数是给人在页面上填写的，通过插件、API 或脚本触发时不一定可用 | 插件 README “Known Limitations” | 自动触发时传 `CHECK_PLAN`，或直接给 `PRE_CHECKS` 传检查名 |
+
 ---
 
 ## 7. 其他方案对比
@@ -294,7 +312,22 @@ ansible-playbook -i localhost, -c local checks.yml -t http_health \
 
 ## 8. 测试记录
 
-环境：Jenkins 2.580.1（内置节点）、Ansible 插件 635.v34b_48e979c86、pipeline-utility-steps、ansible-core 2.21.5。Jenkinsfile 从 Git 仓库加载，因此运行在 Groovy 沙箱中，**没有批准任何脚本**。
+环境：Jenkins 2.580.1（内置节点）、Ansible 插件 635.v34b_48e979c86、Active Choices 2.8.11、pipeline-utility-steps、ansible-core 2.21.5。Jenkinsfile 从 Git 仓库加载，因此运行在 Groovy 沙箱中，**没有批准任何脚本**。
+
+**参数页（Active Choices 版本，即当前版本）**：以下构建通过浏览器自动操作 “Build with Parameters” 页面提交，或通过 API 触发。
+
+| 构建 | 场景 | 操作 | 结果 |
+| --- | --- | --- | --- |
+| — | 打开参数页 | 不做改动 | 部署前默认选中 `disk_space`、`port_reachable`，部署后默认选中 `http_health`、`app_version`；表单只显示这 4 个检查 |
+| — | 改变选择 | 部署前改选 `disk_space` + `service_running`，部署后只选 `http_health` | 表单立即刷新，只显示这 3 个检查；`service_name` 标为必填 |
+| #22 | 表单提交 | 改 `min_free_mb=2048`、`service_name=nginx`（策略 warn）、`body_contains=status: ok`、`max_attempts=2` | UNSTABLE；计划中 `min_free_mb` 为数字 2048，`service_running` 策略为 warn，失败后继续部署 |
+| #25 | 特殊字符 | `body_contains` 填 `a,"b" c\d, @@x 中文/é`，策略改为 ignore | 值原样传给 Ansible，检查失败后按 ignore 处理，构建 SUCCESS |
+| #24 | Jinja 注入 | `path` 填 `/tmp/{{ lookup("pipe", "id") }}` | FAILURE，提示参数不能包含 Jinja 语法，没有运行任何 playbook |
+| #26 | 必填参数为空 | 选择 `service_running`，不填 `service_name` | FAILURE，提示必须提供 `service_name` |
+| #19 | API 只传检查名 | `PRE_CHECKS=disk_space` | 使用默认参数运行，SUCCESS |
+| #28 | API 传 `CHECK_PLAN` | 同一检查自定义 `id`、策略 warn、部署后默认参数 | `db` 失败后继续，构建 UNSTABLE |
+
+**检查引擎**：以下 #1–#16 在上一版（检查选择用文本参数）上运行，检查的执行和失败处理逻辑与当前版本相同。
 
 | 构建 | 场景 | 输入 | 结果 |
 | --- | --- | --- | --- |
@@ -305,7 +338,7 @@ ansible-playbook -i localhost, -c local checks.yml -t http_health \
 | #5 | 阻塞 `abort`（部署后） | `http_health` 请求 `/nope` | FAILURE（部署已执行） |
 | #6 | `CHECK_PLAN` | 同一检查用不同 `id` 跑两次、使用 `limit`、部署后覆盖策略 | `db` 失败后继续（warn）；`web` 带 `-l localhost`；部署后 `app_version` 期望 9.9，实际 3.1.0，阻塞失败 |
 | #10 | 计划校验 | 拼错检查名、阶段不对、未知策略、未登记参数（含 `ansible_ssh_common_args`）、缺少必填参数、Jinja 注入、重复 id | FAILURE，一次列出全部 7 个问题，没有运行任何 playbook |
-| #11 | YAML 类型错误 | `CHECK_PARAMS` 写成了列表 | FAILURE，提示必须是映射 |
+| #11 | YAML 类型错误 | 参数写成了 YAML 列表 | FAILURE，提示必须是映射 |
 | #12 | 多余参数 | 给没有选择的检查传了参数 | FAILURE，提示该检查不在本次计划中 |
 | #13 | 超时 | `timeout_minutes: 1`，检查本身需要 150 秒 | 60 秒后按检查失败处理，`warn` → UNSTABLE，部署继续 |
 | #14 | `ask` → 继续 | 点击“继续” | UNSTABLE，部署继续执行 |
@@ -316,6 +349,7 @@ ansible-playbook -i localhost, -c local checks.yml -t http_health \
 
 ## 9. 注意事项
 
+- **新增或修改参数定义后，要先运行一次构建**，参数页才会显示新的列表和表单（参数定义是在构建运行时由 `properties()` 写入 job 配置的）。
 - **`ask` 等待期间会占用执行器**，因为检查运行在 `agent` 中。如果可能等很久，改用 `warn`，或者把 `input` 移到不占用 agent 的 stage。
 - **主机不可达也算检查失败**（第 6 节第 2 条）。如果想把“连不上”和“检查不通过”分开处理，可以在 play 开头加一个 `ansible.builtin.ping`，或在任务上加 `ignore_unreachable`。
 - **检查应该是只读的**：任务加上 `changed_when: false`，执行命令的任务加上 `check_mode: false`，这样即使有人用 `checkMode: true` 调用也能正常运行。
