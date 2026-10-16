@@ -10,7 +10,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| `README.md` | 本文：结论、原理、接入步骤、演示方法、调研发现、测试记录、文档下载脚本 |
+| `README.md` | 本文：结论、原理、接入步骤、演示方法、调研发现、参数页各种做法（不装插件 / 装插件）的对比、测试记录、文档下载脚本 |
 | [`Jenkinsfile`](Jenkinsfile) | 可以直接运行的示例流水线。包含三部分：检查目录（按项目修改）、流水线本身（`[新增]` 标出接入检查新加的部分）、检查引擎（解析选择、运行检查、处理失败） |
 | [`checks.yml`](checks.yml) | 所有检查 playbook，每个检查是一个 play，用 tag 选择；另含一个演示用的部署 play |
 
@@ -18,7 +18,7 @@
 
 ## 1. 结论
 
-**三个需求都能满足，原有的部署步骤不用改。** 在已有流水线的部署 stage 前后各加一个检查 stage 即可。本目录的示例已在 Jenkins 2.580.1 + Ansible 插件 635.v34b_48e979c86 + ansible-core 2.21.5 上实际运行验证（见[第 8 节](#8-测试记录)）。
+**三个需求都能满足，原有的部署步骤不用改。** 在已有流水线的部署 stage 前后各加一个检查 stage 即可。本目录的示例已在 Jenkins 2.580.1 + Ansible 插件 635.v34b_48e979c86 + ansible-core 2.21.5 上实际运行验证（见[第 9 节](#9-测试记录)）。
 
 关键前提：Jenkins 的 Ansible 插件只要遇到 playbook 失败，就让流水线失败。它**没有“失败也继续”的选项**（没有类似 `sh(returnStatus: true)` 的参数），也拿不到 ansible-playbook 的退出码。所以“阻塞 / 非阻塞”不能交给插件或 Ansible，**只能在 Jenkins 流水线中实现**：捕获失败，再按策略决定停止还是继续。
 
@@ -26,14 +26,14 @@
 
 - **检查写在 Ansible 里，只判断“通过 / 不通过”**：每个检查是 `checks.yml` 中的一个 play，用 `assert`、`wait_for`、`uri` 等模块判断条件，不满足就失败。
 - **失败后怎么处理由 Jenkins 决定**：每个检查有一个策略（`abort` / `warn` / `ignore` / `ask`），同一个检查这次可以是阻塞的，下次可以是非阻塞的，不需要改 playbook。
-- **在构建参数页上选择检查**：部署前、部署后检查各有一个可多选的列表，选中哪些检查，下方就只显示这些检查的“失败时怎么处理”和参数输入框（用 [Active Choices](https://plugins.jenkins.io/uno-choice/) 插件实现）。通过 API 或上游 job 触发时，改用 YAML 格式的 `CHECK_PLAN` 参数。
+- **在构建参数页上选择检查**：部署前、部署后检查各有一个可多选的列表，选中哪些检查，下方就只显示这些检查的“失败时怎么处理”和参数输入框（用 [Active Choices](https://plugins.jenkins.io/uno-choice/) 插件实现）。通过 API 或上游 job 触发时，改用 YAML 格式的 `CHECK_PLAN` 参数。**不能装插件时的几种替代做法及其效果见[第 8 节](#8-参数页的几种做法不装插件-vs-装插件)。**
 - **只接受登记过的检查名和参数名**：所有检查及其允许的参数都登记在 Jenkinsfile 的 `checkCatalog()` 中，其他的一律拒绝。这是为了安全，原因见[第 6 节](#6-调研发现插件与-ansible-的实际行为)。
 
 ---
 
 ## 2. 每次部署怎么选
 
-在 “Build with Parameters” 页面上：
+以下是当前版本（需要 Active Choices 插件）的用法；不装插件的做法见[第 8 节](#8-参数页的几种做法不装插件-vs-装插件)。在 “Build with Parameters” 页面上：
 
 1. **`PRE_CHECKS`**：部署前检查的多选列表，按住 Ctrl（macOS 上是 ⌘）点击可以选多个。默认选中 `checkCatalog()` 中 `defaults` 列出的检查，全部取消表示不做部署前检查。
 2. **`PRE_CHECK_OPTIONS`**：根据上面的选择**实时生成**的表单，每个选中的检查一组：
@@ -299,7 +299,7 @@ Active Choices 插件（2.8.11，根据源码 [jenkinsci/active-choices-plugin](
 
 ---
 
-## 7. 其他方案对比
+## 7. 其他执行方案对比
 
 | 方案 | 做法 | 优点 | 缺点 | 适用场景 |
 | --- | --- | --- | --- | --- |
@@ -310,7 +310,143 @@ Active Choices 插件（2.8.11，根据源码 [jenkinsci/active-choices-plugin](
 
 ---
 
-## 8. 测试记录
+## 8. 参数页的几种做法：不装插件 vs 装插件
+
+第 2 节的参数页（多选列表 + 随选择变化的表单）依赖 Active Choices 插件。如果不能装插件，也有办法，只是效果不同。下面各方式都在本地 Jenkins 2.580.1 上实际运行过，除非特别注明。
+
+### 总览
+
+| 能力 | A. 文本参数（无插件） | B. 静态勾选框（无插件） | C. 两步式表单（无插件） | D. Active Choices（当前版本） |
+| --- | --- | --- | --- | --- |
+| 选择检查 | 手写检查名 | ✓ 勾选框 | ✓ 勾选框 | ✓ 多选列表或勾选框 |
+| 只显示所选检查的参数 | 不适用（参数写在 YAML 里） | ✗ 所有参数始终显示 | ✓ 构建开始后显示 | ✓ 同一页上实时显示 |
+| 每个检查单独选失败处理方式 | 检查名后加 `:策略` | 每个检查一个下拉框，始终显示 | ✓ | ✓ |
+| 按检查分组、参数说明、数字输入框 | ✗ | ✗ | ✗ 平铺一列 | ✓ |
+| 点 Build 之前一次填完 | ✓ | ✓ | ✗ 分两步 | ✓ |
+| API / 上游 job 触发 | ✓ | ✓ | ✓ 关闭表单开关即可 | 改用 `CHECK_PLAN` |
+| 需要的插件 | 无 | 无 | 无 | `uno-choice` |
+| 需要脚本审批 | 否 | 否 | 否 | 否 |
+| 本仓库中的状态 | 引擎直接支持，改参数定义即可（已验证） | 未实现，只验证了勾选框部分 | 原型代码见下（已验证），未接入检查引擎 | **当前 Jenkinsfile** |
+
+**建议**：能装插件就用 D；不能装插件，用 C 能得到最接近的体验；只在 API / 上游 job 触发的场景，用 A 就够了。
+
+### A. 文本参数（无插件）
+
+用 Jenkins 自带的 `string` / `text` 参数：在 `PRE_CHECKS` / `POST_CHECKS` 中写逗号分隔的检查名（可加 `:策略`），需要改参数时在 `CHECK_PLAN` 中写 YAML 计划（格式见第 2 节）。
+
+检查引擎本来就支持这种输入，**只需把 Jenkinsfile 中的 `checkParameters()` 换成下面这段**，其余代码不用改，也就不需要 Active Choices 插件：
+
+```groovy
+def checkParameters() {
+    return [
+        string(name: 'PRE_CHECKS', defaultValue: 'disk_space,port_reachable', trim: true,
+                description: '部署前检查，逗号分隔，检查名后可加 :策略，如 disk_space,service_running:warn。留空表示不检查'),
+        string(name: 'POST_CHECKS', defaultValue: 'http_health,app_version', trim: true,
+                description: '部署后检查，格式同上'),
+        text(name: 'CHECK_PLAN', defaultValue: '', description: '需要修改参数时填写 YAML 计划，非空时忽略上面两项'),
+    ]
+}
+```
+
+已验证（在卸载 Active Choices 的 Jenkins 上运行）：默认值生效，部署前后各 2 项检查按计划运行；`PRE_CHECKS=disk_space,port_reachable:warn` 中 `port_reachable` 失败后按 warn 继续，构建 UNSTABLE；`CHECK_PLAN` 中改的参数（`min_free_mb: 2048`）和策略（`ignore`）都生效。
+
+- 优点：不需要插件；API 和上游 job 触发最方便；功能最全（同一检查跑多次、`limit`、`timeout_minutes` 都能写）。
+- 缺点：要记检查名和参数名，写 YAML 容易出错（写错会在 `Resolve checks` 阶段一次性报出来，不会部署到一半）。
+
+### B. 静态勾选框（无插件）
+
+每个检查一个 `booleanParam` 勾选框；每个检查的策略和每个参数也各定义一个 `choice` / `string` 参数。勾选框可以在 `properties()` 中根据 `checkCatalog()` 循环生成，不用手写。
+
+Jenkins 自带的参数页是**静态**的：参数在打开页面时就全部列出，不会根据别的参数的值显示或隐藏。所以所有检查的参数输入框会一直显示，不管是否勾选。检查和参数少时（例如总共不到 10 个输入框）还可以接受；多了页面会很长，也容易改错未勾选检查的参数。
+
+状态：只在 C 的原型中验证了勾选框部分（见 C 的截图描述），“所有参数始终显示”的部分没有单独实现。
+
+### C. 两步式表单（无插件）
+
+利用 `input` 步骤的参数列表是**流水线运行时生成的**这一点：
+
+1. 参数页上只有每个检查的勾选框，以及一个 “构建开始后弹出表单” 开关（`EDIT_CHECK_OPTIONS`）；
+2. 构建开始后，流水线根据勾选结果生成一个只包含所选检查的表单：每个检查一个“失败时如何处理”下拉框，加上它的参数输入框，预先填好默认值；
+3. 填完点“开始部署”，流水线拿到表单的值继续执行。
+
+界面上的样子（已截图确认）：参数页上是一列勾选框；构建开始后，在 Pipeline Graph View 中该 stage 显示为暂停，右侧有“开始部署” / “Abort” 按钮，点击“开始部署”会弹出包含所有输入项的对话框；也可以从构建页左侧的 “Paused for Input” 打开同样的表单。
+
+已验证：
+- 默认勾选 `disk_space`、`port_reachable` 时，表单只包含这两个检查的 6 个输入项；
+- 把 `min_free_mb` 改为 `2048`、`port_reachable` 的策略改为 `warn` 后提交，流水线收到的正是这些值；
+- 通过 API 触发并设置 `EDIT_CHECK_OPTIONS=false` 时，不弹出表单，直接用默认值继续。
+
+原型代码（只演示表单部分，还没有接入检查引擎；接入时把 `values` 转成 `CHECK_PLAN` 的结构，交给 `buildPlan()` 校验即可）：
+
+```groovy
+// 无插件原型：参数页用 booleanParam 勾选检查；构建开始后用 input 步骤弹出只含所选检查的参数表单
+def catalog = [
+    disk_space     : [description: '目标主机磁盘剩余空间', policy: 'abort', params: [path: '/', min_free_mb: 1024]],
+    port_reachable : [description: '目标主机能连通依赖服务的端口', policy: 'abort', params: [target_host: '127.0.0.1', target_port: 18080]],
+    service_running: [description: '目标主机上的系统服务正在运行', policy: 'warn', params: [service_name: '']],
+]
+List policies = ['abort', 'warn', 'ignore', 'ask']
+properties([parameters([
+    string(name: 'APP_VERSION', defaultValue: '1.0.0', description: '要部署的版本'),
+    booleanParam(name: 'PRE_disk_space', defaultValue: true, description: '部署前检查：目标主机磁盘剩余空间'),
+    booleanParam(name: 'PRE_port_reachable', defaultValue: true, description: '部署前检查：目标主机能连通依赖服务的端口'),
+    booleanParam(name: 'PRE_service_running', defaultValue: false, description: '部署前检查：目标主机上的系统服务正在运行'),
+    booleanParam(name: 'EDIT_CHECK_OPTIONS', defaultValue: true, description: '构建开始后弹出表单，修改所选检查的失败处理方式和参数；不勾选则全部用默认值'),
+])])
+pipeline {
+    agent none
+    stages {
+        stage('Check options') {
+            steps {
+                script {
+                    def selected = catalog.findAll { name, c -> params['PRE_' + name] }
+                    def inputs = []
+                    selected.each { name, c ->
+                        inputs << choice(name: name + '.policy', choices: [c.policy] + (policies - c.policy), description: name + '：失败时如何处理')
+                        c.params.each { k, v -> inputs << string(name: name + '.' + k, defaultValue: String.valueOf(v), description: name + '：' + k) }
+                    }
+                    def values = [:]
+                    if (params.EDIT_CHECK_OPTIONS && inputs) {
+                        def r = timeout(time: 30, unit: 'MINUTES') {
+                            input message: '已选检查：' + selected.keySet().join('、') + '。请确认失败处理方式和参数', ok: '开始部署', parameters: inputs
+                        }
+                        values = inputs.size() == 1 ? [(inputs[0].arguments.name): r] : r
+                    }
+                    echo "selected=${selected.keySet()} values=${values}"
+                }
+            }
+        }
+    }
+}
+```
+
+- 优点：不需要插件；能做到“只显示所选检查的参数”；等待填写时不占用执行器（该 stage 使用 `agent none`）。
+- 缺点：
+  - 分两步，参数要等构建开始后才能填；
+  - 表单是平铺的一列，字段名形如 `disk_space.path`，不能按检查分组，没有数字输入框（数字由流水线自己校验）；
+  - 第二步填的值不是构建参数，不会出现在该次构建的 Parameters 页面上，只能在日志里看到（可以用 `currentBuild.description` 补记）；
+  - 原型中“只有一个输入项时 `input` 直接返回值而不是 Map”的分支没有被测试覆盖。
+
+### D. Active Choices（当前版本）
+
+即第 2 节、第 3.2 节描述的实现：同一个参数页上，多选列表选检查，下方表单实时只显示所选检查的失败处理方式和参数（带分组边框、参数说明、数字输入框、必填标记）。实现细节和插件的坑见第 3.2 节和第 6 节，验证记录见第 9 节。
+
+### 其他插件
+
+插件状态取自 Jenkins 插件站点 API（2026-10-16）：
+
+| 插件 | 版本 / 发布日期 | 安装量 | 结论 |
+| --- | --- | --- | --- |
+| Active Choices（`uno-choice`） | 2.8.11 / 2026-10-12 | 约 4.2 万 | 推荐，即方式 D，当前版本没有未修复的安全警告 |
+| Extended Choice Parameter | 388.ve7b_d0b_920e10 / 2025-02-19 | 约 2.6 万 | **不要用**：有 4 个尚未修复的安全警告（CSRF 与缺少权限检查导致 SSRF、任意 JSON / 属性文件读取、两个存储型 XSS） |
+| JSON Editor Parameter | 63.v8f8d1edf48c9 / 2026-09-21 | 约 400 | 根据 JSON Schema 生成表单（基于 json-editor 库），主要用于 `input` 步骤，理论上可以做到更复杂的表单；用户很少，**未实测** |
+| Parameter Separator | 334.v1fc0e534c71d / 2026-01-18 | 约 7700 | 在参数页上加分组标题，可以配合 A / B 使用，让页面更有条理 |
+| Validating String Parameter | 345.v0f4330488a_f6 / 2026-03-14 | 约 7800 | 在参数页上用正则校验字符串参数，适合 B 中的参数输入框 |
+| Pipeline Graph View | — | — | 不管哪种方式都建议安装，用来查看每个检查的结果（第 5 节） |
+
+---
+
+## 9. 测试记录
 
 环境：Jenkins 2.580.1（内置节点）、Ansible 插件 635.v34b_48e979c86、Active Choices 2.8.11、pipeline-utility-steps、ansible-core 2.21.5。Jenkinsfile 从 Git 仓库加载，因此运行在 Groovy 沙箱中，**没有批准任何脚本**。
 
@@ -347,7 +483,7 @@ Active Choices 插件（2.8.11，根据源码 [jenkinsci/active-choices-plugin](
 
 （#7–#9 是修复沙箱限制之前的运行，见第 6 节最后一段，修复后重跑为 #10–#12。）
 
-## 9. 注意事项
+## 10. 注意事项
 
 - **新增或修改参数定义后，要先运行一次构建**，参数页才会显示新的列表和表单（参数定义是在构建运行时由 `properties()` 写入 job 配置的）。
 - **`ask` 等待期间会占用执行器**，因为检查运行在 `agent` 中。如果可能等很久，改用 `warn`，或者把 `input` 移到不占用 agent 的 stage。
