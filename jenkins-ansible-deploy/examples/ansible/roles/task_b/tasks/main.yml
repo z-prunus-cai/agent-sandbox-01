@@ -1,0 +1,13 @@
+- name: Read file status
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/{{ task_b_path }}"
+  register: task_b_file
+
+- name: Check the file exists and is large enough
+  ansible.builtin.assert:
+    that:
+      - task_b_file.stat.exists
+      - task_b_file.stat.size >= task_b_min_bytes
+    fail_msg: "{{ task_b_path }} is missing or smaller than {{ task_b_min_bytes }} bytes"
+    # success_msg 在断言失败时也会被渲染，文件不存在时 stat 中没有 size，所以要给默认值
+    success_msg: "{{ task_b_path }}: {{ task_b_file.stat.size | default(0) }} bytes"

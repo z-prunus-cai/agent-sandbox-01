@@ -1,0 +1,8 @@
+- name: Run in the selected mode
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: task_c mode={{ task_c_mode }} label={{ task_c_label }}"
+
+- name: Print details
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: app={{ app_name }} version={{ app_version }}"
+  when: task_c_verbose

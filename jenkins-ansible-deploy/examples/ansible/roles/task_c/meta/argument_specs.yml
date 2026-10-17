@@ -1,0 +1,14 @@
+argument_specs:
+  main:
+    short_description: 示例任务 C：带枚举参数和布尔参数
+    options:
+      task_c_mode:
+        type: str
+        choices: [plan, apply]
+        description: 执行模式
+      task_c_verbose:
+        type: bool
+        description: 是否输出详细信息
+      task_c_label:
+        type: str
+        description: 附加标签，可留空

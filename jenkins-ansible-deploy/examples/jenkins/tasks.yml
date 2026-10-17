@@ -1,0 +1,43 @@
+# 额外任务目录：只放 Jenkins 需要的元数据。
+# 每个任务是 ansible/roles/ 下的同名 role；参数的名称、类型、必填、说明写在 role 的
+# meta/argument_specs.yml，默认值写在 role 的 defaults/main.yml，Jenkins 从这两个文件生成参数表单。
+#
+#   description      参数页上显示的说明。不要用全角标点和 @ = + "：Active Choices 会把它们转成
+#                    HTML 实体，勾选框旁显示成 &#xff1a; 之类的文字
+#   phases           允许的阶段：pre（部署前）、post（部署后）
+#   run_on           targets：所选主机组的每台主机；controller：Jenkins 节点本机
+#   policy           默认失败策略：abort（停止流水线）或 warn（标记不稳定后继续）
+#   timeout_minutes  超时按任务失败处理
+#
+# 参数页上选择任务时，同一阶段内按这里的顺序执行。
+tasks:
+  task_a:
+    description: 在所选主机组上运行的示例任务
+    phases: [pre]
+    run_on: targets
+    policy: abort
+    timeout_minutes: 5
+  task_b:
+    description: 在 Jenkins 节点本机检查文件的示例任务
+    phases: [pre]
+    run_on: controller
+    policy: abort
+    timeout_minutes: 5
+  task_c:
+    description: 带枚举参数和布尔参数的示例任务
+    phases: [pre, post]
+    run_on: targets
+    policy: abort
+    timeout_minutes: 10
+  check_c:
+    description: 在 task_c 之后运行的示例检查
+    phases: [pre, post]
+    run_on: targets
+    policy: warn
+    timeout_minutes: 5
+  check_a:
+    description: 部署后比较主机变量的示例检查
+    phases: [post]
+    run_on: targets
+    policy: warn
+    timeout_minutes: 5

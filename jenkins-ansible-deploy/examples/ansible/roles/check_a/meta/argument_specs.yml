@@ -1,0 +1,8 @@
+argument_specs:
+  main:
+    short_description: 示例检查 A：比较参数与主机的 inventory 变量 app_max_connections
+    options:
+      check_a_min_connections:
+        type: int
+        required: true
+        description: 每台主机的 app_max_connections 至少为多少

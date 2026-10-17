@@ -1,0 +1,5 @@
+- name: Compare with the host's app_max_connections
+  ansible.builtin.assert:
+    that: app_max_connections >= check_a_min_connections
+    fail_msg: "{{ inventory_hostname }}: app_max_connections={{ app_max_connections }} < {{ check_a_min_connections }}"
+    success_msg: "{{ inventory_hostname }}: app_max_connections={{ app_max_connections }}"

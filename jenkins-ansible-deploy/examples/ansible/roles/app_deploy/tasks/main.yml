@@ -1,0 +1,6 @@
+- name: Show the deployment that would run
+  ansible.builtin.debug:
+    msg: >-
+      deploy {{ app_name }} {{ app_version }} to {{ inventory_hostname }} ({{ ansible_host }})
+      dir={{ app_base_dir }}/{{ app_name }} port={{ app_port }}
+      max_connections={{ app_max_connections }} user={{ app_run_user }}

@@ -1,0 +1,10 @@
+argument_specs:
+  main:
+    short_description: 示例任务 B：在 Jenkins 节点本机检查 Ansible 目录中的一个文件
+    options:
+      task_b_path:
+        type: str
+        description: 文件路径，相对于 Ansible 目录（playbook 所在目录）
+      task_b_min_bytes:
+        type: int
+        description: 文件的最小字节数

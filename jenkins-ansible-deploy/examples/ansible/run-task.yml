@@ -1,0 +1,11 @@
+# 运行一个额外任务（一个 role）。Jenkins 通过 -e @file 传入：
+#   task_role   role 名，即任务名
+#   task_hosts  deploy_targets（配合 --limit 只作用于所选主机组）或 localhost（Jenkins 节点本机）
+#   以及该任务自己的参数
+- name: "Task {{ task_role }}"
+  hosts: "{{ task_hosts }}"
+  gather_facts: false
+  tasks:
+    - name: "Run {{ task_role }}"
+      ansible.builtin.include_role:
+        name: "{{ task_role }}"

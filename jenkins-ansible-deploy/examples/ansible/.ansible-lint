@@ -1,0 +1,5 @@
+# run-task.yml 中的 task_role、task_hosts 由 Jenkins 在运行时传入。
+# ansible-lint 的语法检查没有这两个变量会报错，这里给出一组示例值。
+extra_vars:
+  task_role: task_a
+  task_hosts: localhost

@@ -1,0 +1,5 @@
+# 所有主机共用的非敏感变量
+app_base_dir: /opt/apps
+app_run_user: app
+# 敏感值只在 vault.yml 中保存，这里用 vault_ 前缀的变量间接引用，便于搜索变量名
+app_api_token: "{{ vault_app_api_token }}"

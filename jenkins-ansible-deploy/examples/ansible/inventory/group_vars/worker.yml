@@ -1,0 +1,4 @@
+app_name: worker
+app_version: "1.8.0"
+app_port: 9100
+app_max_connections: 50

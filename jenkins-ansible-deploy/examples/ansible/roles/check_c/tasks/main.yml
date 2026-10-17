@@ -1,0 +1,3 @@
+- name: Check the result of task_c
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: check_c passed"

@@ -1,0 +1,14 @@
+argument_specs:
+  main:
+    short_description: 示例任务 A：在所选主机组的每台主机上运行
+    options:
+      task_a_message:
+        type: str
+        required: true
+        description: 要输出的文字
+      task_a_repeat:
+        type: int
+        description: 输出次数，1 到 5
+      task_a_delay_seconds:
+        type: int
+        description: 开始前等待的秒数，用于演示超时

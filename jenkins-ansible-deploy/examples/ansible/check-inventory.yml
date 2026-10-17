@@ -1,0 +1,9 @@
+# 不连接主机，按 app_deploy 的参数声明校验每台发布对象的 inventory 变量：
+#   ansible-playbook check-inventory.yml --vault-password-file <文件>
+- name: Check inventory
+  hosts: deploy_targets
+  gather_facts: false
+  tasks:
+    - name: Validate host variables against the app_deploy argument spec
+      ansible.builtin.validate_argument_spec:
+        argument_spec: "{{ (lookup('ansible.builtin.file', 'roles/app_deploy/meta/argument_specs.yml') | from_yaml).argument_specs.main.options }}"

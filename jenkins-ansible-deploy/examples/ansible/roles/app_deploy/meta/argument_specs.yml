@@ -1,0 +1,33 @@
+# 部署需要的主机变量，全部来自 inventory。role 开始执行前 Ansible 按这里校验类型与必填。
+argument_specs:
+  main:
+    short_description: 部署应用（占位：只校验变量并输出将要执行的动作，不改动目标主机）
+    options:
+      app_name:
+        type: str
+        required: true
+        description: 应用名，也是安装目录名
+      app_version:
+        type: str
+        required: true
+        description: 要部署的版本号
+      app_port:
+        type: int
+        required: true
+        description: 应用监听端口
+      app_max_connections:
+        type: int
+        required: true
+        description: 最大连接数
+      app_base_dir:
+        type: path
+        required: true
+        description: 应用安装的上级目录
+      app_run_user:
+        type: str
+        required: true
+        description: 运行应用的系统用户
+      app_api_token:
+        type: str
+        required: true
+        description: 应用访问外部接口的令牌（来自 vault）

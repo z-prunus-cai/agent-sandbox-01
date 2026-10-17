@@ -1,0 +1,2 @@
+task_b_path: inventory/hosts.yml
+task_b_min_bytes: 1

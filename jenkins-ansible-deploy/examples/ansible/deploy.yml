@@ -1,0 +1,6 @@
+# 部署所选主机组。Jenkins 用 --limit 把范围缩小到所选的组，例如 --limit 'web:api'
+- name: Deploy
+  hosts: deploy_targets
+  gather_facts: false
+  roles:
+    - app_deploy

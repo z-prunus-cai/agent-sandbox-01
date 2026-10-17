@@ -1,0 +1,17 @@
+- name: Check task_a_repeat range
+  ansible.builtin.assert:
+    that:
+      - task_a_repeat >= 1
+      - task_a_repeat <= 5
+    fail_msg: "task_a_repeat must be between 1 and 5, got {{ task_a_repeat }}"
+    quiet: true
+
+- name: Wait before starting
+  ansible.builtin.pause:
+    seconds: "{{ task_a_delay_seconds }}"
+  when: task_a_delay_seconds > 0
+
+- name: Print the message
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ task_a_message }} ({{ item }}/{{ task_a_repeat }})"
+  loop: "{{ range(1, task_a_repeat + 1) | list }}"

@@ -1,0 +1,71 @@
+// 部署流水线（方案 C：只用 Jenkins 自带参数类型，构建开始后用 input 步骤填写所选任务的参数）。
+// 需要的插件：workflow-aggregator、ansible、pipeline-utility-steps。
+// 逻辑在 jenkins/deploy-engine.groovy，任务目录在 jenkins/tasks.yml，Ansible 代码在 ansible/。
+
+// 按项目修改
+Map settings = [
+    baseDir: 'jenkins-ansible-deploy/examples',                  // 本目录在仓库中的路径
+    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 密码
+              sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机
+]
+
+def engine
+Map plan
+List results = []
+
+pipeline {
+    agent any
+
+    stages {
+        // 读取任务目录和 inventory，登记构建参数，并把本次的选择校验成执行计划。
+        // 构建参数在这里由 properties() 写入 job，所以任务或主机组的变化从下一次构建起出现在参数页上。
+        stage('Prepare') {
+            steps {
+                script {
+                    engine = load "${settings.baseDir}/jenkins/deploy-engine.groovy"
+                    Map context = engine.prepare(settings)
+                    // 必须在 properties() 之前读取：之后 params 会用 job 新登记的参数定义补上默认值，
+                    // 第一次运行就无法判断参数页是否真的提交过
+                    Map requested = params
+                    properties([parameters(engine.basicParameters(context))])
+                    plan = engine.resolvePlan(context, requested, engine.basicSelection(context, requested))
+                }
+            }
+        }
+
+        stage('Pre-deploy tasks') {
+            when { expression { plan?.pre } }
+            steps {
+                script {
+                    engine.runTasks(plan, 'pre', results)
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when { expression { plan && !plan.skipDeploy } }
+            steps {
+                script {
+                    engine.deploy(plan, results)
+                }
+            }
+        }
+
+        stage('Post-deploy tasks') {
+            when { expression { plan?.post } }
+            steps {
+                script {
+                    engine.runTasks(plan, 'post', results)
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                engine?.report(results)
+            }
+        }
+    }
+}

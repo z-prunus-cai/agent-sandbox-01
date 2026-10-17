@@ -1,0 +1,4 @@
+argument_specs:
+  main:
+    short_description: 示例检查 C：在 task_c 之后运行，没有参数
+    options: {}

@@ -1,0 +1,3 @@
+ansible_host: 192.0.2.12
+# 只对这台主机生效，覆盖 group_vars/web.yml 中的值
+app_max_connections: 200

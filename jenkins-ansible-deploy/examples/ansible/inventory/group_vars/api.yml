@@ -1,0 +1,4 @@
+app_name: api
+app_version: "1.8.0"
+app_port: 9000
+app_max_connections: 300
