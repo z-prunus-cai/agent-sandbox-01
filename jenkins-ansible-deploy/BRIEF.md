@@ -310,10 +310,54 @@ post:
 
 ### 3.7 实际输出
 
-选择 `web`、`api`，部署前 `task_a`（`task_a_message=hello`）和 `task_b`，部署后 `check_a`（`check_a_min_connections=150`，策略 warn）。构建结果 UNSTABLE，控制台节选：
+用下面的 `DEPLOY_PLAN` 运行方案 D 的 job（在参数页上做同样的选择，结果相同）：
+
+```yaml
+targets: [web, api]
+pre:
+  - {name: task_a, params: {task_a_message: hello}}
+  - task_b
+post:
+  - {name: check_a, policy: warn, params: {check_a_min_connections: 150}}
+```
+
+构建结果 UNSTABLE，控制台节选（`<工作区>` 代表 job 的工作区目录，`<随机数>` 是插件生成的临时文件名）：
 
 ```
-OUTPUT_PLACEHOLDER
+[deploy] 凭据检查通过
+[deploy] 使用 DEPLOY_PLAN，忽略参数页上的其他选择
+[deploy] 本次执行计划：
+  主机组：[web, api]
+  部署：执行
+  部署前任务：
+    - task_a [abort] [task_a_message:hello, task_a_repeat:1, task_a_delay_seconds:0]
+    - task_b [abort] [task_b_path:inventory/hosts.yml, task_b_min_bytes:1]
+  部署后任务：
+    - check_a [warn] [check_a_min_connections:150]
+[Pipeline] { (pre: task_a)
+[deploy] $ ansible-playbook jenkins-ansible-deploy/examples/ansible/run-task.yml -l web:api --private-key <工作区>/ssh<随机数>.key -u deploy --vault-password-file <工作区>/vault<随机数>.password -e @.deploy-run/pre-task_a.json
+    "msg": "web-01: hello (1/1)"
+    "msg": "api-01: hello (1/1)"
+    "msg": "web-02: hello (1/1)"
+[Pipeline] { (pre: task_b)
+[deploy] $ ansible-playbook jenkins-ansible-deploy/examples/ansible/run-task.yml --private-key <工作区>/ssh<随机数>.key -u deploy --vault-password-file <工作区>/vault<随机数>.password -e @.deploy-run/pre-task_b.json
+    "msg": "inventory/hosts.yml: 458 bytes"
+[Pipeline] { (Deploy)
+[deploy] $ ansible-playbook jenkins-ansible-deploy/examples/ansible/deploy.yml -l web:api --private-key <工作区>/ssh<随机数>.key -u deploy --vault-password-file <工作区>/vault<随机数>.password
+    "msg": "deploy web 2.3.1 to web-01 (192.0.2.11) dir=/opt/apps/web port=8080 max_connections=100 user=app"
+    "msg": "deploy web 2.3.1 to web-02 (192.0.2.12) dir=/opt/apps/web port=8080 max_connections=200 user=app"
+    "msg": "deploy api 1.8.0 to api-01 (192.0.2.13) dir=/opt/apps/api port=9000 max_connections=300 user=app"
+[Pipeline] { (post: check_a)
+[deploy] $ ansible-playbook jenkins-ansible-deploy/examples/ansible/run-task.yml -l web:api --private-key <工作区>/ssh<随机数>.key -u deploy --vault-password-file <工作区>/vault<随机数>.password -e @.deploy-run/post-check_a.json
+    "msg": "web-01: app_max_connections=100 < 150"
+    "msg": "api-01: app_max_connections=300"
+    "msg": "web-02: app_max_connections=200"
+WARNING: [deploy] 任务 check_a 失败：Ansible playbook execution failed（warn：继续执行）
+[deploy] 结果：
+  pre    task_a           abort PASSED     4s
+  pre    task_b           abort PASSED     2s
+  deploy deploy           abort PASSED     1s
+  post   check_a          warn  FAILED     3s -> continued
 ```
 
 `task_b` 运行在 Jenkins 节点本机，命令里没有 `-l`；`web-02` 的 `max_connections=200` 来自 `host_vars/web-02.yml`。每个任务在 Jenkins 中是一个 stage（`pre: task_a`、`post: check_a` 等）。`deploy-report.json` 中每一项含 `id`、`name`、`phase`、`policy`、`params`、`seconds`、`status`（`PASSED` / `FAILED` / `ABORTED`），失败项另有 `message` 与 `outcome`（`aborted` / `continued`）。
