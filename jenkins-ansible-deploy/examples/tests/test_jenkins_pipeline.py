@@ -206,7 +206,7 @@ def test_controller_only_run_needs_no_target_group(jenkins, new_job):
     pytest.param('{targets: [web], pre: [check_c, check_c]}', "pre[1]：id 'check_c' 重复", id='duplicate-id'),
     pytest.param('{targets: [web], pre: [{name: check_c, id: "a b"}]}', "pre[0]：id 'a b' 只能包含字母、数字、_、-", id='bad-id'),
     pytest.param("{targets: [web], pre: [{name: check_c, id: ''}]}", "pre[0]：id '' 只能包含字母、数字、_、-", id='empty-id'),
-    pytest.param('{targets: [web], pre: [{name: check_c, timeout_minutes: 0}]}', 'pre[0]：timeout_minutes 必须是正整数', id='zero-timeout'),
+    pytest.param('{targets: [web], pre: [{name: check_c, timeout_minutes: 0}]}', 'pre[0]：timeout_minutes 必须是 1 到 240 的整数', id='zero-timeout'),
     pytest.param('{targets: [web], verify: true}', '不支持的字段 [verify]', id='unknown-plan-key'),
     pytest.param('[web]', 'DEPLOY_PLAN 必须是 YAML 映射', id='not-a-map'),
     pytest.param('targets: [web', 'DEPLOY_PLAN 不是合法的 YAML', id='yaml-syntax-error'),
@@ -309,8 +309,9 @@ pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_delay_seco
     assert [(row['id'], row['status']) for row in report] == [('task_a', 'ABORTED')]
 
 
-def test_missing_vault_credential_stops_the_build_before_any_playbook_runs(jenkins, new_job, vault_credential_removed):
+def test_missing_vault_credential_stops_the_build_before_any_playbook_runs(jenkins, new_job, request):
     job = new_job(ACTIVE)
+    request.getfixturevalue('vault_credential_removed')
 
     result, console, _ = run(jenkins, job, plan('{skip_deploy: true, pre: [task_b]}'))
 

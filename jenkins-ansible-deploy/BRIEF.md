@@ -481,7 +481,7 @@ $ ansible-playbook run-task.yml --limit api -e @vars.json
 
 规则：`deploy-engine.groovy` 的 `resolvePlan` / `buildPlan` / `buildTask` / `checkValue` 把问题收集到列表，最后调用一次 `error`。可选字段用 `== null` 判断是否提供：Groovy 中 `0`、`''`、`[]`、`[:]` 为假，用 `?:` 会把它们当成未提供而跳过类型检查。
 
-覆盖的问题（`test_invalid_plan_fails_before_any_playbook_runs` 每种一例，共 30 例）：主机组未知、未选、不是列表；`skip_deploy` 不是布尔；阶段不是列表；条目不是任务名或映射；未知任务；任务不能用于该阶段；未知字段；未知或空的策略；必填参数缺失或为空白；`params` 不是映射；未声明的参数；整数、枚举、布尔、字符串类型不符；三种模板语法；同一阶段 `id` 重复、`id` 非法或为空；`timeout_minutes` 不是正整数；计划的未知字段；`DEPLOY_PLAN` 不是映射或不是合法 YAML。表单提交的值另有 4 种（`test_invalid_form_values_fail_before_any_playbook_runs`）。
+覆盖的问题（`test_invalid_plan_fails_before_any_playbook_runs` 每种一例，共 30 例）：主机组未知、未选、不是列表；`skip_deploy` 不是布尔；阶段不是列表；条目不是任务名或映射；未知任务；任务不能用于该阶段；未知字段；未知或空的策略；必填参数缺失或为空白；`params` 不是映射；未声明的参数；整数、枚举、布尔、字符串类型不符；三种模板语法；同一阶段 `id` 重复、`id` 非法或为空；`timeout_minutes` 不在 1 到 240 之间；计划的未知字段；`DEPLOY_PLAN` 不是映射或不是合法 YAML。表单提交的值另有 4 种（`test_invalid_form_values_fail_before_any_playbook_runs`）。
 
 证据：`test_invalid_plan_lists_all_problems_at_once`，控制台节选：
 
