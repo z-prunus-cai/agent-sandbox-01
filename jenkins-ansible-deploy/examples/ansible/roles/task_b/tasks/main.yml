@@ -1,9 +1,10 @@
 - name: Check the path stays inside the Ansible directory
   ansible.builtin.assert:
     that:
+      - task_b_path | length > 0
       - not task_b_path.startswith('/')
       - "'..' not in task_b_path.split('/')"
-    fail_msg: "task_b_path must be relative to the Ansible directory without '..', got {{ task_b_path }}"
+    fail_msg: "task_b_path must be a non-empty path relative to the Ansible directory without '..', got '{{ task_b_path }}'"
     quiet: true
 
 - name: Read file status
@@ -15,7 +16,8 @@
   ansible.builtin.assert:
     that:
       - task_b_file.stat.exists
+      - task_b_file.stat.isreg
       - task_b_file.stat.size >= task_b_min_bytes
-    fail_msg: "{{ task_b_path }} is missing or smaller than {{ task_b_min_bytes }} bytes"
+    fail_msg: "{{ task_b_path }} is missing, not a regular file, or smaller than {{ task_b_min_bytes }} bytes"
     # success_msg 在断言失败时也会被渲染，文件不存在时 stat 中没有 size，所以要给默认值
     success_msg: "{{ task_b_path }}: {{ task_b_file.stat.size | default(0) }} bytes"

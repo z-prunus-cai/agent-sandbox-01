@@ -2,25 +2,26 @@
 import os
 
 import pytest
+from playwright.sync_api import expect, sync_playwright
 
 pytestmark = pytest.mark.jenkins
 
 SPECIAL_TEXT = 'a,"b" c\\d, @@x 中文=1+2'
 
 
+# Active Choices regenerates the form through a server round trip; the default 5 s can be short on a cold Jenkins
+expect.set_options(timeout=15_000)
+
+
 @pytest.fixture
 def page():
-    sync_api = pytest.importorskip('playwright.sync_api')
-    with sync_api.sync_playwright() as playwright:
+    with sync_playwright() as playwright:
         # CHROMIUM_PATH: use an already installed Chromium instead of the one `playwright install` downloads
         browser = playwright.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'))
-        yield browser.new_page()
+        context = browser.new_context()
+        yield context.new_page()
+        context.close()
         browser.close()
-
-
-@pytest.fixture
-def expect():
-    return pytest.importorskip('playwright.sync_api').expect
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def field(page, marker):
     return page.locator(f'input[type=hidden][value="@@{marker}"] + *')
 
 
-def test_lists_show_inventory_groups_and_catalog_tasks_per_phase(parameter_page, expect):
+def test_lists_show_inventory_groups_and_catalog_tasks_per_phase(parameter_page):
     _, page = parameter_page
 
     expect(page.locator('#ecp_choice-target-groups label')).to_have_text(
@@ -54,7 +55,7 @@ def test_lists_show_inventory_groups_and_catalog_tasks_per_phase(parameter_page,
         'check_a — 部署后比较主机变量的示例检查'])
 
 
-def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(parameter_page, expect):
+def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(parameter_page):
     _, page = parameter_page
 
     tick(page, 'ecp_choice-pre-tasks', 'task_c')
@@ -68,7 +69,7 @@ def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(par
     expect(page.locator('input[type=hidden][value^="@@task_a."]')).to_have_count(0)
 
 
-def test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text(parameter_page, expect):
+def test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text(parameter_page):
     _, page = parameter_page
 
     tick(page, 'ecp_choice-pre-tasks', 'task_a')
@@ -80,7 +81,7 @@ def test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in
     expect(page.locator('tr', has=field(page, 'task_a.task_a_message')).locator('td').first).to_have_text('task_a_message（必填）')
 
 
-def test_changing_the_selection_regenerates_the_form_and_drops_typed_values(parameter_page, expect):
+def test_changing_the_selection_regenerates_the_form_and_drops_typed_values(parameter_page):
     _, page = parameter_page
     tick(page, 'ecp_choice-pre-tasks', 'task_a')
     field(page, 'task_a.task_a_message').fill('typed first')
@@ -91,7 +92,7 @@ def test_changing_the_selection_regenerates_the_form_and_drops_typed_values(para
     expect(field(page, 'task_a.task_a_message')).to_have_value('')
 
 
-def test_submitted_form_values_reach_ansible_unchanged(jenkins, parameter_page, expect):
+def test_submitted_form_values_reach_ansible_unchanged(jenkins, parameter_page):
     job, page = parameter_page
     tick(page, 'ecp_choice-target-groups', 'api')
     tick(page, 'ecp_choice-pre-tasks', 'task_a')
@@ -103,6 +104,7 @@ def test_submitted_form_values_reach_ansible_unchanged(jenkins, parameter_page, 
     field(page, 'task_a.task_a_repeat').fill('2')
     field(page, 'task_a.policy').select_option('warn')
     field(page, 'task_c.task_c_mode').select_option('apply')
+    field(page, 'task_c.task_c_verbose').select_option('true')
     number = jenkins.next_build_number(job)
 
     page.get_by_role('button', name='Build', exact=True).click()
@@ -112,3 +114,4 @@ def test_submitted_form_values_reach_ansible_unchanged(jenkins, parameter_page, 
     assert '    - task_a [warn] [task_a_message:a,"b" c\\d, @@x 中文=1+2, task_a_repeat:2, task_a_delay_seconds:0]' in console
     assert '"msg": "api-01: a,\\"b\\" c\\\\d, @@x 中文=1+2 (2/2)"' in console
     assert '"msg": "api-01: task_c mode=apply label="' in console
+    assert '"msg": "api-01: app=api version=1.8.0"' in console      # task_c_verbose arrived as a boolean

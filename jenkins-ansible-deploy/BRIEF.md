@@ -4,6 +4,8 @@
 
 一个 git 仓库同时包含 Jenkins 流水线和 Ansible 代码。部署对象是 Ansible inventory 中 `deploy_targets` 下的**主机组**，在 Jenkins 的构建参数页上多选；部署阶段可以勾选跳过；部署前、部署后各可选择 0 到任意个**额外任务**，参数页上只显示所选任务的参数，按参数类型（字符串、整数、布尔、枚举）填写；任务失败时按 `abort`（停止流水线）或 `warn`（标记不稳定后继续）处理。主机和主机组的参数（端口、目录、版本号等）只在 inventory 中管理，参数页不能覆盖。参数页给出两种实现：方案 D 用 Active Choices 插件在同一页上实时显示所选任务的表单；方案 C 只用 Jenkins 自带功能，构建开始后用 `input` 步骤弹出表单。两种方案都接受一个 YAML 格式的完整计划 `DEPLOY_PLAN`，供 API 和上游 job 触发。额外任务和部署本身都是占位实现：只接收参数、校验、输出将要执行的动作，不连接、不改动目标主机。
 
+“方案 C”“方案 D”只是这两种实现的名称。
+
 不包含：多环境 inventory、动态 inventory、回滚、人工确认式的失败策略、任务并行执行。
 
 ## 2. 环境
@@ -14,7 +16,7 @@
 | Jenkins 插件 | `ansible` 635.v34b_48e979c86、`uno-choice`（Active Choices）2.8.11、`pipeline-utility-steps` 3.810.va_7672d206740、`credentials-binding` 728.v902a_273b_8947、`workflow-cps` 4395.v738456a_5da_6b_、`pipeline-input-step` 560.v56198a_642157、`workflow-aggregator` 608.v67378e9d3db_1；全部 65 个插件及版本见 `examples/tests/jenkins_server/plugins.txt` |
 | ansible-core | 2.21.5 |
 | ansible-lint | 26.10.1 |
-| Python | 3.13；测试用 pytest 9.1.1、playwright 1.64.0、PyYAML、cryptography |
+| Python | 3.13；测试用 pytest 9.1.1、playwright 1.64.0、PyYAML 6.0.1、cryptography 50.0.1 |
 
 Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中，**不需要管理员审批任何脚本**。
 
@@ -30,7 +32,7 @@ Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中，**不需要管理员�
 
 ```bash
 cd jenkins-ansible-deploy/examples
-pip install ansible-core==2.21.5 ansible-lint==26.10.1 pytest==9.1.1 playwright==1.64.0 PyYAML cryptography
+pip install ansible-core==2.21.5 ansible-lint==26.10.1 pytest==9.1.1 playwright==1.64.0 PyYAML==6.0.1 cryptography==50.0.1
 python3 -m pytest tests -m 'not jenkins'            # 只需要 Ansible，约 1 分钟
 
 # 集成测试：启动一个只监听 127.0.0.1、没有登录的本地 Jenkins（仅用于测试），需要 Java 21 和 git
@@ -229,7 +231,7 @@ tasks:
 ```groovy
 Map settings = [
     baseDir: 'jenkins-ansible-deploy/examples',                  // 本目录在仓库中的路径
-    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 密码
+    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 口令
               sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机；不需要时设为 null
 ]
 
@@ -360,7 +362,7 @@ WARNING: [deploy] 任务 check_a 失败：Ansible playbook execution failed（wa
   post   check_a          warn  FAILED     3s -> continued
 ```
 
-`task_b` 运行在 Jenkins 节点本机，命令里没有 `-l`；`web-02` 的 `max_connections=200` 来自 `host_vars/web-02.yml`。每个任务在 Jenkins 中是一个 stage（`pre: task_a`、`post: check_a` 等）。`deploy-report.json` 中每一项含 `id`、`name`、`phase`、`policy`、`params`、`seconds`、`status`（`PASSED` / `FAILED` / `ABORTED`），失败项另有 `message` 与 `outcome`（`aborted` / `continued`）。
+`task_b` 运行在 Jenkins 节点本机，命令里没有 `-l`；`web-02` 的 `max_connections=200` 来自 `host_vars/web-02.yml`。每个任务在 Jenkins 中是一个 stage（`pre: task_a`、`post: check_a` 等）。`deploy-report.json` 中每一项含 `id`、`name`、`phase`、`policy`、`params`、`seconds`、`status`（`PASSED` / `FAILED` / `ABORTED`：手动中止 / `ERROR`：插件内部错误），失败项另有 `message` 与 `outcome`（`stopped`：abort 策略停止了流水线；`continued`：warn 策略继续执行）。
 
 ### 3.8 新增一个额外任务
 
@@ -384,7 +386,7 @@ WARNING: [deploy] 任务 check_a 失败：Ansible playbook execution failed（wa
 
 机制：Ansible 插件在 playbook 返回非 0 时抛出 `hudson.AbortException("Ansible playbook execution failed")`，没有“失败也继续”的选项，也拿不到退出码（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java:328`）。所以参数校验失败、断言失败、主机不可达都表现为同一个异常。实现见 `examples/jenkins/deploy-engine.groovy` 的 `runTask`。
 
-证据：`test_warn_failure_marks_build_unstable_and_continues`（UNSTABLE，随后运行了 `deploy.yml`）、`test_abort_failure_stops_before_deploy_and_later_tasks`（FAILURE，只运行了一次 `run-task.yml`，报告中该任务 `outcome` 为 `aborted`）。
+证据：`test_warn_failure_marks_build_unstable_and_continues`（UNSTABLE，随后运行了 `deploy.yml`）、`test_abort_failure_stops_before_deploy_and_later_tasks`（FAILURE，只运行了一次 `run-task.yml`，报告中该任务 `outcome` 为 `stopped`）。
 
 不这样做：在一次 `ansiblePlaybook` 中运行所有任务，就只有一个结果，无法逐个任务决定阻塞或非阻塞。
 
@@ -497,13 +499,15 @@ ERROR: [deploy] 计划有误：
 
 规则：`deploy-engine.groovy` 的 `runPlaybook` 用 `withEnv(["ANSIBLE_CONFIG=<工作区>/<baseDir>/ansible/ansible.cfg"])` 包住每次 `ansiblePlaybook` 调用，并统一传入 `vaultCredentialsId` 与 `credentialsId`。
 
-机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java:47`），那里没有 `ansible.cfg`。ansible-core 先查 `ANSIBLE_CONFIG`，再查当前目录的 `ansible.cfg`（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:266-296`）；`ansible.cfg` 中 `inventory`、`roles_path` 的相对路径以该文件所在目录为基准展开（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:672`、`.reference-cache/ansible/ansible@2.21.5/lib/ansible/utils/path.py:51`）。所以同一个文件既给 Jenkins 用，也给在 `examples/ansible` 下手工运行用。详见 [attachments/inventory-practices.md](attachments/inventory-practices.md) 第 1.2 节。
+机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java:47`），那里没有 `ansible.cfg`。ansible-core 先查 `ANSIBLE_CONFIG`，再查当前目录的 `ansible.cfg`（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:266-296`）；`ansible.cfg` 中 `inventory`、`roles_path` 的相对路径以该文件所在目录为基准展开：读到的值以配置文件为来源（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:672`、`:697`），来源文件成为基准（同文件 `:128`），`pathlist` / `pathspec` 类型的值据此展开（同文件 `:190-202`，`.reference-cache/ansible/ansible@2.21.5/lib/ansible/utils/path.py:49-56`）。所以同一个文件既给 Jenkins 用，也给在 `examples/ansible` 下手工运行用。详见 [attachments/inventory-practices.md](attachments/inventory-practices.md) 第 1.2 节。
 
 证据：第 3.7 节的命令行没有 `-i`，inventory 与 roles 仍被找到。
 
 ### 4.9 每次运行都需要 vault 口令，包括只在本机运行的任务；凭据先检查
 
 规则：所有 `ansiblePlaybook` 调用都传 `vaultCredentialsId`。`prepareRequest` 先用 `withCredentials` 绑定一次两个凭据，凭据不存在时构建在运行任何 playbook 之前失败。
+
+插件接受 Secret text 和 Secret file 两种 vault 凭据，示例的检查按 Secret text 绑定；用 Secret file 时把 `checkCredentials` 中的 `string(...)` 换成 `file(...)`。
 
 机制：插件把 Secret text / Secret file 凭据写成工作区中的临时文件，以 `--vault-password-file` 传入，结束后删除（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:268-280`、`:318`）。加载 inventory 时就要解密 `group_vars/all/vault.yml`，与 play 作用于哪些主机无关。凭据 ID 写错时插件不报错，只是不传口令（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java:303-317`），随后 ansible-playbook 因无法解密而失败，看起来与任务失败相同：只有 `warn` 任务时，构建只会变成 UNSTABLE。
 

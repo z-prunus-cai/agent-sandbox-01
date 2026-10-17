@@ -22,9 +22,9 @@ class Jenkins:
             all_headers.update(self._crumb())
             if isinstance(data, dict):
                 data = urllib.parse.urlencode(data, doseq=True).encode()
-        req = urllib.request.Request(self.url + path, data=data, headers=all_headers)
+        http_request = urllib.request.Request(self.url + path, data=data, headers=all_headers)
         try:
-            with self._opener.open(req) as response:
+            with self._opener.open(http_request) as response:
                 return response.status, response.read().decode(), response.headers
         except urllib.error.HTTPError as error:
             return error.code, error.read().decode(), error.headers
@@ -85,15 +85,17 @@ class Jenkins:
     def build_info(self, job, number):
         return self.json(f'/job/{job}/{number}', 'building,result,description,artifacts[relativePath]')
 
-    def wait_for_build(self, job, number, timeout_seconds=600):
+    def wait_for_build(self, job, number, timeout_seconds=600, queue_seconds=60):
         """Wait until the build finishes and return its result (SUCCESS, UNSTABLE, FAILURE, ABORTED, NOT_BUILT).
-        A build that is still in the queue does not exist yet (HTTP 404); keep waiting for it."""
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
+        A build still in the queue does not exist yet (HTTP 404); wait for it at most queue_seconds."""
+        started = time.time()
+        while time.time() - started < timeout_seconds:
             status, body, _ = self.request(f'/job/{job}/{number}/api/json?tree=building,result')
-            if status == 200 and not json.loads(body)['building']:
-                return json.loads(body)['result']
-            if status not in (200, 404):
+            if status == 200:
+                build = json.loads(body)
+                if not build['building']:
+                    return build['result']
+            elif status != 404 or time.time() - started > queue_seconds:
                 raise RuntimeError(f'{job} #{number}: HTTP {status}')
             time.sleep(1)
         raise TimeoutError(f'{job} #{number} did not finish')
@@ -143,7 +145,10 @@ class Jenkins:
         self.request(f'/job/{job}/{number}/stop', b'')
 
     def console(self, job, number):
-        return self.request(f'/job/{job}/{number}/consoleText')[1]
+        status, body, _ = self.request(f'/job/{job}/{number}/consoleText')
+        if status != 200:
+            raise RuntimeError(f'console of {job} #{number}: HTTP {status}')
+        return body
 
     def artifact(self, job, number, path):
         status, body, _ = self.request(f'/job/{job}/{number}/artifact/{path}')
@@ -156,4 +161,11 @@ class Jenkins:
 
     def parameter_names(self, job):
         data = self.json(f'/job/{job}', 'property[parameterDefinitions[name]]')
-        return [d['name'] for p in data['property'] for d in p.get('parameterDefinitions') or []]
+        return [definition['name'] for job_property in data['property']
+                for definition in job_property.get('parameterDefinitions') or []]
+
+    def config_xml(self, job):
+        status, body, _ = self.request(f'/job/{job}/config.xml')
+        if status != 200:
+            raise RuntimeError(f'config.xml of {job}: HTTP {status}')
+        return body

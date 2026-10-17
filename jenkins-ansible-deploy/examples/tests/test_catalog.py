@@ -8,8 +8,11 @@ from ansible.vars.reserved import is_reserved_name
 
 from conftest import ANSIBLE_DIR, CATALOG, run_ansible
 
-SUPPORTED_TYPES = {'str', 'path', 'int', 'bool'}
+SUPPORTED_TYPES = {'str', 'int', 'bool'}
 TEMPLATE = re.compile(r'\{[{%#]')
+# Ansible 文档 reference_appendices/special_variables.rst 中不以 ansible_ 开头的魔法变量
+MAGIC_VARIABLES = {'group_names', 'groups', 'hostvars', 'inventory_dir', 'inventory_file', 'inventory_hostname',
+                   'inventory_hostname_short', 'omit', 'play_hosts', 'playbook_dir', 'role_name', 'role_names', 'role_path'}
 
 
 def options(role):
@@ -43,7 +46,7 @@ def test_option_names_cannot_override_inventory_reserved_or_engine_variables(rol
     for name in options(role):
         assert name.startswith(role + '_'), name
         assert name not in inventory_variable_names, name
-        assert not is_reserved_name(name), name
+        assert not is_reserved_name(name) and name not in MAGIC_VARIABLES, name
         assert name not in {'task_role', 'task_hosts'} and not name.startswith('ansible_'), name
 
 
@@ -68,7 +71,7 @@ def test_catalog_entry_uses_only_known_values(role):
     assert set(entry['phases']) <= {'pre', 'post'} and entry['phases']
     assert entry['run_on'] in {'targets', 'controller'}
     assert entry['policy'] in {'abort', 'warn'}
-    assert isinstance(entry['timeout_minutes'], int) and entry['timeout_minutes'] > 0
+    assert type(entry['timeout_minutes']) is int and 1 <= entry['timeout_minutes'] <= 240
 
 
 @pytest.mark.parametrize('role', CATALOG)

@@ -2,7 +2,7 @@
 
 适用版本：ansible-core 2.21.5、ansible-lint 26.10.1、Jenkins Ansible 插件 635.v34b_48e979c86。
 
-出处有两种写法：缓存中的源码与文档写成 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>`，指向本地只读缓存；示例代码按文件与函数名引用。文中实验都在示例目录 `examples/ansible/` 上运行，命令和输出均为实际结果。需要改文件的实验在该目录的副本上做，示例本身没有改动。vault 口令文件是 `examples/tests/example-vault-password.txt`，内容为示例口令 `example-only-password`；在 `examples/ansible/` 下写作 `../tests/example-vault-password.txt`。
+出处有两种写法：上游源码与文档写成 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>`，指上游仓库在该版本的同一路径与行号，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)；示例代码按文件与函数名引用。文中实验都在示例目录 `examples/ansible/` 上运行，命令和输出均为实际结果。需要改文件的实验在该目录的副本上做，示例本身没有改动。vault 口令文件是 `examples/tests/example-vault-password.txt`，内容为示例口令 `example-only-password`；在 `examples/ansible/` 下写作 `../tests/example-vault-password.txt`。
 
 术语：**inventory（清单）**是描述被管理主机及其分组的数据源；**主机组（group）**是一组主机，组可以包含子组，所有组都是 `all` 的后代；**变量层**是给主机赋值的不同位置，例如 `group_vars`、`host_vars`、命令行；**role（角色）**是一个目录，放可复用的任务、默认变量和元数据。
 

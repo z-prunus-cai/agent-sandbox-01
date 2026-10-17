@@ -48,10 +48,6 @@ def ansible_copy(tmp_path):
     return target
 
 
-# ---------------------------------------------------------------------------
-# Jenkins integration tests (marker: jenkins)
-# ---------------------------------------------------------------------------
-
 JOB_XML = '''<?xml version="1.1" encoding="UTF-8"?>
 <flow-definition plugin="workflow-job">
   <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
@@ -76,9 +72,8 @@ def jenkins():
 
 def create_registered_job(jenkins, name, jenkinsfile):
     """Create a pipeline job and run its first build, which only registers the build parameters."""
-    from jenkins_server.setup_jenkins import SAMPLE_DIR
     jenkins.delete_job(name)
-    script_path = f'{SAMPLE_DIR.name}/{EXAMPLES.name}/{jenkinsfile}'
+    script_path = f'{EXAMPLES.parent.name}/{EXAMPLES.name}/{jenkinsfile}'
     jenkins.create_job(name, JOB_XML.format(repo=os.environ['DEPLOY_REPO_URL'], script_path=script_path))
     number = jenkins.start_build(name)
     assert jenkins.wait_for_build(name, number) == 'NOT_BUILT', jenkins.console(name, number)
@@ -107,7 +102,29 @@ def new_job(jenkins, request):
 
 @pytest.fixture(scope='module')
 def shared_active_job(jenkins, request):
-    """One Jenkinsfile (方案 D) job shared by the tests of a module whose builds do not depend on each other."""
+    """One job of the Active Choices Jenkinsfile, shared by the tests of a module whose builds do not depend on each other."""
     name = create_registered_job(jenkins, job_name(request.node.nodeid) + '-shared', 'Jenkinsfile')
     yield name
     jenkins.delete_job(name)
+
+
+@pytest.fixture
+def vault_credential_removed(jenkins):
+    """Remove the vault credential for one test and put it back afterwards."""
+    jenkins.run_script('''
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+import com.cloudbees.plugins.credentials.domains.Domain
+def provider = SystemCredentialsProvider.getInstance()
+provider.getStore().removeCredentials(Domain.global(), provider.getCredentials().find { it.id == 'ansible-vault-password' })
+''')
+    yield
+    password = VAULT_PASSWORD_FILE.read_text().strip()
+    jenkins.run_script(f'''
+import com.cloudbees.plugins.credentials.CredentialsScope
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+import com.cloudbees.plugins.credentials.domains.Domain
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
+import hudson.util.Secret
+SystemCredentialsProvider.getInstance().getStore().addCredentials(Domain.global(), new StringCredentialsImpl(
+    CredentialsScope.GLOBAL, 'ansible-vault-password', 'ansible-vault password (example)', Secret.fromString('{password}')))
+''')

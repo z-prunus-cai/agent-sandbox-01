@@ -44,8 +44,8 @@ def test_secret_is_stored_in_vault_file_and_referenced_by_name():
     assert variables['app_api_token'] == '{{ vault_app_api_token }}'
 
 
-def test_engine_reads_the_same_groups_from_hosts_yml_as_ansible_does():
-    # the Jenkinsfile reads hosts.yml with readYaml instead of calling ansible-inventory
+def test_deploy_target_groups_in_hosts_yml_match_ansible_inventory():
+    # the engine reads hosts.yml with readYaml instead of calling ansible-inventory
     hosts_yml = yaml.safe_load((ANSIBLE_DIR / 'inventory' / 'hosts.yml').read_text())
     from_file = list(hosts_yml['all']['children']['deploy_targets']['children'])
     result = run_ansible(['ansible-inventory', '--list'])
@@ -56,8 +56,9 @@ def test_engine_reads_the_same_groups_from_hosts_yml_as_ansible_does():
 
 def test_every_host_address_is_a_documentation_address():
     # RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 are reserved for examples
-    networks = [ipaddress.ip_network(n) for n in ('192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24')]
+    networks = [ipaddress.ip_network(network) for network in ('192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24')]
     result = run_ansible(['ansible-inventory', '--list'])
+    assert result.returncode == 0, result.stderr
     host_vars = json.loads(result.stdout)['_meta']['hostvars']
 
     assert len(host_vars) == 5

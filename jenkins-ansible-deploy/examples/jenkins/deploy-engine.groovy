@@ -5,12 +5,16 @@ import groovy.transform.Field
 @Field final Map PHASE_TITLES = [pre: '部署前', post: '部署后']
 @Field final List POLICIES = ['abort', 'warn']
 @Field final List RUN_ON = ['targets', 'controller']
-@Field final Map PARAM_TYPES = [str: 'str', path: 'str', int: 'int', bool: 'bool']
+@Field final List PARAM_TYPES = ['str', 'int', 'bool']
 @Field final List PLAN_KEYS = ['targets', 'skip_deploy', 'pre', 'post']
 @Field final List ENTRY_KEYS = ['name', 'id', 'policy', 'params', 'timeout_minutes']
-@Field final List ENGINE_VARS = ['task_role', 'task_hosts']
+@Field final String TASK_ROLE_VAR = 'task_role'
+@Field final String TASK_HOSTS_VAR = 'task_hosts'
+@Field final List ENGINE_VARS = [TASK_ROLE_VAR, TASK_HOSTS_VAR]
+@Field final List FORMS = ['activeChoices', 'basic']
 @Field final String TARGETS_GROUP = 'deploy_targets'
 @Field final int INPUT_TIMEOUT_MINUTES = 30
+@Field final int MAX_TIMEOUT_MINUTES = 240
 
 // ===================================================================================
 // 准备：读取任务目录与 inventory，登记构建参数（需要工作区）
@@ -19,10 +23,14 @@ import groovy.transform.Field
 // requested 必须是调用前的 params：properties() 执行后，params 会用 job 新登记的参数定义补上默认值，
 // 第一次运行就无法判断参数页是否提交过。Jenkinsfile 把 params 作为实参传入，它在 properties() 之前求值。
 Map prepareRequest(Map settings, Map requested, String form) {
+    if (!(form in FORMS)) {
+        error "[deploy] form 只能是 ${FORMS}"
+    }
     Map context = loadContext(settings)
-    checkCredentials(settings.ansible)
     List definitions = form == 'activeChoices' ? activeChoicesParameters(context) : basicParameters(context)
     properties([disableConcurrentBuilds(), parameters(definitions)])
+    // 在登记参数之后检查：凭据有误时，参数页也已经生成
+    checkCredentials(settings.ansible)
     return [form: form, context: context, requested: requested]
 }
 
@@ -45,7 +53,8 @@ Map loadContext(Map settings) {
     return context
 }
 
-// 凭据缺失时插件照样运行 ansible-playbook，失败看起来与任务失败相同（warn 任务只会让构建不稳定），所以先检查
+// 凭据缺失时插件照样运行 ansible-playbook，失败看起来与任务失败相同（warn 任务只会让构建不稳定），所以先检查。
+// vault 口令按 Secret text 绑定检查：插件也接受 Secret file，用 Secret file 时把这里的 string 换成 file
 def checkCredentials(Map ansible) {
     List bindings = [string(credentialsId: ansible.vaultCredentialsId, variable: 'VAULT_PASSWORD_CHECK')]
     if (ansible.sshCredentialsId) {
@@ -66,12 +75,13 @@ Map taskDefinitions(Map raw, List errors) {
         }
         List params = []
         (item.spec?.argument_specs?.main?.options ?: [:]).each { String key, Map option ->
-            String type = PARAM_TYPES[(option.type ?: 'str').toString()]
-            if (type == null) {
-                errors << "任务 ${name} 的参数 ${key}：不支持类型 ${option.type}，只支持 ${PARAM_TYPES.keySet()}"
+            String type = (option.type ?: 'str').toString()
+            if (!(type in PARAM_TYPES)) {
+                errors << "任务 ${name} 的参数 ${key}：不支持类型 ${option.type}，只支持 ${PARAM_TYPES}"
                 return
             }
-            // 参数以 extra vars 传入，优先级最高：名称必须带任务名前缀，不能与 inventory 变量或引擎变量重名
+            // 参数以 extra vars 传入，优先级最高：名称必须带任务名前缀，不能与引擎变量或 ansible_* 重名。
+            // 与 inventory 变量、Ansible 特殊变量的冲突由 tests/test_catalog.py 检查（这里读不到解密后的 inventory）
             if (!key.startsWith(name + '_') || key in ENGINE_VARS || key.startsWith('ansible_')) {
                 errors << "任务 ${name} 的参数 ${key}：名称必须以 ${name}_ 开头，且不能是 ${ENGINE_VARS} 或 ansible_*"
             }
@@ -96,8 +106,8 @@ Map taskDefinitions(Map raw, List errors) {
         if (!(meta.phases instanceof List) || !meta.phases || !meta.phases.every { it in PHASES }) {
             errors << "任务 ${name}：phases 只能包含 ${PHASES}"
         }
-        if (!(meta.timeout_minutes instanceof Integer) || meta.timeout_minutes < 1) {
-            errors << "任务 ${name}：timeout_minutes 必须是正整数"
+        if (!(meta.timeout_minutes instanceof Integer) || meta.timeout_minutes < 1 || meta.timeout_minutes > MAX_TIMEOUT_MINUTES) {
+            errors << "任务 ${name}：timeout_minutes 必须是 1 到 ${MAX_TIMEOUT_MINUTES} 的整数"
         }
         result[name] = [name          : name, description: (meta.description ?: name).toString(),
                         phases        : meta.phases instanceof List ? meta.phases : [], runOn: meta.run_on, policy: meta.policy,
@@ -121,6 +131,12 @@ Map targetGroups(Map inventory, List errors) {
     return groups
 }
 
+// Active Choices 的脚本在 Groovy 沙箱中运行，不需要管理员审批
+@NonCPS
+Map sandboxedScript(String script, String fallback) {
+    return [script: [classpath: [], sandbox: true, script: script], fallbackScript: [classpath: [], sandbox: true, script: fallback]]
+}
+
 @NonCPS
 String phaseParameter(String phase, String suffix) {
     return "${phase.toUpperCase()}_${suffix}"
@@ -138,9 +154,9 @@ List activeChoicesParameters(Map context) {
         activeChoice(name: 'TARGET_GROUPS', randomName: 'choice-target-groups', choiceType: 'PT_CHECKBOX',
                 filterable: false, filterLength: 1,
                 description: "发布对象：inventory 中 ${TARGETS_GROUP} 下的主机组，可多选",
-                script: groovyScript(script: [classpath: [], sandbox: true, script: """def groups = ${groovyLiteral(context.groups)}
+                script: groovyScript(sandboxedScript("""def groups = ${groovyLiteral(context.groups)}
 return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(', ') + ')'] }
-"""], fallbackScript: [classpath: [], sandbox: true, script: 'return ["（主机组列表生成失败）"]'])),
+""", 'return ["（主机组列表生成失败）"]'))),
         skipDeployParameter(),
     ]
     PHASES.each { String phase ->
@@ -148,15 +164,13 @@ return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(
         String listName = phaseParameter(phase, 'TASKS')
         result << activeChoice(name: listName, randomName: "choice-${phase}-tasks", choiceType: 'PT_CHECKBOX',
                 filterable: false, filterLength: 1, description: "${PHASE_TITLES[phase]}额外任务，可多选，同一阶段按列表顺序执行",
-                script: groovyScript(script: [classpath: [], sandbox: true,
-                                              script: "return ${groovyLiteral(tasks.collectEntries { [(it.name): it.name + ' — ' + it.description] })}"],
-                        fallbackScript: [classpath: [], sandbox: true, script: 'return ["（任务列表生成失败）"]']))
+                script: groovyScript(sandboxedScript("return ${groovyLiteral(tasks.collectEntries { [(it.name): it.name + ' — ' + it.description] })}",
+                        'return ["（任务列表生成失败）"]')))
         result << activeChoiceHtml(name: phaseParameter(phase, 'TASK_OPTIONS'), randomName: "choice-${phase}-task-options",
                 choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: listName,
                 description: "所选${PHASE_TITLES[phase]}任务的失败策略和参数",
-                script: groovyScript(script: [classpath: [], sandbox: true,
-                                              script: optionsFormScript(tasks.collect { it.subMap(['name', 'description', 'policy', 'params']) }, listName)],
-                        fallbackScript: [classpath: [], sandbox: true, script: 'return "（参数表单生成失败）"']))
+                script: groovyScript(sandboxedScript(optionsFormScript(tasks.collect { it.subMap(['name', 'description', 'policy', 'params']) }, listName),
+                        'return "（参数表单生成失败）"')))
     }
     result << deployPlanParameter()
     return result
@@ -169,9 +183,9 @@ return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(
 String optionsFormScript(List tasks, String referencedParameter) {
     return """def tasks = ${groovyLiteral(tasks)}
 def policies = ${groovyLiteral(POLICIES)}
-def escapeHtml = { value -> String.valueOf(value == null ? '' : value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;') }
+def escapeHtml = { value -> groovy.xml.XmlUtil.escapeXml(String.valueOf(value == null ? '' : value)) }
 def select = { List options, Object current ->
-    '<select name="value" class="jenkins-select__input">' + options.collect { option ->
+    '<select name="value">' + options.collect { option ->
         '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
     }.join('') + '</select>'
 }
@@ -218,16 +232,21 @@ Map activeChoicesSelection(Map context, Map requested, List errors) {
 
 // 表单提交的值形如 "@@task_a.policy,abort,@@task_a.task_a_repeat,2"，转成 [task_a.policy: abort, ...]。
 // Active Choices 拼接时按 JSON 字符串规则转义了每个值（" 变成 \"，\ 变成 \\），这里还原。
-// 值里含 ",@@" 时会被切成假的字段，表现为字段重复，此时报错而不是猜测。
+// 值里含 ",@@" 时会被切成假的字段（字段重复、不是"任务.字段"形式），此时报错而不是猜测。
 @NonCPS
 Map parseOptions(Object text, List errors) {
     Map values = [:]
-    (text ?: '').toString().split('(?:^|,)@@').each { String part ->
-        if (!part) {
+    List parts = (text ?: '').toString().split('(?:^|,)@@') as List
+    parts.eachWithIndex { String part, int index ->
+        if (!part && index == 0) {
             return
         }
         int comma = part.indexOf(',')
         String key = comma > 0 ? part.substring(0, comma) : part
+        if (!(key ==~ /[^.]+\.[^.]+/)) {
+            errors << "表单字段 '${key}' 无效：参数值中不能含 ,@@"
+            return
+        }
         if (values.containsKey(key)) {
             errors << "表单字段 ${key} 出现多次：参数值中不能含 ,@@"
         }
@@ -326,14 +345,13 @@ def skipDeployParameter() {
 }
 
 def deployPlanParameter() {
-    return text(name: 'DEPLOY_PLAN', defaultValue: '', description: '''YAML 格式的完整计划，非空时忽略上面所有参数，供 API / 上游 job 触发：
-targets: [web, api]
+    return text(name: 'DEPLOY_PLAN', defaultValue: '', description: '''YAML 格式的完整计划，非空时忽略上面所有参数，供 API / 上游 job 触发。格式：
+targets: [主机组, ...]
 skip_deploy: false
 pre:
-  - task_b
-  - {name: task_a, policy: warn, params: {task_a_message: hello}}
-post:
-  - {name: check_a, id: check_a_web, params: {check_a_min_connections: 50}}''')
+  - 任务名
+  - {name: 任务名, id: 标识, policy: abort 或 warn, timeout_minutes: 分钟, params: {参数名: 值}}
+post: 同 pre''')
 }
 
 // 得到本次执行计划。只用到不需要工作区的步骤：方案 C 在不分配执行器的 stage 中调用，等待 input 时不占执行器。
@@ -412,7 +430,7 @@ Map selectionPlan(Map context, List targets, boolean skipDeploy, Map phases, Lis
     return plan
 }
 
-// 空字符串表示未填写（使用默认值）；整数无法转换时原样保留字符串，由 buildPlan 报错
+// 整数、布尔的空字符串表示未填写（使用默认值）；字符串参数的空字符串原样传入。整数无法转换时保留原字符串，由 buildPlan 报错
 @NonCPS
 Object fromFormValue(String value, Map param) {
     if (value == '' && param.type != 'str') {
@@ -504,8 +522,8 @@ Map buildTask(String where, String phase, Object item, Map context, List errors)
         errors << "${where}：未知策略 '${policy}'，只能是 ${POLICIES.join(' 或 ')}"
     }
     Object timeoutMinutes = entry.timeout_minutes == null ? task.timeoutMinutes : entry.timeout_minutes
-    if (!(timeoutMinutes instanceof Integer) || timeoutMinutes < 1) {
-        errors << "${where}：timeout_minutes 必须是正整数"
+    if (!(timeoutMinutes instanceof Integer) || timeoutMinutes < 1 || timeoutMinutes > MAX_TIMEOUT_MINUTES) {
+        errors << "${where}：timeout_minutes 必须是 1 到 ${MAX_TIMEOUT_MINUTES} 的整数"
         timeoutMinutes = task.timeoutMinutes
     }
     Object given = entry.params == null ? [:] : entry.params
@@ -607,8 +625,8 @@ def runTask(Map plan, Map task, List results) {
     echo "[deploy] ${task.id}（${task.description}）策略=${task.policy} 参数=${task.params}"
     // 参数写进 JSON 文件，用 -e @file 传给 Ansible：ansiblePlaybook 的 extraVars 会把数字变成字符串
     String varsFile = ".deploy-run/${task.phase}-${task.id}.json"
-    writeJSON file: varsFile, json: task.params + [task_role : task.name,
-                                                    task_hosts: task.runOn == 'targets' ? TARGETS_GROUP : 'localhost']
+    writeJSON file: varsFile, json: task.params + [(TASK_ROLE_VAR) : task.name,
+                                                    (TASK_HOSTS_VAR): task.runOn == 'targets' ? TARGETS_GROUP : 'localhost']
     Map args = [playbook: "${plan.baseDir}/ansible/run-task.yml", extras: "-e @${varsFile}"]
     if (task.runOn == 'targets') {
         args.limit = plan.targets.join(':')
@@ -625,14 +643,21 @@ def runTask(Map plan, Map task, List results) {
         // ansible-playbook 返回非 0（断言失败、参数校验失败、主机不可达等）时，插件抛出 AbortException
         failure = e.message
     } catch (InterruptedException e) {
-        // 超时与手动中止到达这里时都是普通的 InterruptedException，不带原因（catchError 同样分不清），
-        // 只能用已耗时区分：超时按任务失败处理，手动中止照常抛出
+        // 超时与手动中止从 ansiblePlaybook 抛出时都是普通的 InterruptedException（catchError 同样分不清）；
+        // timeout 的原因 ExceededTimeout 只能经 FlowInterruptedException.getCauses() 取得，它不在沙箱白名单中。
+        // 所以用已耗时区分：超时按任务失败处理，手动中止照常抛出。超时后的宽限期内手动中止，也会算作超时
         if (System.currentTimeMillis() - started < task.timeoutMinutes * 60000L) {
             result.status = 'ABORTED'
             result.seconds = elapsedSeconds(started)
             throw e
         }
         failure = "超过 ${task.timeoutMinutes} 分钟未完成"
+    } catch (Exception e) {
+        // 插件内部的 IO 错误等：记入报告后照常抛出，构建失败
+        result.status = 'ERROR'
+        result.message = e.toString()
+        result.seconds = elapsedSeconds(started)
+        throw e
     }
     result.seconds = elapsedSeconds(started)
     result.status = failure ? 'FAILED' : 'PASSED'
@@ -641,7 +666,7 @@ def runTask(Map plan, Map task, List results) {
     }
     result.message = failure
     if (task.policy == 'abort') {
-        result.outcome = 'aborted'
+        result.outcome = 'stopped'
         error "[deploy] 任务 ${task.id} 失败：${failure}（abort：停止流水线）"
     }
     result.outcome = 'continued'
@@ -662,6 +687,10 @@ def deploy(Map plan, List results) {
     } catch (InterruptedException e) {
         result.status = 'ABORTED'
         throw e
+    } catch (Exception e) {
+        result.status = 'ERROR'
+        result.message = e.toString()
+        throw e
     } finally {
         result.seconds = elapsedSeconds(started)
     }
@@ -679,6 +708,10 @@ def runPlaybook(Map plan, Map args) {
 }
 
 def report(List results) {
+    // 参数文件含本次的参数值，不留在可复用的工作区中
+    dir('.deploy-run') {
+        deleteDir()
+    }
     if (!results) {
         return
     }
@@ -714,7 +747,7 @@ String groovyLiteral(Object value) {
     if (value instanceof Number || value instanceof Boolean || value == null) {
         return String.valueOf(value)
     }
-    return "'" + value.toString().replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n') + "'"
+    return "'" + value.toString().replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '\\r') + "'"
 }
 
 @NonCPS

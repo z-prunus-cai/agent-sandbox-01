@@ -1,5 +1,7 @@
 # 参数页的两种实现
 
+文中 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>` 指上游仓库在该版本的同一路径与行号，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)。
+
 本文说明 `examples/Jenkinsfile`（方案 D，Active Choices 插件 2.8.11）和 `examples/Jenkinsfile.no-plugin`（方案 C，只用 Jenkins 自带功能）的参数页：页面上有什么、怎样生成、提交后的值是什么格式、引擎怎样把它转成执行计划。两种方案共用 `examples/jenkins/deploy-engine.groovy`，最后都得到与 `DEPLOY_PLAN` 结构相同的计划草稿，再由 `buildPlan` 统一校验。
 
 ## 1. 对比
@@ -20,7 +22,7 @@
 主机组列表来自 `inventory/hosts.yml`，任务列表与参数来自 `jenkins/tasks.yml` 和各 role 的文件，都要在构建运行时读取工作区才知道。所以构建参数由 `Prepare` 阶段的 `prepareRequest()` 调用 `properties([disableConcurrentBuilds(), parameters(...)])` 写入 job，而不是写在 `pipeline { parameters { } }` 中。后果：
 
 - 参数定义在构建运行时更新，**从下一次构建起**才出现在参数页上；新建的 job 要先运行一次（结果 NOT_BUILT）。
-- 判断“是否第一次运行”必须用 `properties()` 之前读取的 `params`，所以 Jenkinsfile 把 `params` 作为实参传给 `prepareRequest()`（见 [BRIEF.md 第 4.7 节](../BRIEF.md)）。
+- 判断“是否第一次运行”必须用 `properties()` 之前读取的 `params`，所以 Jenkinsfile 把 `params` 作为实参传给 `prepareRequest()`（见 [BRIEF.md 第 4.7 节](../BRIEF.md#47-第一次运行只登记参数params-必须在-properties-之前读取)）。
 
 ## 3. 方案 D：Active Choices
 
@@ -104,7 +106,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 ### 3.4 提交的值与解析
 
-提交时，插件把参数中所有 `name="value"` 的输入框的值收集成数组，用 `join(",", true)` 连成一个字符串（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/AbstractUnoChoiceParameter.java:173-176`）。`join` 的第二个参数让每个值按 JSON 字符串规则转义。上面的表单中把 `task_c_label` 填为 `x, "y"` 后提交，构建参数 `PRE_TASK_OPTIONS` 的实际值：
+提交时，插件把参数中所有 `name="value"` 的输入框的值收集成数组，用 `join(",", true)` 连成一个字符串（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/AbstractUnoChoiceParameter.java:173-176`）。`join` 把每个值转成 JSON 字符串（`"` 变成 `\"`，`\` 变成 `\\`），第二个参数 `true` 只是去掉每个值两侧的引号。上面的表单中把 `task_c_label` 填为 `x, "y"` 后提交，构建参数 `PRE_TASK_OPTIONS` 的实际值：
 
 ```
 @@task_c.policy,abort,@@task_c.task_c_mode,plan,@@task_c.task_c_verbose,false,@@task_c.task_c_label,x, \"y\"
