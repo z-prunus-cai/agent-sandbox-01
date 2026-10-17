@@ -33,7 +33,7 @@ Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中，**不需要管理员�
 ```bash
 cd jenkins-ansible-deploy/examples
 pip install ansible-core==2.21.5 ansible-lint==26.10.1 pytest==9.1.1 playwright==1.64.0 PyYAML==6.0.1 cryptography==50.0.1
-python3 -m pytest tests -m 'not jenkins'            # 只需要 Ansible，约 1 分钟
+python3 -m pytest tests -m 'not jenkins'            # 只需要 Ansible，约 2 分钟
 
 # 集成测试：启动一个只监听 127.0.0.1、没有登录的本地 Jenkins（仅用于测试），需要 Java 21 和 git
 python3 tests/jenkins_server/setup_jenkins.py --home /tmp/jenkins-test
@@ -309,7 +309,7 @@ post:
 
 字符串参数的值在 YAML 中加引号：未加引号的 `yes`、`2026-01-01`、`1.0` 会被解析成布尔、日期、小数，引擎拒绝这些值。
 
-从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试就是这样触发构建的（`examples/tests/jenkins_server/client.py` 的 `start_build`）。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md:570-573`），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
+从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试大多这样触发构建（`examples/tests/jenkins_server/client.py` 的 `start_build`）；少数用例直接赋值 Active Choices 参数来模拟页面提交，见 [attachments/parameter-page.md](attachments/parameter-page.md) 第 3.5 节。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md:570-573`），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
 
 参数页两种方案的界面细节与提交值的格式见 [attachments/parameter-page.md](attachments/parameter-page.md)。
 
@@ -370,7 +370,7 @@ WARNING: [deploy] 任务 check_a 失败：Ansible playbook execution failed（wa
 ### 3.8 新增一个额外任务
 
 1. 在 `ansible/roles/<任务名>/` 下建 role：
-   - `meta/argument_specs.yml` 写参数：名称以 `<任务名>_` 开头，不能与 inventory 变量、Ansible 保留字、`task_role` / `task_hosts` 重名；类型只用 `str`、`path`、`int`、`bool`；`choices` 只用于 `str`；非必填参数写 `default`。
+   - `meta/argument_specs.yml` 写参数：名称以 `<任务名>_` 开头，不能与 inventory 变量、Ansible 保留字、`task_role` / `task_hosts` 重名；类型只用 `str`、`int`、`bool`；`choices` 只用于 `str`；非必填参数写 `default`。
    - `defaults/main.yml` 写每个非必填参数的默认值，与 `default` 相同，用字面值（不含 `{{`）。
    - `tasks/main.yml` 写任务；条件不满足时用 `assert` / `fail` 让它失败。
 2. 在 `jenkins/tasks.yml` 中加一项：`description`（不用全角标点和 `@ = + "`，原因见第 5 节）、`phases`、`run_on`、`policy`、`timeout_minutes`。
@@ -404,6 +404,7 @@ WARNING: [deploy] 任务 check_a 失败：Ansible playbook execution failed（wa
 不这样做：用 `catchError(catchInterruptions: false)` 包住 `timeout { ansiblePlaybook(...) }`，手动中止也会被捕获，后面的步骤继续执行。实验流水线（沙箱中运行，任务暂停 120 秒，第 5 秒手动中止）：
 
 ```groovy
+long started = System.currentTimeMillis()
 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE', catchInterruptions: false) {
     timeout(time: 1, unit: 'MINUTES') {
         echo 'BODY-START'

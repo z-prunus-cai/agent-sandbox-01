@@ -148,7 +148,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 勾选 `TARGET_web`、`PRE_task_a`、`POST_check_a` 时，表单只含这两个任务的 6 项：`pre.task_a.policy`、`pre.task_a.task_a_message`、`pre.task_a.task_a_repeat`、`pre.task_a.task_a_delay_seconds`、`post.check_a.policy`、`post.check_a.check_a_min_connections`（`test_no_plugin_form_shows_only_selected_tasks_and_its_values_are_used`）。
 
-`input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicSelection` 在这种情况下自己组成 Map（`test_no_plugin_form_with_a_single_field_returns_its_value`）。输入项的名称另存一个列表，不从参数定义对象上读取。
+`input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicSelection` 在这种情况下自己组成 Map（`test_no_plugin_form_with_a_single_field_returns_its_value`）。
 
 提交后，每个值转成字符串，按 `<阶段>` 分组成与方案 D 相同的 `[任务.字段: 值]`，交给同一个 `selectionPlan()`。点 “Abort” 时构建为 ABORTED，不运行任何 playbook（`test_no_plugin_abort_in_form_aborts_the_build`）。
 
