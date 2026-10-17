@@ -2,9 +2,7 @@
 
 ## 1. 范围
 
-一个 git 仓库同时包含 Jenkins 流水线和 Ansible 代码。部署对象是 Ansible inventory 中 `deploy_targets` 下的**主机组**，在 Jenkins 的构建参数页上多选；部署阶段可以勾选跳过；部署前、部署后各可选择 0 到任意个**额外任务**，参数页上只显示所选任务的参数，按参数类型（字符串、整数、布尔、枚举）填写；任务失败时按 `abort`（停止流水线）或 `warn`（标记不稳定后继续）处理。主机和主机组的参数（端口、目录、版本号等）只在 inventory 中管理，参数页不能覆盖。参数页给出两种实现：方案 D 用 Active Choices 插件在同一页上实时显示所选任务的表单；方案 C 只用 Jenkins 自带功能，构建开始后用 `input` 步骤弹出表单。两种方案都接受一个 YAML 格式的完整计划 `DEPLOY_PLAN`，供 API 和上游 job 触发。额外任务和部署本身都是占位实现：只接收参数、校验、输出将要执行的动作，不连接、不改动目标主机。
-
-“方案 C”“方案 D”只是这两种实现的名称。
+一个 git 仓库同时包含 Jenkins 流水线和 Ansible 代码。部署对象是 Ansible inventory 中 `deploy_targets` 下的**主机组**，在 Jenkins 的构建参数页上多选；部署阶段可以勾选跳过；部署前、部署后各可选择 0 到任意个**额外任务**，参数页上只显示所选任务的参数，按参数类型（字符串、整数、布尔、枚举）填写；任务失败时按 `abort`（停止流水线）或 `warn`（标记不稳定后继续）处理。主机和主机组的参数（端口、目录、版本号等）只在 inventory 中管理，参数页不能覆盖。参数页给出两种实现：Active Choices 版 用 Active Choices 插件在同一页上实时显示所选任务的表单；无插件版 只用 Jenkins 自带功能，构建开始后用 `input` 步骤弹出表单。两种方案都接受一个 YAML 格式的完整计划 `DEPLOY_PLAN`，供 API 和上游 job 触发。额外任务和部署本身都是占位实现：只接收参数、校验、输出将要执行的动作，不连接、不改动目标主机。
 
 不包含：多环境 inventory、动态 inventory、回滚、人工确认式的失败策略、任务并行执行。
 
@@ -22,10 +20,10 @@ Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中，**不需要管理员�
 
 在真实 Jenkins 上使用需要：
 
-1. 安装插件 `workflow-aggregator`、`ansible`、`pipeline-utility-steps`、`credentials-binding`，方案 D 另装 `uno-choice`；
+1. 安装插件 `workflow-aggregator`、`ansible`、`pipeline-utility-steps`、`credentials-binding`，Active Choices 版 另装 `uno-choice`；
 2. Jenkins 节点上安装 ansible-core 2.21.5，`ansible-playbook` 在 `PATH` 中；
 3. 两个凭据：`ansible-vault-password`（类型 Secret text，ansible-vault 口令）和 `deploy-ssh-key`（类型 SSH Username with private key，连接目标主机）。ID 在 Jenkinsfile 开头的 `settings` 中修改；不需要 SSH 时把 `sshCredentialsId` 设为 `null`；
-4. 新建 Pipeline job，选 “Pipeline script from SCM”，Script Path 填 `jenkins-ansible-deploy/examples/Jenkinsfile`（方案 D）或 `jenkins-ansible-deploy/examples/Jenkinsfile.no-plugin`（方案 C）。只让受信任的分支构建这个 job：流水线 `load` 仓库中的 Groovy 代码、运行仓库中的 playbook，并且持有 vault 口令和 SSH 私钥；
+4. 新建 Pipeline job，选 “Pipeline script from SCM”，Script Path 填 `jenkins-ansible-deploy/examples/Jenkinsfile`（Active Choices 版）或 `jenkins-ansible-deploy/examples/Jenkinsfile.no-plugin`（无插件版）。只让受信任的分支构建这个 job：流水线 `load` 仓库中的 Groovy 代码、运行仓库中的 playbook，并且持有 vault 口令和 SSH 私钥；
 5. 点一次 “Build Now”：这次构建只登记构建参数，结果为 NOT_BUILT。之后用 “Build with Parameters”。
 
 运行本目录的测试：
@@ -49,8 +47,8 @@ python3 -m pytest tests                               # 全部
 
 ```
 examples/
-  Jenkinsfile                方案 D：Active Choices，同一页上选择并填写
-  Jenkinsfile.no-plugin      方案 C：只用 Jenkins 自带参数类型 + input 步骤
+  Jenkinsfile                Active Choices 版：同一页上选择并填写
+  Jenkinsfile.no-plugin      无插件版：只用 Jenkins 自带参数类型 + input 步骤
   jenkins/
     deploy-engine.groovy     两个 Jenkinsfile 用 load 加载的共用逻辑
     tasks.yml                额外任务目录（Jenkins 侧元数据）
@@ -73,7 +71,7 @@ Prepare            load deploy-engine.groovy
                    检查两个凭据存在
                    properties()：禁止并发构建，登记构建参数（下一次构建起生效）
                    把选择（或 DEPLOY_PLAN）校验成执行计划；有错误则一次列出并失败，任何 playbook 都不运行
-                   （方案 C：这一步放在不分配执行器的 stage “Task options” 中，那里可能等待 input；
+                   （无插件版：这一步放在不分配执行器的 stage “Task options” 中，那里可能等待 input；
                     Prepare 先 stash 本目录，Run 不再检出而是 unstash，运行的就是校验过的文件）
 Pre-deploy tasks   每个任务一个 stage “pre: <id>”：ansible-playbook run-task.yml -e @参数文件 [-l 所选组]
 Deploy             SKIP_DEPLOY 时跳过；否则 ansible-playbook deploy.yml -l 所选组
@@ -112,7 +110,7 @@ all:
 | `group_vars/web.yml` 等 | 每组的应用参数：`app_name`、`app_version`、`app_port`、`app_max_connections` |
 | `host_vars/<主机>.yml` | `ansible_host`（RFC 5737 文档地址 192.0.2.11–15）；`web-02.yml` 另把 `app_max_connections` 覆盖为 200 |
 
-版本号 `app_version` 也是组变量：发布新版本 = 在 git 中修改 `group_vars/<组>.yml` 并提交，Jenkins 部署 git 中的状态。inventory 的目录与变量分层、敏感信息、校验方法的调研结论见 [attachments/inventory-practices.md](attachments/inventory-practices.md)。
+版本号 `app_version` 也是组变量：发布新版本 = 在 git 中修改 `group_vars/<组>.yml` 并提交，Jenkins 部署 git 中的状态。inventory 的目录与变量分层、敏感信息、校验方法见 [attachments/inventory-practices.md](attachments/inventory-practices.md)。
 
 ### 3.3 Ansible：部署与额外任务
 
@@ -227,7 +225,7 @@ tasks:
 
 ### 3.5 Jenkins：Jenkinsfile
 
-两个 Jenkinsfile 的 `settings` 相同，部署相关的 stage 也相同。方案 D（`Jenkinsfile`）：
+两个 Jenkinsfile 的 `settings` 相同，部署相关的 stage 也相同。Active Choices 版（`Jenkinsfile`）：
 
 ```groovy
 Map settings = [
@@ -272,7 +270,7 @@ pipeline {
 }
 ```
 
-方案 C（`Jenkinsfile.no-plugin`）顶层是 `agent none`，分三个 stage：`Prepare`（`agent any`，调用 `prepareRequest(settings, params, 'basic')`，再 `stash` 本目录）、`Task options`（不分配执行器，调用 `resolvePlan`，这里可能等待 `input`）、`Run`（`agent any`，`skipDefaultCheckout()`，`when { beforeAgent true; expression { plan } }`，先 `unstash`，再是部署前、部署、部署后三个 stage，`post` 中调用 `report`）。原因见 4.10。
+无插件版（`Jenkinsfile.no-plugin`）顶层是 `agent none`，分三个 stage：`Prepare`（`agent any`，调用 `prepareRequest(settings, params, 'basic')`，再 `stash` 本目录）、`Task options`（不分配执行器，调用 `resolvePlan`，这里可能等待 `input`）、`Run`（`agent any`，`skipDefaultCheckout()`，`when { beforeAgent true; expression { plan } }`，先 `unstash`，再是部署前、部署、部署后三个 stage，`post` 中调用 `report`）。原因见 4.10。
 
 两个 Jenkinsfile 都是声明式（Declarative）流水线，`properties()` 和每个任务的 `stage()` 在 `script {}` 中经引擎调用：构建参数和 stage 都要按运行时读到的任务目录、inventory 生成，`parameters {}` 指令做不到（`script` 是声明式流水线留出的“出口”，`.reference-cache/jenkins-infra/jenkins.io@d471394/content/doc/book/pipeline/syntax.adoc:1995-1997`）。不要再加 `parameters {}` 或 `options {}` 指令：声明式和 `properties` 步骤都会在下一次运行时移除自己上次设置的 job 属性（`.reference-cache/jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e/src/main/java/org/jenkinsci/plugins/workflow/multibranch/JobPropertyStep.java:137-158`），同类属性会互相覆盖。
 
@@ -282,7 +280,7 @@ pipeline {
 
 ### 3.6 构建参数
 
-方案 D（`Jenkinsfile`）：
+Active Choices 版（`Jenkinsfile`）：
 
 | 参数 | 类型 | 作用 |
 | --- | --- | --- |
@@ -292,7 +290,7 @@ pipeline {
 | `PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS` | Active Choices 动态 HTML | 随勾选实时生成：每个所选任务一组，含失败策略下拉框和各参数输入框，预填 role 的默认值；整数为数字框，布尔和枚举为下拉框，必填参数名后标“（必填）”；文本框和数字框的 `placeholder` 是参数名（必填时加“（必填）”），也是它们的可访问名称 |
 | `DEPLOY_PLAN` | 多行文本 | 非空时忽略上面所有参数 |
 
-方案 C（`Jenkinsfile.no-plugin`）：每个主机组一个勾选框 `TARGET_<组>`，`SKIP_DEPLOY`，每个阶段的每个任务一个勾选框 `PRE_<任务>` / `POST_<任务>`，`EDIT_TASK_OPTIONS`（默认勾选），`DEPLOY_PLAN`。构建开始后，若勾选了任务且 `EDIT_TASK_OPTIONS` 为真，流水线暂停并弹出只含所选任务的表单（字段名形如 `pre.task_a.task_a_repeat`），点“开始”后继续，点“Abort”则构建 ABORTED（`test_no_plugin_abort_in_form_aborts_the_build`）。等待包在 30 分钟的 `timeout` 中，期间不占执行器（`test_no_plugin_waiting_for_input_holds_no_executor`）。
+无插件版（`Jenkinsfile.no-plugin`）：每个主机组一个勾选框 `TARGET_<组>`，`SKIP_DEPLOY`，每个阶段的每个任务一个勾选框 `PRE_<任务>` / `POST_<任务>`，`EDIT_TASK_OPTIONS`（默认勾选），`DEPLOY_PLAN`。构建开始后，若勾选了任务且 `EDIT_TASK_OPTIONS` 为真，流水线暂停并弹出只含所选任务的表单（字段名形如 `pre.task_a.task_a_repeat`），点“开始”后继续，点“Abort”则构建 ABORTED（`test_no_plugin_abort_in_form_aborts_the_build`）。等待包在 30 分钟的 `timeout` 中，期间不占执行器（`test_no_plugin_waiting_for_input_holds_no_executor`）。
 
 `DEPLOY_PLAN` 格式（两种方案相同）：
 
@@ -315,7 +313,7 @@ post:
 
 ### 3.7 实际输出
 
-用下面的 `DEPLOY_PLAN` 运行方案 D 的 job（在参数页上做同样的选择，结果相同）：
+用下面的 `DEPLOY_PLAN` 运行Active Choices 版 的 job（在参数页上做同样的选择，结果相同）：
 
 ```yaml
 targets: [web, api]
@@ -517,7 +515,7 @@ ERROR: [deploy] 计划有误：
 
 证据：`test_every_run_needs_the_vault_password_even_on_localhost`：不给口令运行 `task_b`（只作用于 localhost）失败，`[ERROR]: Attempting to decrypt but no vault secrets found.`，没有运行任何任务。`test_missing_vault_credential_stops_the_build_before_any_playbook_runs`：删除凭据后构建 FAILURE，没有运行任何 playbook。
 
-### 4.10 方案 C 等待 `input` 时不占执行器
+### 4.10 无插件版 等待 `input` 时不占执行器
 
 规则：`Jenkinsfile.no-plugin` 顶层 `agent none`；读取文件和登记参数的 `Prepare`、运行 playbook 的 `Run` 各自 `agent any`；可能等待 `input` 的 `Task options` 不分配 agent。`Run` 的 `when` 加 `beforeAgent true`，计划为空时不分配执行器。`Prepare` 把本目录 `stash`，`Run` 用 `skipDefaultCheckout()` 关闭默认检出，改为 `unstash`。
 
@@ -550,11 +548,11 @@ C HEAD=207de2cb2d4013bcfcc6bb97a22b007c3acadb29
 | 在 `properties()` 之后读取 `params` 判断是否第一次运行 | 第一次运行报“没有选择主机组”并失败 | 把 `params` 作为实参传给 `prepareRequest`（4.7） |
 | 用 `catchError(catchInterruptions: false)` 区分超时与手动中止 | 手动中止后流水线继续执行 | `ansiblePlaybook` 抛出普通 `InterruptedException`，按已耗时区分（4.2） |
 | Active Choices 勾选框的文字含全角标点（`（`、`：`、`！`）或 `@ = + "` | 勾选框旁显示 `web&#xff08;web-01&#xff09;` 之类的实体文字 | 勾选框文字只用半角符号；`tasks.yml` 的 `description` 同样。原因：沙箱脚本的返回值都经过插件的 HTML 过滤（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/model/GroovyScript.java:191-192`、`:232-250`），把这些字符转成实体；勾选框的文字随后又被页面模板转义一次。HTML 表单（`*_TASK_OPTIONS`）中的实体会被浏览器还原，不受影响 |
-| 动态 HTML 表单用 `fieldset` / `legend` / `label`、`title` 或 `aria-*` 属性 | 这些标签和属性消失，输入框没有可访问名称 | 过滤器只放行基本标签及 `input`、`select`、`option`、`textarea` 和少数属性（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java:54-59`）；分组用 `div` 加 `style`，必填用文字“（必填）”标出，文本框和数字框用 `placeholder` 写参数名作为可访问名称。下拉框没有能保留下来的命名属性；需要读屏软件时用方案 C 的 `input` 表单 |
+| 动态 HTML 表单用 `fieldset` / `legend` / `label`、`title` 或 `aria-*` 属性 | 这些标签和属性消失，输入框没有可访问名称 | 过滤器只放行基本标签及 `input`、`select`、`option`、`textarea` 和少数属性（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java:54-59`）；分组用 `div` 加 `style`，必填用文字“（必填）”标出，文本框和数字框用 `placeholder` 写参数名作为可访问名称。下拉框没有能保留下来的命名属性；需要读屏软件时用无插件版 的 `input` 表单 |
 | 给下拉框加 `class="jenkins-select__input"` 想得到 Jenkins 的样式 | 下拉箭头消失 | 这个类依赖外层的 `<div class="jenkins-select">`，而过滤器会去掉 `div` 的 `class`；不加类，用浏览器默认样式 |
-| 方案 C 的 `Run` stage 再次默认检出 | 等待 `input` 期间分支有新提交时，运行的文件与校验过的不同 | `Prepare` 中 `stash`，`Run` 中 `skipDefaultCheckout()` 加 `unstash`（4.10） |
+| 无插件版 的 `Run` stage 再次默认检出 | 等待 `input` 期间分支有新提交时，运行的文件与校验过的不同 | `Prepare` 中 `stash`，`Run` 中 `skipDefaultCheckout()` 加 `unstash`（4.10） |
 | 先填写某个任务的参数，再勾选另一个任务 | 已填写的值全部恢复为默认值 | 改变勾选会重新生成整个表单。先勾选全部任务，再填写参数（`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`） |
-| 方案 C 中只有一个输入项 | `input` 返回该值本身而不是 Map，按 Map 处理时报错 | 只有一个输入项时自己组成 Map（`basicSelection`）；`input` 的行为见 `.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`。`check_c` 没有参数，所以只勾选它时表单只有一项（`test_no_plugin_form_with_a_single_field_returns_its_value`） |
+| 无插件版 中只有一个输入项 | `input` 返回该值本身而不是 Map，按 Map 处理时报错 | 只有一个输入项时自己组成 Map（`basicSelection`）；`input` 的行为见 `.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`。`check_c` 没有参数，所以只勾选它时表单只有一项（`test_no_plugin_form_with_a_single_field_returns_its_value`） |
 | 用 `x ?: 默认值` 取可选字段 | `timeout_minutes: 0`、`policy: ''`、`params: []` 不报错，静默改用默认值 | Groovy 中 `0`、`''`、`[]` 为假；用 `x == null ? 默认值 : x`，再做类型检查（4.5） |
 | 在 `DEPLOY_PLAN` 中给字符串参数写未加引号的 `2026-01-01`、`yes` | 不加检查时到达 Ansible 的是 `Thu Jan 01 00:00:00 UTC 2026`、`true` | YAML 解析时已变成日期、布尔；引擎只接受字符串和整数，提示加引号 |
 | 表单中某个值含 `,@@` | 值被切断，后半段被当成另一个字段 | 提交值用 `,@@` 切分，无法区分；引擎在字段重复时报错（`test_invalid_form_values_fail_before_any_playbook_runs`） |
@@ -595,8 +593,8 @@ missing required arguments: app_version
 
 ## 7. 附件
 
-- [attachments/inventory-practices.md](attachments/inventory-practices.md)：inventory 管理的调研结论——目录与变量分层、变量优先级与命名、ansible-vault 与 Jenkins 凭据、`ansible-inventory` / argument_specs / ansible-lint 校验及其在 CI 中的用法。设计或修改 inventory 前读。
-- [attachments/parameter-page.md](attachments/parameter-page.md)：两种参数页的界面与实现细节——Active Choices 参数的定义、表单 HTML、提交值的格式与解析，方案 C 的 `input` 表单。修改参数页或排查参数传递问题时读。
+- [attachments/inventory-practices.md](attachments/inventory-practices.md)：inventory 管理——目录与变量分层、变量优先级与命名、ansible-vault 与 Jenkins 凭据、`ansible-inventory` / argument_specs / ansible-lint 校验及其在 CI 中的用法。设计或修改 inventory 前读。
+- [attachments/parameter-page.md](attachments/parameter-page.md)：两种参数页的界面与实现细节——Active Choices 参数的定义、表单 HTML、提交值的格式与解析，无插件版 的 `input` 表单。修改参数页或排查参数传递问题时读。
 
 ## 8. 出处
 
@@ -617,4 +615,4 @@ missing required arguments: app_version
 | `.reference-cache/jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e` | https://github.com/jenkinsci/workflow-multibranch-plugin | `842.v3a_b_59b_57b_e6e` | `3ab59b57be6e59ebfa0e273a5743b02529476334` |
 | `.reference-cache/jenkins-infra/jenkins.io@d471394` | https://github.com/jenkins-infra/jenkins.io | `master` | `d4713943384e705fd7dd2f645555083b247e61b4` |
 
-缓存是完整检出后删除 `.git`、CI 与打包配置、二进制文件得到的，文本文件的路径和行号与上游一致。
+

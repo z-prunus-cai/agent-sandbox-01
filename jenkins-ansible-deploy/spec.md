@@ -29,8 +29,8 @@ Jenkinsfile 从 SCM 加载，运行在 Groovy 沙箱中，**不需要任何脚�
 | 路径 | 内容 |
 | --- | --- |
 | `BRIEF.md`、`attachments/` | 说明文档 |
-| `examples/Jenkinsfile` | 方案 D：使用 Active Choices，单页参数表单 |
-| `examples/Jenkinsfile.no-plugin` | 方案 C：不装插件，勾选任务后在构建开始时弹出参数表单（两步式） |
+| `examples/Jenkinsfile` | Active Choices 版：使用 Active Choices，单页参数表单 |
+| `examples/Jenkinsfile.no-plugin` | 无插件版：不装插件，勾选任务后在构建开始时弹出参数表单（两步式） |
 | `examples/jenkins/` | 两个 Jenkinsfile 共用的引擎代码与任务目录 |
 | `examples/ansible/` | inventory、部署 playbook、额外任务（每个任务一个 role） |
 | `examples/tests/` | 自动化测试 |
@@ -39,7 +39,7 @@ Jenkinsfile 从 SCM 加载，运行在 Groovy 沙箱中，**不需要任何脚�
 
 ### 4.1 输入（构建参数）
 
-| 参数 | 方案 D | 方案 C |
+| 参数 | Active Choices 版 | 无插件版 |
 | --- | --- | --- |
 | 发布对象 | 主机组多选列表，选项来自 inventory | 每个主机组一个勾选框，来自 inventory |
 | 跳过部署 | `SKIP_DEPLOY` 勾选框 | 同左 |
@@ -88,7 +88,7 @@ post:
 - 每个任务在 Jenkins 中显示为独立 stage，名称含阶段与 `id`；
 - 控制台末尾打印任务结果汇总；归档 JSON 报告（任务 id、阶段、策略、参数、耗时、结果）。
 
-### 4.6 inventory 管理（调研 + 示例）
+### 4.6 inventory 管理（结论 + 示例）
 
 覆盖三个主题，结论需有 Ansible 文档或源码出处，或实验结果：
 

@@ -1,4 +1,4 @@
-// 部署流水线（方案 C：只用 Jenkins 自带参数类型，构建开始后用 input 步骤填写所选任务的参数）。
+// 部署流水线（无插件版：只用 Jenkins 自带参数类型，构建开始后用 input 步骤填写所选任务的参数）。
 // 需要的插件：workflow-aggregator、ansible、pipeline-utility-steps、credentials-binding。
 // 逻辑在 jenkins/deploy-engine.groovy，任务目录在 jenkins/tasks.yml，Ansible 代码在 ansible/。
 

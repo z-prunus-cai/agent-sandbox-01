@@ -2,11 +2,11 @@
 
 文中 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>` 指上游仓库在该版本的同一路径与行号，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)。
 
-本文说明 `examples/Jenkinsfile`（方案 D，Active Choices 插件 2.8.11）和 `examples/Jenkinsfile.no-plugin`（方案 C，只用 Jenkins 自带功能）的参数页：页面上有什么、怎样生成、提交后的值是什么格式、引擎怎样把它转成执行计划。两种方案共用 `examples/jenkins/deploy-engine.groovy`，最后都得到与 `DEPLOY_PLAN` 结构相同的计划草稿，再由 `buildPlan` 统一校验。
+本文说明 `examples/Jenkinsfile`（Active Choices 版，Active Choices 插件 2.8.11）和 `examples/Jenkinsfile.no-plugin`（无插件版，只用 Jenkins 自带功能）的参数页：页面上有什么、怎样生成、提交后的值是什么格式、引擎怎样把它转成执行计划。两种方案共用 `examples/jenkins/deploy-engine.groovy`，最后都得到与 `DEPLOY_PLAN` 结构相同的计划草稿，再由 `buildPlan` 统一校验。
 
 ## 1. 对比
 
-| 能力 | 方案 D：Active Choices | 方案 C：自带功能 |
+| 能力 | Active Choices 版 | 无插件版 |
 | --- | --- | --- |
 | 选择主机组 | 勾选框（`TARGET_GROUPS`） | 每组一个勾选框（`TARGET_web` 等） |
 | 选择任务 | 勾选框（`PRE_TASKS` / `POST_TASKS`） | 每个任务一个勾选框（`PRE_task_a` 等） |
@@ -24,7 +24,7 @@
 - 参数定义在构建运行时更新，**从下一次构建起**才出现在参数页上；新建的 job 要先运行一次（结果 NOT_BUILT）。
 - 判断“是否第一次运行”必须用 `properties()` 之前读取的 `params`，所以 Jenkinsfile 把 `params` 作为实参传给 `prepareRequest()`（见 [BRIEF.md 第 4.7 节](../BRIEF.md#47-第一次运行只登记参数params-必须在-properties-之前读取)）。
 
-## 3. 方案 D：Active Choices
+## 3. Active Choices 版
 
 ### 3.1 参数页上的脚本看不到工作区
 
@@ -68,7 +68,7 @@ IN : <input type="text" name="value" placeholder="必填" class="jenkins-input">
 OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" />
 ```
 
-`label`、`aria-*`、`title`、`input` 上的 `required` 都被去掉，所以表单在参数名后写“（必填）”，并给每个文本框和数字框加 `placeholder`（参数名，必填时加“（必填）”）：浏览器把 `placeholder` 当作没有其他名称时的可访问名称。下拉框的属性只放行 `id`、`class`、`style`、`disabled`、`multiple`、`name`、`required`、`size`，没有能给它命名的；需要读屏软件时用方案 C。
+`label`、`aria-*`、`title`、`input` 上的 `required` 都被去掉，所以表单在参数名后写“（必填）”，并给每个文本框和数字框加 `placeholder`（参数名，必填时加“（必填）”）：浏览器把 `placeholder` 当作没有其他名称时的可访问名称。下拉框的属性只放行 `id`、`class`、`style`、`disabled`、`multiple`、`name`、`required`、`size`，没有能给它命名的；需要读屏软件时用无插件版。
 
 ### 3.3 参数表单
 
@@ -129,7 +129,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 插件说明 Active Choices 参数只供人在页面上填写，通过插件、API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md:570-573`）。通过 `buildWithParameters` 直接传入的值不经过页面上的 JSON 转义，原样保存，引擎的 `jsonUnescape()` 却仍会处理其中的反斜杠，例如 `C:\new` 会变成 `C:`、换行、`ew`。所以 API 和上游 job 只传 `DEPLOY_PLAN`。集成测试中直接赋值 `TARGET_GROUPS`、`PRE_TASKS`、`PRE_TASK_OPTIONS` 的用例（`test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only`、`test_invalid_form_values_fail_before_any_playbook_runs`）只用不含反斜杠的值，用来模拟页面提交。
 
-## 4. 方案 C：勾选框 + input 步骤
+## 4. 无插件版：勾选框 + input 步骤
 
 ### 4.1 参数页
 
@@ -150,7 +150,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 `input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicSelection` 在这种情况下自己组成 Map（`test_no_plugin_form_with_a_single_field_returns_its_value`）。
 
-提交后，每个值转成字符串，按 `<阶段>` 分组成与方案 D 相同的 `[任务.字段: 值]`，交给同一个 `selectionPlan()`。点 “Abort” 时构建为 ABORTED，不运行任何 playbook（`test_no_plugin_abort_in_form_aborts_the_build`）。
+提交后，每个值转成字符串，按 `<阶段>` 分组成与Active Choices 版 相同的 `[任务.字段: 值]`，交给同一个 `selectionPlan()`。点 “Abort” 时构建为 ABORTED，不运行任何 playbook（`test_no_plugin_abort_in_form_aborts_the_build`）。
 
 ### 4.3 不弹出表单
 
