@@ -13,6 +13,7 @@ class Jenkins:
         # Jenkins issues the CSRF crumb per session, so the session cookie must be kept
         self._opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), urllib.request.ProxyHandler({}))
+        self._crumb_header = None
 
     def request(self, path, data=None, headers=None):
         """POST when data is given, GET otherwise. Returns (status, body, response headers)."""
@@ -29,9 +30,11 @@ class Jenkins:
             return error.code, error.read().decode(), error.headers
 
     def _crumb(self):
-        with self._opener.open(self.url + '/crumbIssuer/api/json') as response:
-            crumb = json.loads(response.read())
-        return {crumb['crumbRequestField']: crumb['crumb']}
+        if self._crumb_header is None:
+            with self._opener.open(self.url + '/crumbIssuer/api/json') as response:
+                crumb = json.loads(response.read())
+            self._crumb_header = {crumb['crumbRequestField']: crumb['crumb']}
+        return self._crumb_header
 
     def json(self, path, tree=None):
         query = '?tree=' + urllib.parse.quote(tree) if tree else ''
@@ -83,14 +86,31 @@ class Jenkins:
         return self.json(f'/job/{job}/{number}', 'building,result,description,artifacts[relativePath]')
 
     def wait_for_build(self, job, number, timeout_seconds=600):
-        """Wait until the build finishes and return its result (SUCCESS, UNSTABLE, FAILURE, ABORTED, NOT_BUILT)."""
+        """Wait until the build finishes and return its result (SUCCESS, UNSTABLE, FAILURE, ABORTED, NOT_BUILT).
+        A build that is still in the queue does not exist yet (HTTP 404); keep waiting for it."""
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
-            info = self.build_info(job, number)
-            if not info['building']:
-                return info['result']
+            status, body, _ = self.request(f'/job/{job}/{number}/api/json?tree=building,result')
+            if status == 200 and not json.loads(body)['building']:
+                return json.loads(body)['result']
+            if status not in (200, 404):
+                raise RuntimeError(f'{job} #{number}: HTTP {status}')
             time.sleep(1)
-        raise TimeoutError(f'{job} #{number} still running')
+        raise TimeoutError(f'{job} #{number} did not finish')
+
+    def wait_for_console(self, job, number, text, timeout_seconds=120):
+        """Wait until the console log contains text, reading only the part not read yet."""
+        deadline = time.time() + timeout_seconds
+        start, seen = 0, ''
+        while time.time() < deadline:
+            status, body, headers = self.request(f'/job/{job}/{number}/logText/progressiveText?start={start}')
+            if status == 200:
+                seen += body
+                start = int(headers.get('X-Text-Size', start))
+                if text in seen:
+                    return
+            time.sleep(1)
+        raise TimeoutError(f'{job} #{number}: console never showed {text!r}')
 
     def wait_for_input(self, job, number, timeout_seconds=120):
         """Wait until the build pauses at an input step; return [{'id', 'message', 'names'}]."""
@@ -130,6 +150,9 @@ class Jenkins:
         if status != 200:
             raise RuntimeError(f'artifact {path}: HTTP {status}')
         return body
+
+    def next_build_number(self, job):
+        return self.json(f'/job/{job}', 'nextBuildNumber')['nextBuildNumber']
 
     def parameter_names(self, job):
         data = self.json(f'/job/{job}', 'property[parameterDefinitions[name]]')

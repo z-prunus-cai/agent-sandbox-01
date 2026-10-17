@@ -1,12 +1,12 @@
 // 部署流水线（方案 D：Active Choices 插件，同一参数页上选择任务并填写参数）。
-// 需要的插件：workflow-aggregator、ansible、pipeline-utility-steps、uno-choice（Active Choices）。
+// 需要的插件：workflow-aggregator、ansible、pipeline-utility-steps、credentials-binding、uno-choice（Active Choices）。
 // 逻辑在 jenkins/deploy-engine.groovy，任务目录在 jenkins/tasks.yml，Ansible 代码在 ansible/。
 
 // 按项目修改
 Map settings = [
     baseDir: 'jenkins-ansible-deploy/examples',                  // 本目录在仓库中的路径
     ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 密码
-              sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机
+              sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机；不需要时设为 null
 ]
 
 def engine
@@ -17,18 +17,12 @@ pipeline {
     agent any
 
     stages {
-        // 读取任务目录和 inventory，登记构建参数，并把本次的选择校验成执行计划。
-        // 构建参数在这里由 properties() 写入 job，所以任务或主机组的变化从下一次构建起出现在参数页上。
+        // 构建参数由 properties() 在这里写入 job，任务或主机组的变化从下一次构建起出现在参数页上
         stage('Prepare') {
             steps {
                 script {
                     engine = load "${settings.baseDir}/jenkins/deploy-engine.groovy"
-                    Map context = engine.prepare(settings)
-                    // 必须在 properties() 之前读取：之后 params 会用 job 新登记的参数定义补上默认值，
-                    // 第一次运行就无法判断参数页是否真的提交过
-                    Map requested = params
-                    properties([parameters(engine.activeChoicesParameters(context))])
-                    plan = engine.resolvePlan(context, requested, engine.activeChoicesSelection(context, requested))
+                    plan = engine.resolvePlan(engine.prepareRequest(settings, params, 'activeChoices'))
                 }
             }
         }

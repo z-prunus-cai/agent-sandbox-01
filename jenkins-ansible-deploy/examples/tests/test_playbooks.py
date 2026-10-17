@@ -1,11 +1,11 @@
 import pytest
 
-from conftest import recap, run_ansible
+from conftest import CATALOG, recap, run_ansible
 
 
 def run_task(tmp_path, role, params, limit=None, vault=True):
     """Run run-task.yml the way the Jenkins engine does."""
-    hosts = 'localhost' if role == 'task_b' else 'deploy_targets'
+    hosts = 'deploy_targets' if CATALOG[role]['run_on'] == 'targets' else 'localhost'
     command = ['ansible-playbook', 'run-task.yml'] + (['--limit', limit] if limit else [])
     return run_ansible(command, extra_vars={'task_role': role, 'task_hosts': hosts, **params}, tmp_path=tmp_path, vault=vault)
 
@@ -17,6 +17,17 @@ def test_deploy_runs_only_on_the_limited_groups_with_each_hosts_own_variables():
     assert set(recap(result.stdout)) == {'web-01', 'web-02', 'api-01'}
     assert 'deploy web 2.3.1 to web-02 (192.0.2.12) dir=/opt/apps/web port=8080 max_connections=200 user=app' in result.stdout
     assert 'deploy api 1.8.0 to api-01 (192.0.2.13) dir=/opt/apps/api port=9000 max_connections=300 user=app' in result.stdout
+
+
+def test_deploy_validates_host_variables_before_doing_anything(ansible_copy):
+    web = ansible_copy / 'inventory' / 'group_vars' / 'web.yml'
+    web.write_text(web.read_text().replace('app_port: 8080', 'app_port: eighty'))
+
+    result = run_ansible(['ansible-playbook', 'deploy.yml', '--limit', 'web'], project=ansible_copy)
+
+    assert result.returncode == 2
+    assert "argument 'app_port' is of type str and we were unable to convert to int" in result.stdout
+    assert 'TASK [app_deploy : Show the deployment that would run]' not in result.stdout
 
 
 def test_task_on_targets_runs_only_on_the_limited_group(tmp_path):
@@ -44,23 +55,35 @@ def test_every_run_needs_the_vault_password_even_on_localhost(tmp_path):
 
 
 @pytest.mark.parametrize('role, params, limit, message, skipped_task', [
-    ('task_a', {}, 'web', 'missing required arguments: task_a_message', 'task_a : Check task_a_repeat range'),
-    ('task_a', {'task_a_message': 'x', 'task_a_repeat': 'two'}, 'web',
-     "argument 'task_a_repeat' is of type str and we were unable to convert to int", 'task_a : Check task_a_repeat range'),
-    ('task_a', {'task_a_message': 'x', 'task_a_repeat': 9}, 'web', 'task_a_repeat must be between 1 and 5, got 9',
-     'task_a : Print the message'),
-    ('task_b', {'task_b_path': 'no-such-file.yml'}, None, 'no-such-file.yml is missing or smaller than 1 bytes', None),
-    ('task_c', {'task_c_mode': 'destroy'}, 'web', 'value of task_c_mode must be one of: plan, apply, got: destroy',
-     'task_c : Run in the selected mode'),
-    ('check_a', {}, 'web', 'missing required arguments: check_a_min_connections', 'check_a : Compare'),
+    pytest.param('task_a', {}, 'web', 'missing required arguments: task_a_message',
+                 'task_a : Check task_a_repeat range', id='missing-required'),
+    pytest.param('task_a', {'task_a_message': 'x', 'task_a_repeat': 'two'}, 'web',
+                 "argument 'task_a_repeat' is of type str and we were unable to convert to int",
+                 'task_a : Check task_a_repeat range', id='wrong-type'),
+    pytest.param('task_a', {'task_a_message': 'x', 'task_a_repeat': 9}, 'web',
+                 'task_a_repeat must be between 1 and 5, got 9', 'task_a : Print the message', id='out-of-range'),
+    pytest.param('task_b', {'task_b_path': '../../etc/hostname'}, None,
+                 "task_b_path must be relative to the Ansible directory without '..'", 'task_b : Read file status',
+                 id='path-outside-directory'),
+    pytest.param('task_c', {'task_c_mode': 'destroy'}, 'web', 'value of task_c_mode must be one of: plan, apply, got: destroy',
+                 'task_c : Run in the selected mode', id='not-in-choices'),
+    pytest.param('check_a', {}, 'web', 'missing required arguments: check_a_min_connections',
+                 'check_a : Compare', id='check-missing-required'),
 ])
-def test_task_fails_with_a_clear_message_on_invalid_parameters(tmp_path, role, params, limit, message, skipped_task):
+def test_task_fails_with_a_clear_message_and_stops(tmp_path, role, params, limit, message, skipped_task):
     result = run_task(tmp_path, role, params, limit=limit)
 
     assert result.returncode == 2
     assert message in result.stdout
-    if skipped_task:
-        assert f'TASK [{skipped_task}' not in result.stdout
+    assert f'TASK [{skipped_task}' not in result.stdout
+
+
+def test_controller_task_fails_when_the_file_is_missing(tmp_path):
+    result = run_task(tmp_path, 'task_b', {'task_b_path': 'no-such-file.yml'})
+
+    assert result.returncode == 2
+    assert 'no-such-file.yml is missing or smaller than 1 bytes' in result.stdout
+    assert recap(result.stdout)['localhost']['failed'] == 1
 
 
 def test_check_compares_each_hosts_own_inventory_value(tmp_path):

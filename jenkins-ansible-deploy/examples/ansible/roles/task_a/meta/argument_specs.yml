@@ -8,7 +8,9 @@ argument_specs:
         description: 要输出的文字
       task_a_repeat:
         type: int
+        default: 1
         description: 输出次数，1 到 5
       task_a_delay_seconds:
         type: int
+        default: 0
         description: 开始前等待的秒数，用于演示超时

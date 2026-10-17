@@ -1,6 +1,5 @@
 """Integration tests against a real Jenkins: the pipeline behaviour of both Jenkinsfiles."""
 import json
-import time
 
 import pytest
 
@@ -19,18 +18,12 @@ def plan(text):
     return {'DEPLOY_PLAN': text}
 
 
+def playbook_command_lines(console):
+    return [line.split('$ ansible-playbook ', 1)[1] for line in console.splitlines() if '$ ansible-playbook ' in line]
+
+
 def playbook_runs(console):
-    return [line.split('ansible-playbook ', 1)[1].split()[0].rsplit('/', 1)[1]
-            for line in console.splitlines() if '$ ansible-playbook ' in line]
-
-
-def wait_for_console(jenkins, job, number, text, timeout_seconds=120):
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        if text in jenkins.console(job, number):
-            return
-        time.sleep(1)
-    raise TimeoutError(text)
+    return [line.split()[0].rsplit('/', 1)[1] for line in playbook_command_lines(console)]
 
 
 @pytest.mark.parametrize('jenkinsfile, expected', [
@@ -46,21 +39,24 @@ def test_first_build_registers_parameters_from_catalog_and_inventory_and_runs_no
     assert jenkins.build_info(job, 1)['description'] == '已登记构建参数，请用 Build with Parameters 重新运行'
 
 
-def test_selection_runs_tasks_in_catalog_order_with_typed_form_values(jenkins, new_job):
+def test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only(jenkins, new_job):
     job = new_job(ACTIVE)
 
     result, console, _ = run(jenkins, job, {
         'TARGET_GROUPS': 'web,api', 'PRE_TASKS': 'task_b,task_a',
-        'PRE_TASK_OPTIONS': '@@task_a.policy,warn,@@task_a.task_a_message,hi,@@task_a.task_a_repeat,2,@@task_a.task_a_delay_seconds,',
-        'POST_TASKS': 'check_c', 'POST_TASK_OPTIONS': '@@check_c.policy,abort'})
+        'PRE_TASK_OPTIONS': '@@task_a.policy,warn,@@task_a.task_a_message,hi,@@task_a.task_a_repeat,2,@@task_a.task_a_delay_seconds,'})
 
     assert result == 'SUCCESS', console
-    assert playbook_runs(console) == ['run-task.yml', 'run-task.yml', 'deploy.yml', 'run-task.yml']
+    commands = playbook_command_lines(console)
+    assert [c.split()[0].rsplit('/', 1)[1] for c in commands] == ['run-task.yml', 'run-task.yml', 'deploy.yml']
+    assert ' -l web:api ' in commands[0] and ' -l web:api ' in commands[2]
+    assert ' -l ' not in commands[1]                                # task_b runs on the Jenkins node itself
+    assert 'inventory/hosts.yml: ' in console                         # and really ran, not "no hosts matched"
     assert '    - task_a [warn] [task_a_message:hi, task_a_repeat:2, task_a_delay_seconds:0]' in console
-    assert console.index('[deploy] task_a') < console.index('[deploy] task_b')
+    assert 'worker-0' not in console
 
 
-def test_report_lists_every_step_with_its_result(jenkins, new_job):
+def test_each_task_is_a_stage_and_the_report_lists_every_step(jenkins, new_job):
     job = new_job(ACTIVE)
 
     result, console, number = run(jenkins, job, plan('''
@@ -71,19 +67,22 @@ post: [{name: check_a, params: {check_a_min_connections: 500}}]
     report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
 
     assert result == 'UNSTABLE', console
-    assert [(r['phase'], r['id'], r['policy'], r['status'], r.get('outcome')) for r in report] == [
-        ('pre', 'task_b', 'abort', 'PASSED', None),
-        ('deploy', 'deploy', 'abort', 'PASSED', None),
-        ('post', 'check_a', 'warn', 'FAILED', 'continued')]
+    assert '[Pipeline] { (pre: task_b)' in console and '[Pipeline] { (post: check_a)' in console
+    assert [(r['phase'], r['id'], r['name'], r['policy'], r['status'], r.get('outcome')) for r in report] == [
+        ('pre', 'task_b', 'task_b', 'abort', 'PASSED', None),
+        ('deploy', 'deploy', 'deploy', 'abort', 'PASSED', None),
+        ('post', 'check_a', 'check_a', 'warn', 'FAILED', 'continued')]
+    assert all(isinstance(r['seconds'], int) for r in report)
     assert report[2]['params'] == {'check_a_min_connections': 500}
+    summary = console[console.index('[deploy] 结果：'):].splitlines()
+    assert summary[3].split() == ['post', 'check_a', 'warn', 'FAILED', summary[3].split()[4], '->', 'continued']
 
 
-def test_deploy_plan_runs_listed_order_repeats_a_task_by_id_and_skips_deploy(jenkins, new_job):
+def test_deploy_plan_runs_entries_in_listed_order_and_repeats_a_task_by_id(jenkins, new_job):
     job = new_job(ACTIVE)
 
     result, console, _ = run(jenkins, job, plan('''
 targets: [worker]
-skip_deploy: true
 pre:
   - {name: check_c, id: check_c_first}
   - {name: task_c, params: {task_c_mode: apply, task_c_verbose: true}}
@@ -91,10 +90,20 @@ pre:
 '''))
 
     assert result == 'SUCCESS', console
-    assert 'Stage "Deploy" skipped due to when conditional' in console
-    assert 'deploy.yml' not in playbook_runs(console)
-    assert console.index('[deploy] check_c_first') < console.index('[deploy] task_c') < console.index('[deploy] check_c_second')
+    assert console.index('(pre: check_c_first)') < console.index('(pre: task_c)') < console.index('(pre: check_c_second)')
     assert '"msg": "worker-02: task_c mode=apply label="' in console
+    assert 'web-0' not in console and 'api-01' not in console
+
+
+def test_skipped_deploy_still_runs_pre_and_post_tasks(jenkins, new_job):
+    job = new_job(ACTIVE)
+
+    result, console, _ = run(jenkins, job, plan('{targets: [worker], skip_deploy: true, pre: [check_c], post: [check_c]}'))
+
+    assert result == 'SUCCESS', console
+    assert 'Stage "Deploy" skipped due to when conditional' in console
+    assert playbook_runs(console) == ['run-task.yml', 'run-task.yml']
+    assert '(pre: check_c)' in console and '(post: check_c)' in console   # the same id in both phases is fine
 
 
 def test_controller_only_run_needs_no_target_group(jenkins, new_job):
@@ -104,52 +113,83 @@ def test_controller_only_run_needs_no_target_group(jenkins, new_job):
 
     assert result == 'SUCCESS', console
     assert playbook_runs(console) == ['run-task.yml']
-    assert ' -l ' not in console
 
 
 @pytest.mark.parametrize('deploy_plan, message', [
-    ('targets: [nope]', "未知主机组 [nope]，可用主机组 [web, api, worker]"),
-    ('targets: []', '没有选择主机组（部署和 run_on: targets 的任务需要至少一个主机组）'),
-    ('{targets: [web], pre: [no_such_task]}', "pre[0]：未知任务 'no_such_task'"),
-    ('{targets: [web], post: [task_b]}', 'post[0]：任务 task_b 不能用于 post，只能用于 [pre]'),
-    ('{targets: [web], pre: [{name: task_a, policy: ask}]}', "pre[0]：未知策略 'ask'，只能是 abort 或 warn"),
-    ('{targets: [web], pre: [task_a]}', 'pre[0]：任务 task_a 必须提供参数 task_a_message'),
-    ('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, ansible_connection: local}}]}',
-     "pre[0]：任务 task_a 不接受参数 [ansible_connection]"),
-    ('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, task_a_repeat: two}}]}',
-     "pre[0]：参数 task_a_repeat 应为整数，实际为 'two'"),
-    ('{targets: [web], pre: [{name: task_c, params: {task_c_mode: destroy}}]}',
-     "pre[0]：参数 task_c_mode 只能是 [plan, apply]，实际为 'destroy'"),
-    ('{targets: [web], pre: [{name: task_c, params: {task_c_verbose: yes please}}]}',
-     "pre[0]：参数 task_c_verbose 应为 true 或 false，实际为 'yes please'"),
-    ('{targets: [web], pre: [{name: task_a, params: {task_a_message: "{{ lookup(\'pipe\', \'id\') }}"}}]}',
-     'pre[0]：参数 task_a_message 不能包含模板语法（{{、{%、{#）'),
-    ('{targets: [web], pre: [check_c, check_c]}', "pre[1]：id 'check_c' 重复"),
-    ('{targets: [web], pre: [{name: check_c, id: "a b"}]}', "pre[0]：id 'a b' 只能包含字母、数字、_、-"),
-    ('{targets: [web], pre: [{name: check_c, timeout_minutes: 0}]}', 'pre[0]：timeout_minutes 必须是正整数'),
-    ('{targets: [web], verify: true}', '不支持的字段 [verify]'),
-    ('[web]', 'DEPLOY_PLAN 必须是 YAML 映射'),
+    pytest.param('targets: [nope]', '未知主机组 [nope]，可用主机组 [web, api, worker]', id='unknown-group'),
+    pytest.param('targets: []', '没有选择主机组（部署和 run_on: targets 的任务需要至少一个主机组）', id='no-group'),
+    pytest.param('targets: web', 'targets 必须是列表', id='targets-not-list'),
+    pytest.param('{targets: [web], skip_deploy: maybe}', 'skip_deploy 必须是 true 或 false', id='skip-not-bool'),
+    pytest.param('{targets: [web], pre: task_a}', 'pre 必须是列表', id='phase-not-list'),
+    pytest.param('{targets: [web], pre: {}}', 'pre 必须是列表', id='phase-empty-map'),
+    pytest.param('{targets: [web], pre: [42]}', 'pre[0]：应为任务名，或包含 name 的映射', id='entry-not-name'),
+    pytest.param('{targets: [web], pre: [no_such_task]}', "pre[0]：未知任务 'no_such_task'", id='unknown-task'),
+    pytest.param('{targets: [web], post: [task_b]}', 'post[0]：任务 task_b 不能用于 post，只能用于 [pre]', id='wrong-phase'),
+    pytest.param('{targets: [web], pre: [{name: check_c, retries: 3}]}', "pre[0]：不支持的字段 [retries]", id='unknown-entry-key'),
+    pytest.param('{targets: [web], pre: [{name: task_a, policy: ask}]}', "pre[0]：未知策略 'ask'，只能是 abort 或 warn", id='unknown-policy'),
+    pytest.param("{targets: [web], pre: [{name: task_a, policy: ''}]}", "pre[0]：未知策略 ''", id='empty-policy'),
+    pytest.param('{targets: [web], pre: [task_a]}', 'pre[0]：任务 task_a 必须提供参数 task_a_message', id='missing-required'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "  "}}]}',
+                 'pre[0]：任务 task_a 必须提供参数 task_a_message', id='blank-required'),
+    pytest.param('{targets: [web], pre: [{name: check_c, params: [x]}]}', 'pre[0]：params 必须是映射', id='params-not-map'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, ansible_connection: local}}]}',
+                 'pre[0]：任务 task_a 不接受参数 [ansible_connection]', id='undeclared-param'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, task_a_repeat: two}}]}',
+                 "pre[0]：参数 task_a_repeat 应为整数，实际为 'two'", id='not-int'),
+    pytest.param('{targets: [web], pre: [{name: task_c, params: {task_c_mode: destroy}}]}',
+                 "pre[0]：参数 task_c_mode 只能是 [plan, apply]，实际为 'destroy'", id='not-in-choices'),
+    pytest.param('{targets: [web], pre: [{name: task_c, params: {task_c_verbose: yes please}}]}',
+                 "pre[0]：参数 task_c_verbose 应为 true 或 false，实际为 'yes please'", id='not-bool'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: 2026-01-01}}]}',
+                 'pre[0]：参数 task_a_message 应为字符串（YAML 中请加引号）', id='yaml-date-for-string'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "{{ lookup(\'pipe\', \'id\') }}"}}]}',
+                 'pre[0]：参数 task_a_message 不能包含模板语法（{{、{%、{#）', id='template-expression'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "{% if true %}x{% endif %}"}}]}',
+                 'pre[0]：参数 task_a_message 不能包含模板语法', id='template-statement'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a {# c #} b"}}]}',
+                 'pre[0]：参数 task_a_message 不能包含模板语法', id='template-comment'),
+    pytest.param('{targets: [web], pre: [check_c, check_c]}', "pre[1]：id 'check_c' 重复", id='duplicate-id'),
+    pytest.param('{targets: [web], pre: [{name: check_c, id: "a b"}]}', "pre[0]：id 'a b' 只能包含字母、数字、_、-", id='bad-id'),
+    pytest.param("{targets: [web], pre: [{name: check_c, id: ''}]}", "pre[0]：id '' 只能包含字母、数字、_、-", id='empty-id'),
+    pytest.param('{targets: [web], pre: [{name: check_c, timeout_minutes: 0}]}', 'pre[0]：timeout_minutes 必须是正整数', id='zero-timeout'),
+    pytest.param('{targets: [web], verify: true}', '不支持的字段 [verify]', id='unknown-plan-key'),
+    pytest.param('[web]', 'DEPLOY_PLAN 必须是 YAML 映射', id='not-a-map'),
+    pytest.param('targets: [web', 'DEPLOY_PLAN 不是合法的 YAML', id='yaml-syntax-error'),
 ])
-def test_invalid_plan_fails_before_any_playbook_runs(jenkins, new_job, deploy_plan, message):
-    job = new_job(ACTIVE)
-
-    result, console, _ = run(jenkins, job, plan(deploy_plan))
+def test_invalid_plan_fails_before_any_playbook_runs(jenkins, shared_active_job, deploy_plan, message):
+    result, console, _ = run(jenkins, shared_active_job, plan(deploy_plan))
 
     assert result == 'FAILURE'
     assert message in console
     assert playbook_runs(console) == []
 
 
-def test_invalid_plan_lists_all_problems_at_once(jenkins, new_job):
-    job = new_job(ACTIVE)
-
-    result, console, _ = run(jenkins, job, plan('{targets: [nope], pre: [no_such_task, {name: task_a, policy: ask}]}'))
+def test_invalid_plan_lists_all_problems_at_once(jenkins, shared_active_job):
+    result, console, _ = run(jenkins, shared_active_job, plan('{targets: [nope], pre: [no_such_task, {name: task_a, policy: ask}]}'))
 
     assert result == 'FAILURE'
     problems = console[console.index('[deploy] 计划有误：'):]
     assert '  - 未知主机组 [nope]' in problems
     assert "  - pre[0]：未知任务 'no_such_task'" in problems
     assert "  - pre[1]：未知策略 'ask'" in problems
+    assert playbook_runs(console) == []
+
+
+@pytest.mark.parametrize('options, message', [
+    pytest.param('@@task_a.policy,abort,@@task_a.task_a_message,hi,@@task_a.policy,warn',
+                 '表单字段 task_a.policy 出现多次：参数值中不能含 ,@@', id='marker-inside-value'),
+    pytest.param('@@task_a.policy,abort,@@task_a.task_a_message,hi,@@task_a.no_such_field,1',
+                 '任务 task_a 不接受参数 [no_such_field]', id='undeclared-field'),
+    pytest.param('@@task_a.policy,abort,@@task_a.task_a_message,hi,@@task_b.task_b_path,x',
+                 '表单字段 task_b.task_b_path 属于未选择的任务', id='field-of-unselected-task'),
+    pytest.param('@@task_a.policy,abort,@@task_a.task_a_message,hi,@@task_a.task_a_repeat,99999999999999999999',
+                 "参数 task_a_repeat 应为整数，实际为 '99999999999999999999'", id='integer-too-large'),
+])
+def test_invalid_form_values_fail_before_any_playbook_runs(jenkins, shared_active_job, options, message):
+    result, console, _ = run(jenkins, shared_active_job, {'TARGET_GROUPS': 'web', 'PRE_TASKS': 'task_a', 'PRE_TASK_OPTIONS': options})
+
+    assert result == 'FAILURE'
+    assert message in console
     assert playbook_runs(console) == []
 
 
@@ -169,15 +209,17 @@ pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_repeat: 9}
 def test_abort_failure_stops_before_deploy_and_later_tasks(jenkins, new_job):
     job = new_job(ACTIVE)
 
-    result, console, _ = run(jenkins, job, plan('''
+    result, console, number = run(jenkins, job, plan('''
 targets: [web]
 pre: [{name: task_b, params: {task_b_path: no-such-file.yml}}, check_c]
 post: [check_c]
 '''))
+    report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
 
     assert result == 'FAILURE'
     assert '[deploy] 任务 task_b 失败：Ansible playbook execution failed（abort：停止流水线）' in console
     assert playbook_runs(console) == ['run-task.yml']
+    assert [(r['id'], r['status'], r['outcome']) for r in report] == [('task_b', 'FAILED', 'aborted')]
 
 
 def test_timeout_counts_as_task_failure_and_follows_the_policy(jenkins, new_job):
@@ -199,7 +241,7 @@ def test_manual_abort_during_a_task_aborts_the_build_instead_of_continuing(jenki
 targets: [api]
 pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_delay_seconds: 60}}]
 '''))
-    wait_for_console(jenkins, job, number, 'Pausing for 60 seconds')
+    jenkins.wait_for_console(job, number, 'Pausing for 60 seconds')
 
     jenkins.stop_build(job, number)
 
@@ -207,19 +249,53 @@ pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_delay_seco
     console = jenkins.console(job, number)
     assert 'warn：继续执行' not in console
     assert playbook_runs(console) == ['run-task.yml']
+    report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+    assert [(r['id'], r['status']) for r in report] == [('task_a', 'ABORTED')]
+
+
+def test_missing_vault_credential_stops_the_build_before_any_playbook_runs(jenkins, new_job):
+    job = new_job(ACTIVE)
+    jenkins.run_script('''
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+import com.cloudbees.plugins.credentials.domains.Domain
+def provider = SystemCredentialsProvider.getInstance()
+provider.getStore().removeCredentials(Domain.global(), provider.getCredentials().find { it.id == 'ansible-vault-password' })
+''')
+    try:
+        result, console, _ = run(jenkins, job, plan('{skip_deploy: true, pre: [task_b]}'))
+    finally:
+        restore_vault_credential(jenkins)
+
+    assert result == 'FAILURE'
+    assert 'ansible-vault-password' in console
+    assert playbook_runs(console) == []
+
+
+def restore_vault_credential(jenkins):
+    from conftest import VAULT_PASSWORD_FILE
+    password = VAULT_PASSWORD_FILE.read_text().strip()
+    jenkins.run_script(f'''
+import com.cloudbees.plugins.credentials.CredentialsScope
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+import com.cloudbees.plugins.credentials.domains.Domain
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
+import hudson.util.Secret
+SystemCredentialsProvider.getInstance().getStore().addCredentials(Domain.global(), new StringCredentialsImpl(
+    CredentialsScope.GLOBAL, 'ansible-vault-password', 'ansible-vault password (example)', Secret.fromString('{password}')))
+''')
 
 
 def test_no_plugin_form_shows_only_selected_tasks_and_its_values_are_used(jenkins, new_job):
     job = new_job(BASIC)
     number = jenkins.start_build(job, {'TARGET_web': 'true', 'PRE_task_a': 'true', 'POST_check_a': 'true'})
     [pending] = jenkins.wait_for_input(job, number)
+    assert pending['names'] == ['pre.task_a.policy', 'pre.task_a.task_a_message', 'pre.task_a.task_a_repeat',
+                                'pre.task_a.task_a_delay_seconds', 'post.check_a.policy', 'post.check_a.check_a_min_connections']
 
     jenkins.submit_input(job, number, pending['id'], {
         'pre.task_a.policy': 'warn', 'pre.task_a.task_a_message': 'from form', 'pre.task_a.task_a_repeat': '3',
         'pre.task_a.task_a_delay_seconds': '0', 'post.check_a.policy': 'abort', 'post.check_a.check_a_min_connections': '150'})
 
-    assert pending['names'] == ['pre.task_a.policy', 'pre.task_a.task_a_message', 'pre.task_a.task_a_repeat',
-                                'pre.task_a.task_a_delay_seconds', 'post.check_a.policy', 'post.check_a.check_a_min_connections']
     assert jenkins.wait_for_build(job, number) == 'FAILURE'
     console = jenkins.console(job, number)
     assert '    - task_a [warn] [task_a_message:from form, task_a_repeat:3, task_a_delay_seconds:0]' in console
@@ -227,35 +303,16 @@ def test_no_plugin_form_shows_only_selected_tasks_and_its_values_are_used(jenkin
     assert playbook_runs(console) == ['run-task.yml', 'deploy.yml', 'run-task.yml']
 
 
-def test_no_plugin_form_with_a_single_field_returns_its_value(jenkins, new_job):
+def test_no_plugin_waiting_for_input_holds_no_executor(jenkins, new_job):
     job = new_job(BASIC)
-    number = jenkins.start_build(job, {'TARGET_worker': 'true', 'SKIP_DEPLOY': 'true', 'POST_check_c': 'true'})
+    number = jenkins.start_build(job, {'TARGET_web': 'true', 'PRE_task_c': 'true'})
     [pending] = jenkins.wait_for_input(job, number)
 
-    jenkins.submit_input(job, number, pending['id'], {'post.check_c.policy': 'abort'})
+    busy = jenkins.json('/computer', 'busyExecutors')['busyExecutors']
+    jenkins.abort_input(job, number, pending['id'])
+    jenkins.wait_for_build(job, number)
 
-    assert pending['names'] == ['post.check_c.policy']
-    assert jenkins.wait_for_build(job, number) == 'SUCCESS'
-    assert '    - check_c [abort] [:]' in jenkins.console(job, number)
-
-
-def test_no_plugin_without_form_uses_defaults(jenkins, new_job):
-    job = new_job(BASIC)
-
-    result, console, _ = run(jenkins, job, {'SKIP_DEPLOY': 'true', 'PRE_task_b': 'true', 'EDIT_TASK_OPTIONS': 'false'})
-
-    assert result == 'SUCCESS', console
-    assert '    - task_b [abort] [task_b_path:inventory/hosts.yml, task_b_min_bytes:1]' in console
-
-
-def test_no_plugin_without_form_rejects_a_missing_required_parameter(jenkins, new_job):
-    job = new_job(BASIC)
-
-    result, console, _ = run(jenkins, job, {'TARGET_web': 'true', 'PRE_task_a': 'true', 'EDIT_TASK_OPTIONS': 'false'})
-
-    assert result == 'FAILURE'
-    assert 'pre[0]：任务 task_a 必须提供参数 task_a_message' in console
-    assert playbook_runs(console) == []
+    assert busy == 0
 
 
 def test_no_plugin_abort_in_form_aborts_the_build(jenkins, new_job):
@@ -267,6 +324,40 @@ def test_no_plugin_abort_in_form_aborts_the_build(jenkins, new_job):
 
     assert jenkins.wait_for_build(job, number) == 'ABORTED'
     assert playbook_runs(jenkins.console(job, number)) == []
+
+
+def test_no_plugin_form_with_a_single_field_returns_its_value(jenkins, new_job):
+    job = new_job(BASIC)
+    number = jenkins.start_build(job, {'TARGET_worker': 'true', 'SKIP_DEPLOY': 'true', 'POST_check_c': 'true'})
+    [pending] = jenkins.wait_for_input(job, number)
+    assert pending['names'] == ['post.check_c.policy']
+
+    jenkins.submit_input(job, number, pending['id'], {'post.check_c.policy': 'abort'})
+
+    assert jenkins.wait_for_build(job, number) == 'SUCCESS'
+    console = jenkins.console(job, number)
+    assert '    - check_c [abort] [:]' in console
+    assert playbook_runs(console) == ['run-task.yml']
+
+
+def test_no_plugin_without_form_uses_defaults(jenkins, new_job):
+    job = new_job(BASIC)
+
+    result, console, _ = run(jenkins, job, {'SKIP_DEPLOY': 'true', 'PRE_task_b': 'true', 'EDIT_TASK_OPTIONS': 'false'})
+
+    assert result == 'SUCCESS', console
+    assert 'Input requested' not in console
+    assert '    - task_b [abort] [task_b_path:inventory/hosts.yml, task_b_min_bytes:1]' in console
+
+
+def test_no_plugin_without_form_rejects_a_missing_required_parameter(jenkins, new_job):
+    job = new_job(BASIC)
+
+    result, console, _ = run(jenkins, job, {'TARGET_web': 'true', 'PRE_task_a': 'true', 'EDIT_TASK_OPTIONS': 'false'})
+
+    assert result == 'FAILURE'
+    assert 'pre[0]：任务 task_a 必须提供参数 task_a_message' in console
+    assert playbook_runs(console) == []
 
 
 def test_no_plugin_deploy_plan_skips_the_form(jenkins, new_job):

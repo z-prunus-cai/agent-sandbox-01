@@ -25,7 +25,7 @@ from client import Jenkins  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 EXAMPLES = HERE.parent.parent
-DELIVERABLE = EXAMPLES.parent  # the directory that the Jenkinsfiles' baseDir points into
+SAMPLE_DIR = EXAMPLES.parent  # the Jenkinsfiles' baseDir is <SAMPLE_DIR name>/<EXAMPLES name> inside the repository
 JENKINS_WAR = ('https://get.jenkins.io/war-stable/2.580.1/jenkins.war',
                '393bf2476352dd726519fd1f92ce66eac7d23c0936e6967420b717060c4c40d0')
 PLUGIN_MANAGER = ('https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/2.15.0/'
@@ -68,13 +68,13 @@ def groovy_string(text):
 
 
 def sync_repository(repo):
-    """Copy the deliverable into a git repository that the Jenkins jobs check out."""
+    """Copy the sample directory into a git repository that the Jenkins jobs check out."""
     if not (repo / '.git').exists():
         repo.mkdir(parents=True)
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
-    target = repo / DELIVERABLE.name
+    target = repo / SAMPLE_DIR.name
     shutil.rmtree(target, ignore_errors=True)
-    shutil.copytree(DELIVERABLE, target, ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache'))
+    shutil.copytree(SAMPLE_DIR, target, ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache'))
     git = ['git', '-C', str(repo), '-c', 'user.name=test', '-c', 'user.email=test@example.com']
     subprocess.run(git + ['add', '-A'], check=True)
     subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'sync'], check=True)

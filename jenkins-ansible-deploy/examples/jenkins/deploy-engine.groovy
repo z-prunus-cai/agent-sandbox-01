@@ -1,19 +1,32 @@
-// 部署引擎：两个 Jenkinsfile 用 load 步骤加载本文件，共用这里的全部逻辑。
-//
-//   prepare()                     读取任务目录、各任务 role 的参数声明与默认值、inventory 中的主机组
-//   activeChoicesParameters()     方案 D 的构建参数（Active Choices 插件）
-//   activeChoicesSelection()      把方案 D 的参数页选择转成计划草稿
-//   basicParameters()             方案 C 的构建参数（只用 Jenkins 自带参数类型）
-//   basicSelection()              把方案 C 的勾选结果转成计划草稿，需要时用 input 步骤弹出参数表单
-//   resolvePlan()                 校验计划草稿（或 DEPLOY_PLAN），与默认值合并，得到本次的执行计划
-//   runTasks() / deploy()         执行额外任务与部署
-//   report()                      打印结果汇总并归档 deploy-report.json
+// 部署引擎：两个 Jenkinsfile 用 load 步骤加载本文件。
+import groovy.transform.Field
+
+@Field final List PHASES = ['pre', 'post']
+@Field final Map PHASE_TITLES = [pre: '部署前', post: '部署后']
+@Field final List POLICIES = ['abort', 'warn']
+@Field final List RUN_ON = ['targets', 'controller']
+@Field final Map PARAM_TYPES = [str: 'str', path: 'str', int: 'int', bool: 'bool']
+@Field final List PLAN_KEYS = ['targets', 'skip_deploy', 'pre', 'post']
+@Field final List ENTRY_KEYS = ['name', 'id', 'policy', 'params', 'timeout_minutes']
+@Field final List ENGINE_VARS = ['task_role', 'task_hosts']
+@Field final String TARGETS_GROUP = 'deploy_targets'
+@Field final int INPUT_TIMEOUT_MINUTES = 30
 
 // ===================================================================================
-// 读取任务目录与 inventory
+// 准备：读取任务目录与 inventory，登记构建参数（需要工作区）
 // ===================================================================================
 
-Map prepare(Map settings) {
+// requested 必须是调用前的 params：properties() 执行后，params 会用 job 新登记的参数定义补上默认值，
+// 第一次运行就无法判断参数页是否提交过。Jenkinsfile 把 params 作为实参传入，它在 properties() 之前求值。
+Map prepareRequest(Map settings, Map requested, String form) {
+    Map context = loadContext(settings)
+    checkCredentials(settings.ansible)
+    List definitions = form == 'activeChoices' ? activeChoicesParameters(context) : basicParameters(context)
+    properties([disableConcurrentBuilds(), parameters(definitions)])
+    return [form: form, context: context, requested: requested]
+}
+
+Map loadContext(Map settings) {
     String base = settings.baseDir
     Map catalog = readYaml(file: "${base}/jenkins/tasks.yml")
     Map tasks = [:]
@@ -32,23 +45,35 @@ Map prepare(Map settings) {
     return context
 }
 
-// 把任务目录、argument_specs、defaults 合并成一个任务定义；发现的问题追加到 errors
+// 凭据缺失时插件照样运行 ansible-playbook，失败看起来与任务失败相同（warn 任务只会让构建不稳定），所以先检查
+def checkCredentials(Map ansible) {
+    List bindings = [string(credentialsId: ansible.vaultCredentialsId, variable: 'VAULT_PASSWORD_CHECK')]
+    if (ansible.sshCredentialsId) {
+        bindings << sshUserPrivateKey(credentialsId: ansible.sshCredentialsId, keyFileVariable: 'SSH_KEY_CHECK')
+    }
+    withCredentials(bindings) {
+        echo '[deploy] 凭据检查通过'
+    }
+}
+
 @NonCPS
 Map taskDefinitions(Map raw, List errors) {
-    Map supportedTypes = [str: 'str', path: 'str', int: 'int', bool: 'bool']
     Map result = [:]
     raw.each { String name, Map item ->
         Map meta = item.meta ?: [:]
         if (item.spec == null) {
             errors << "任务 ${name}：缺少 ansible/roles/${name}/meta/argument_specs.yml"
         }
-        Map options = item.spec?.argument_specs?.main?.options ?: [:]
         List params = []
-        options.each { String key, Map option ->
-            String type = supportedTypes[(option.type ?: 'str').toString()]
+        (item.spec?.argument_specs?.main?.options ?: [:]).each { String key, Map option ->
+            String type = PARAM_TYPES[(option.type ?: 'str').toString()]
             if (type == null) {
-                errors << "任务 ${name} 的参数 ${key}：不支持类型 ${option.type}，只支持 ${supportedTypes.keySet()}"
+                errors << "任务 ${name} 的参数 ${key}：不支持类型 ${option.type}，只支持 ${PARAM_TYPES.keySet()}"
                 return
+            }
+            // 参数以 extra vars 传入，优先级最高：名称必须带任务名前缀，不能与 inventory 变量或引擎变量重名
+            if (!key.startsWith(name + '_') || key in ENGINE_VARS || key.startsWith('ansible_')) {
+                errors << "任务 ${name} 的参数 ${key}：名称必须以 ${name}_ 开头，且不能是 ${ENGINE_VARS} 或 ansible_*"
             }
             if (option.choices && type != 'str') {
                 errors << "任务 ${name} 的参数 ${key}：choices 只能用于 str 类型"
@@ -58,37 +83,35 @@ Map taskDefinitions(Map raw, List errors) {
                 errors << "任务 ${name} 的参数 ${key}：defaults/main.yml 中的默认值不能含模板语法"
             }
             params << [name       : key, type: type, required: option.required == true,
-                       description: descriptionText(option.description),
+                       description: (option.description instanceof List ? option.description.join(' ') : (option.description ?: '')).toString(),
                        choices    : option.choices ? option.choices.collect { it.toString() } : null,
                        default    : defaultValue]
         }
-        if (!(meta.policy in ['abort', 'warn'])) {
-            errors << "任务 ${name}：policy 只能是 abort 或 warn"
+        if (!(meta.policy in POLICIES)) {
+            errors << "任务 ${name}：policy 只能是 ${POLICIES}"
         }
-        if (!(meta.run_on in ['targets', 'controller'])) {
-            errors << "任务 ${name}：run_on 只能是 targets 或 controller"
+        if (!(meta.run_on in RUN_ON)) {
+            errors << "任务 ${name}：run_on 只能是 ${RUN_ON}"
         }
-        if (!meta.phases || !(meta.phases as List).every { it in ['pre', 'post'] }) {
-            errors << "任务 ${name}：phases 只能包含 pre、post"
+        if (!(meta.phases instanceof List) || !meta.phases || !meta.phases.every { it in PHASES }) {
+            errors << "任务 ${name}：phases 只能包含 ${PHASES}"
+        }
+        if (!(meta.timeout_minutes instanceof Integer) || meta.timeout_minutes < 1) {
+            errors << "任务 ${name}：timeout_minutes 必须是正整数"
         }
         result[name] = [name          : name, description: (meta.description ?: name).toString(),
-                        phases        : (meta.phases ?: []) as List, runOn: meta.run_on, policy: meta.policy,
-                        timeoutMinutes: (meta.timeout_minutes ?: 10) as int, params: params]
+                        phases        : meta.phases instanceof List ? meta.phases : [], runOn: meta.run_on, policy: meta.policy,
+                        timeoutMinutes: meta.timeout_minutes, params: params]
     }
     return result
-}
-
-@NonCPS
-String descriptionText(Object description) {
-    return description instanceof List ? description.join(' ') : (description ?: '').toString()
 }
 
 // 主机组 = inventory 中 deploy_targets 的子组；返回 [组名: [主机名, ...]]
 @NonCPS
 Map targetGroups(Map inventory, List errors) {
-    Map children = inventory?.all?.children?.deploy_targets?.children
+    Map children = inventory?.all?.children?.get(TARGETS_GROUP)?.children
     if (!(children instanceof Map) || children.isEmpty()) {
-        errors << 'inventory/hosts.yml 中没有 all.children.deploy_targets.children'
+        errors << "inventory/hosts.yml 中没有 all.children.${TARGETS_GROUP}.children"
         return [:]
     }
     Map groups = [:]
@@ -96,6 +119,11 @@ Map targetGroups(Map inventory, List errors) {
         groups[group] = ((body instanceof Map ? body.hosts : null) ?: [:]).keySet() as List
     }
     return groups
+}
+
+@NonCPS
+String phaseParameter(String phase, String suffix) {
+    return "${phase.toUpperCase()}_${suffix}"
 }
 
 // ===================================================================================
@@ -106,28 +134,28 @@ Map targetGroups(Map inventory, List errors) {
 // 脚本在 Groovy 沙箱中运行，不需要管理员审批；但返回值会经过插件的 HTML 过滤，全角标点和 @ = + " 被转成
 // HTML 实体。HTML 表单中的实体由浏览器还原，勾选框的文字却会原样显示实体，所以勾选框文字只用半角符号。
 List activeChoicesParameters(Map context) {
-    String groups = groovyLiteral(context.groups)
     List result = [
         activeChoice(name: 'TARGET_GROUPS', randomName: 'choice-target-groups', choiceType: 'PT_CHECKBOX',
                 filterable: false, filterLength: 1,
-                description: '发布对象：inventory 中 deploy_targets 下的主机组，可多选',
-                script: groovyScript(script: [classpath: [], sandbox: true, script: """def groups = ${groups}
+                description: "发布对象：inventory 中 ${TARGETS_GROUP} 下的主机组，可多选",
+                script: groovyScript(script: [classpath: [], sandbox: true, script: """def groups = ${groovyLiteral(context.groups)}
 return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(', ') + ')'] }
 """], fallbackScript: [classpath: [], sandbox: true, script: 'return ["（主机组列表生成失败）"]'])),
-        booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: '勾选后跳过部署，只执行所选的部署前、部署后任务'),
+        skipDeployParameter(),
     ]
-    [[phase: 'pre', title: '部署前'], [phase: 'post', title: '部署后']].each { Map p ->
-        String name = p.phase.toUpperCase() + '_TASKS'
-        String tasks = groovyLiteral(context.tasks.values().findAll { p.phase in it.phases })
-        result << activeChoice(name: name, randomName: "choice-${p.phase}-tasks", choiceType: 'PT_CHECKBOX',
-                filterable: false, filterLength: 1, description: "${p.title}额外任务，可多选，同一阶段按列表顺序执行",
-                script: groovyScript(script: [classpath: [], sandbox: true, script: """def tasks = ${tasks}
-return tasks.collectEntries { [(it.name): it.name + ' — ' + it.description] }
-"""], fallbackScript: [classpath: [], sandbox: true, script: 'return ["（任务列表生成失败）"]']))
-        result << activeChoiceHtml(name: p.phase.toUpperCase() + '_TASK_OPTIONS', randomName: "choice-${p.phase}-task-options",
-                choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: name,
-                description: "所选${p.title}任务的失败策略和参数",
-                script: groovyScript(script: [classpath: [], sandbox: true, script: optionsFormScript(tasks, name)],
+    PHASES.each { String phase ->
+        List tasks = tasksForPhase(context, phase)
+        String listName = phaseParameter(phase, 'TASKS')
+        result << activeChoice(name: listName, randomName: "choice-${phase}-tasks", choiceType: 'PT_CHECKBOX',
+                filterable: false, filterLength: 1, description: "${PHASE_TITLES[phase]}额外任务，可多选，同一阶段按列表顺序执行",
+                script: groovyScript(script: [classpath: [], sandbox: true,
+                                              script: "return ${groovyLiteral(tasks.collectEntries { [(it.name): it.name + ' — ' + it.description] })}"],
+                        fallbackScript: [classpath: [], sandbox: true, script: 'return ["（任务列表生成失败）"]']))
+        result << activeChoiceHtml(name: phaseParameter(phase, 'TASK_OPTIONS'), randomName: "choice-${phase}-task-options",
+                choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: listName,
+                description: "所选${PHASE_TITLES[phase]}任务的失败策略和参数",
+                script: groovyScript(script: [classpath: [], sandbox: true,
+                                              script: optionsFormScript(tasks.collect { it.subMap(['name', 'description', 'policy', 'params']) }, listName)],
                         fallbackScript: [classpath: [], sandbox: true, script: 'return "（参数表单生成失败）"']))
     }
     result << deployPlanParameter()
@@ -136,13 +164,15 @@ return tasks.collectEntries { [(it.name): it.name + ' — ' + it.description] }
 
 // 生成参数表单的脚本。Active Choices 提交时把所有 name="value" 的输入框的值用逗号连成一个字符串，
 // 所以每个输入框前放一个隐藏的标记 @@任务名.参数名，解析时按标记切分，值中有逗号也不会错位。
+// 插件的 HTML 过滤会去掉 fieldset、legend、label 和 aria-* 属性，所以分组用 div，必填用文字标出。
 @NonCPS
-String optionsFormScript(String tasks, String referencedParameter) {
-    return """def tasks = ${tasks}
-def esc = { v -> String.valueOf(v == null ? '' : v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;') }
+String optionsFormScript(List tasks, String referencedParameter) {
+    return """def tasks = ${groovyLiteral(tasks)}
+def policies = ${groovyLiteral(POLICIES)}
+def escapeHtml = { value -> String.valueOf(value == null ? '' : value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;') }
 def select = { List options, Object current ->
-    '<select name="value" class="jenkins-select__input">' + options.collect { o ->
-        '<option value="' + esc(o) + '"' + (String.valueOf(o) == String.valueOf(current) ? ' selected' : '') + '>' + esc(o) + '</option>'
+    '<select name="value" class="jenkins-select__input">' + options.collect { option ->
+        '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
     }.join('') + '</select>'
 }
 def selected = String.valueOf(${referencedParameter} ?: '').tokenize(',').collect { it.trim() }
@@ -151,24 +181,24 @@ if (!chosen) {
     return '<div>未选择任务</div>'
 }
 def html = []
-chosen.each { t ->
-    // 插件的 HTML 过滤会去掉 fieldset、legend 等标签，分组只用 div
+chosen.each { task ->
     html << '<div style="border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;margin:0 0 10px 0">'
-    html << '<div style="margin-bottom:6px"><b>' + esc(t.name) + '</b> ' + esc(t.description) + '</div><table>'
+    html << '<div style="margin-bottom:6px"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table>'
     html << '<tr><td style="padding:3px 12px 3px 0">失败时</td><td>'
-    html << '<input type="hidden" name="value" value="@@' + esc(t.name) + '.policy">' + select(['abort', 'warn'], t.policy)
+    html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.policy">' + select(policies, task.policy)
     html << ' abort：停止流水线；warn：标记不稳定后继续</td></tr>'
-    t.params.each { p ->
-        html << '<tr><td style="padding:3px 12px 3px 0">' + esc(p.name) + (p.required ? ' <span style="color:#dc2626">*</span>' : '') + '</td><td>'
-        html << '<input type="hidden" name="value" value="@@' + esc(t.name) + '.' + esc(p.name) + '">'
-        if (p.choices) {
-            html << select(p.choices, p.default)
-        } else if (p.type == 'bool') {
-            html << select(['true', 'false'], p.default == true)
+    task.params.each { param ->
+        html << '<tr><td style="padding:3px 12px 3px 0">' + escapeHtml(param.name) + (param.required ? '（必填）' : '') + '</td><td>'
+        html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.' + escapeHtml(param.name) + '">'
+        if (param.choices) {
+            html << select(param.choices, param.default)
+        } else if (param.type == 'bool') {
+            html << select(['true', 'false'], param.default == true)
         } else {
-            html << '<input type="' + (p.type == 'int' ? 'number' : 'text') + '" name="value" value="' + esc(p.default) + '" class="jenkins-input" style="width:320px">'
+            html << '<input type="' + (param.type == 'int' ? 'number' : 'text') + '" name="value" value="' + escapeHtml(param.default) + '"' +
+                    (param.required ? ' placeholder="必填"' : '') + ' class="jenkins-input" style="width:320px">'
         }
-        html << ' ' + esc(p.description) + '</td></tr>'
+        html << ' ' + escapeHtml(param.description) + '</td></tr>'
     }
     html << '</table></div>'
 }
@@ -176,29 +206,32 @@ return html.join('')
 """
 }
 
-// 方案 D：把参数页上的选择转成计划草稿（结构与 DEPLOY_PLAN 相同）。
-// 参数尚未登记（第一次运行）或提供了 DEPLOY_PLAN 时返回 null
-Map activeChoicesSelection(Map context, Map params) {
-    if (!params.containsKey('TARGET_GROUPS') || params.DEPLOY_PLAN?.trim()) {
-        return null
+@NonCPS
+Map activeChoicesSelection(Map context, Map requested, List errors) {
+    Map phases = [:]
+    PHASES.each { String phase ->
+        phases[phase] = [names : splitList(requested[phaseParameter(phase, 'TASKS')]),
+                         values: parseOptions(requested[phaseParameter(phase, 'TASK_OPTIONS')], errors)]
     }
-    return selectionPlan(context, csv(params.TARGET_GROUPS), params.SKIP_DEPLOY == true,
-            [pre : [names: csv(params.PRE_TASKS), values: parseOptions(params.PRE_TASK_OPTIONS)],
-             post: [names: csv(params.POST_TASKS), values: parseOptions(params.POST_TASK_OPTIONS)]])
+    return selectionPlan(context, splitList(requested.TARGET_GROUPS), requested.SKIP_DEPLOY == true, phases, errors)
 }
 
 // 表单提交的值形如 "@@task_a.policy,abort,@@task_a.task_a_repeat,2"，转成 [task_a.policy: abort, ...]。
 // Active Choices 拼接时按 JSON 字符串规则转义了每个值（" 变成 \"，\ 变成 \\），这里还原。
+// 值里含 ",@@" 时会被切成假的字段，表现为字段重复，此时报错而不是猜测。
 @NonCPS
-Map parseOptions(Object text) {
+Map parseOptions(Object text, List errors) {
     Map values = [:]
     (text ?: '').toString().split('(?:^|,)@@').each { String part ->
-        int comma = part.indexOf(',')
-        if (comma > 0) {
-            values[part.substring(0, comma)] = jsonUnescape(part.substring(comma + 1))
-        } else if (part) {
-            values[part] = ''
+        if (!part) {
+            return
         }
+        int comma = part.indexOf(',')
+        String key = comma > 0 ? part.substring(0, comma) : part
+        if (values.containsKey(key)) {
+            errors << "表单字段 ${key} 出现多次：参数值中不能含 ,@@"
+        }
+        values[key] = comma > 0 ? jsonUnescape(part.substring(comma + 1)) : ''
     }
     return values
 }
@@ -215,18 +248,16 @@ String jsonUnescape(String text) {
 // 方案 C：只用 Jenkins 自带参数类型（不装插件）
 // ===================================================================================
 
-// 参数页上每个主机组、每个任务一个勾选框。Jenkins 自带的参数页是静态的，不能随勾选显示或隐藏输入框，
-// 所以任务参数改在构建开始后用 input 步骤填写（EDIT_TASK_OPTIONS）。
+// Jenkins 自带的参数页是静态的，不能随勾选显示或隐藏输入框，所以任务参数在构建开始后用 input 步骤填写
 List basicParameters(Map context) {
-    List result = []
-    context.groups.each { String group, List hosts ->
-        result << booleanParam(name: "TARGET_${group}", defaultValue: false, description: "发布对象：主机组 ${group}（${hosts.join(', ')}）")
+    List result = context.groups.collect { String group, List hosts ->
+        booleanParam(name: "TARGET_${group}", defaultValue: false, description: "发布对象：主机组 ${group}（${hosts.join(', ')}）")
     }
-    result << booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: '勾选后跳过部署，只执行所选的部署前、部署后任务')
-    ['pre', 'post'].each { String phase ->
-        context.tasks.values().findAll { phase in it.phases }.each { Map task ->
-            result << booleanParam(name: "${phase.toUpperCase()}_${task.name}", defaultValue: false,
-                    description: "${phase == 'pre' ? '部署前' : '部署后'}任务：${task.description}")
+    result << skipDeployParameter()
+    PHASES.each { String phase ->
+        tasksForPhase(context, phase).each { Map task ->
+            result << booleanParam(name: phaseParameter(phase, task.name), defaultValue: false,
+                    description: "${PHASE_TITLES[phase]}任务：${task.description}")
         }
     }
     result << booleanParam(name: 'EDIT_TASK_OPTIONS', defaultValue: true,
@@ -235,67 +266,64 @@ List basicParameters(Map context) {
     return result
 }
 
-// 方案 C：把勾选结果转成计划草稿。参数尚未登记（第一次运行）或提供了 DEPLOY_PLAN 时返回 null
-Map basicSelection(Map context, Map params) {
-    if (!params.containsKey('EDIT_TASK_OPTIONS') || params.DEPLOY_PLAN?.trim()) {
-        return null
-    }
-    List targets = context.groups.keySet().findAll { params["TARGET_${it}"] == true } as List
+Map basicSelection(Map context, Map requested, List errors) {
+    List targets = context.groups.keySet().findAll { requested["TARGET_${it}"] == true } as List
     Map phases = [:]
-    ['pre', 'post'].each { String phase ->
-        phases[phase] = [names : context.tasks.values().findAll { phase in it.phases && params["${phase.toUpperCase()}_${it.name}"] == true }*.name,
-                         values: [:]]
-    }
-    List names = []
-    List inputs = []
-    if (params.EDIT_TASK_OPTIONS) {
-        ['pre', 'post'].each { String phase ->
-            phases[phase].names.each { String name ->
-                taskInputs(phase, context.tasks[name]).each { Map field ->
-                    names << field.name
-                    inputs << field.input
-                }
-            }
+    List fields = []
+    PHASES.each { String phase ->
+        List names = tasksForPhase(context, phase).findAll { requested[phaseParameter(phase, it.name)] == true }*.name
+        phases[phase] = [names: names, values: [:]]
+        if (requested.EDIT_TASK_OPTIONS) {
+            names.each { String name -> fields.addAll(taskInputs(phase, context.tasks[name])) }
         }
     }
-    if (inputs) {
-        Object answer = timeout(time: 30, unit: 'MINUTES') {
-            input(message: '填写所选任务的失败策略和参数', ok: '开始', parameters: inputs)
+    if (fields) {
+        Object answer = timeout(time: INPUT_TIMEOUT_MINUTES, unit: 'MINUTES') {
+            input(message: '填写所选任务的失败策略和参数', ok: '开始', parameters: fields*.input)
         }
         // 只有一个输入项时 input 直接返回该值，否则返回 [输入项名称: 值]
-        Map answers = inputs.size() == 1 ? [(names[0]): answer] : answer
+        Map answers = fields.size() == 1 ? [(fields[0].name): answer] : answer
         answers.each { String key, Object value ->
             int dot = key.indexOf('.')
             phases[key.substring(0, dot)].values[key.substring(dot + 1)] = String.valueOf(value)
         }
     }
-    return selectionPlan(context, targets, params.SKIP_DEPLOY == true, phases)
+    return selectionPlan(context, targets, requested.SKIP_DEPLOY == true, phases, errors)
 }
 
 // 一个任务在 input 表单中的输入项：[[name: 输入项名称, input: 参数定义], ...]，名称形如 pre.task_a.policy
 List taskInputs(String phase, Map task) {
     String prefix = "${phase}.${task.name}."
     List fields = [[name : prefix + 'policy',
-                    input: choice(name: prefix + 'policy', choices: [task.policy] + (['abort', 'warn'] - task.policy),
+                    input: choice(name: prefix + 'policy', choices: defaultFirst(POLICIES, task.policy),
                             description: "${task.name}：失败时 abort 停止流水线，warn 标记不稳定后继续")]]
-    task.params.each { Map p ->
-        String name = prefix + p.name
-        String description = "${task.name}：${p.description}${p.required ? '（必填）' : ''}"
-        if (p.choices) {
-            String current = String.valueOf(p.default)
-            fields << [name: name, input: choice(name: name, choices: [current] + (p.choices - current), description: description)]
-        } else if (p.type == 'bool') {
-            fields << [name: name, input: booleanParam(name: name, defaultValue: p.default == true, description: description)]
+    task.params.each { Map param ->
+        String name = prefix + param.name
+        String description = "${task.name}：${param.description}${param.required ? '（必填）' : ''}"
+        if (param.choices) {
+            fields << [name: name, input: choice(name: name, choices: defaultFirst(param.choices, param.default), description: description)]
+        } else if (param.type == 'bool') {
+            fields << [name: name, input: booleanParam(name: name, defaultValue: param.default == true, description: description)]
         } else {
-            fields << [name: name, input: string(name: name, defaultValue: p.default == null ? '' : String.valueOf(p.default), description: description)]
+            fields << [name: name, input: string(name: name, defaultValue: param.default == null ? '' : String.valueOf(param.default), description: description)]
         }
     }
     return fields
 }
 
+// choice 参数以第一个选项为默认值
+@NonCPS
+List defaultFirst(List options, Object current) {
+    return current == null ? options : [String.valueOf(current)] + (options - String.valueOf(current))
+}
+
 // ===================================================================================
-// 计划：两种参数页共用的转换与校验
+// 计划：两种参数页共用的转换与校验（不需要工作区）
 // ===================================================================================
+
+def skipDeployParameter() {
+    return booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: '勾选后跳过部署，只执行所选的部署前、部署后任务')
+}
 
 def deployPlanParameter() {
     return text(name: 'DEPLOY_PLAN', defaultValue: '', description: '''YAML 格式的完整计划，非空时忽略上面所有参数，供 API / 上游 job 触发：
@@ -308,27 +336,71 @@ post:
   - {name: check_a, id: check_a_web, params: {check_a_min_connections: 50}}''')
 }
 
-// 表单中的值都是字符串（parseOptions 的结果，[任务名.参数名: 值]），按参数类型转换后组成计划草稿。
-// 同一阶段的任务按任务目录的顺序排列，与选择的先后无关；未知任务名放在最后，由 buildPlan 报错
+// 得到本次执行计划。只用到不需要工作区的步骤：方案 C 在不分配执行器的 stage 中调用，等待 input 时不占执行器。
+// 第一次运行（两种参数页都登记 DEPLOY_PLAN，它不存在即参数尚未登记）返回 null，结果 NOT_BUILT；
+// 计划有误时一次列出全部问题，在运行任何 playbook 之前失败。
+Map resolvePlan(Map request) {
+    Map requested = request.requested
+    if (!requested.containsKey('DEPLOY_PLAN')) {
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = '已登记构建参数，请用 Build with Parameters 重新运行'
+        echo "[deploy] ${currentBuild.description}"
+        return null
+    }
+    List errors = []
+    Object draft = null
+    String planText = requested.DEPLOY_PLAN?.trim()
+    if (planText) {
+        echo '[deploy] 使用 DEPLOY_PLAN，忽略参数页上的其他选择'
+        try {
+            draft = readYaml(text: planText)
+        } catch (Exception e) {
+            errors << "DEPLOY_PLAN 不是合法的 YAML：${e.message}"
+        }
+        if (!errors && !(draft instanceof Map)) {
+            errors << 'DEPLOY_PLAN 必须是 YAML 映射'
+        }
+    } else if (request.form == 'activeChoices') {
+        draft = activeChoicesSelection(request.context, requested, errors)
+    } else {
+        draft = basicSelection(request.context, requested, errors)
+    }
+    Map plan = draft instanceof Map ? buildPlan(draft, request.context, errors) : null
+    if (errors) {
+        error '[deploy] 计划有误：\n  - ' + errors.join('\n  - ')
+    }
+    echo describePlan(plan)
+    return plan
+}
+
+// 表单中的值都是字符串（[任务名.字段: 值]），按参数类型转换后组成与 DEPLOY_PLAN 相同结构的计划草稿。
+// 同一阶段的任务按任务目录的顺序排列，与选择的先后无关；未知任务名和未声明的字段原样放入，由 buildPlan 报错
 @NonCPS
-Map selectionPlan(Map context, List targets, boolean skipDeploy, Map phases) {
+Map selectionPlan(Map context, List targets, boolean skipDeploy, Map phases, List errors) {
     Map plan = [targets: targets, skip_deploy: skipDeploy]
     phases.each { String phase, Map selection ->
-        List names = (context.tasks.keySet().findAll { it in selection.names } as List) + selection.names.findAll { !context.tasks.containsKey(it) }
+        selection.values.keySet().findAll { !(it.tokenize('.')[0] in selection.names) }.each {
+            errors << "表单字段 ${it} 属于未选择的任务"
+        }
+        List names = (context.tasks.keySet().findAll { it in selection.names } as List) +
+                selection.names.findAll { !context.tasks.containsKey(it) }
         plan[phase] = names.collect { String name ->
             Map entry = [name: name]
             Map task = context.tasks[name]
             if (task == null) {
                 return entry
             }
-            if (selection.values["${name}.policy"]) {
-                entry.policy = selection.values["${name}.policy"]
-            }
+            Map declared = task.params.collectEntries { [(it.name): it] }
             Map params = [:]
-            task.params.each { Map p ->
-                String key = "${name}.${p.name}"
-                if (selection.values.containsKey(key)) {
-                    params[p.name] = fromFormValue(selection.values[key], p)
+            selection.values.each { String key, String value ->
+                if (!key.startsWith(name + '.')) {
+                    return
+                }
+                String field = key.substring(name.length() + 1)
+                if (field == 'policy') {
+                    entry.policy = value
+                } else {
+                    params[field] = declared[field] ? fromFormValue(value, declared[field]) : value
                 }
             }
             if (params) {
@@ -346,7 +418,7 @@ Object fromFormValue(String value, Map param) {
     if (value == '' && param.type != 'str') {
         return null
     }
-    if (param.type == 'int' && value.trim() ==~ /-?\d+/) {
+    if (param.type == 'int' && value.trim().isLong()) {
         return value.trim().toLong()
     }
     if (param.type == 'bool' && value in ['true', 'false']) {
@@ -355,43 +427,15 @@ Object fromFormValue(String value, Map param) {
     return value
 }
 
-// 得到本次执行计划：DEPLOY_PLAN 非空时以它为准，否则用参数页的选择（draft）。
-// 计划有误时一次列出全部问题，让构建在运行任何 playbook 之前失败。第一次运行（draft 为 null）返回 null。
-Map resolvePlan(Map context, Map params, Map draft) {
-    if (draft == null && !params.DEPLOY_PLAN?.trim()) {
-        currentBuild.result = 'NOT_BUILT'
-        currentBuild.description = '已登记构建参数，请用 Build with Parameters 重新运行'
-        echo "[deploy] ${currentBuild.description}"
-        return null
-    }
-    List errors = []
-    Map plan = null
-    if (params.DEPLOY_PLAN?.trim()) {
-        echo '[deploy] 使用 DEPLOY_PLAN，忽略参数页上的其他选择'
-        Object raw = readYaml(text: params.DEPLOY_PLAN)
-        if (raw instanceof Map) {
-            plan = buildPlan(raw, context, errors)
-        } else {
-            errors << 'DEPLOY_PLAN 必须是 YAML 映射'
-        }
-    } else {
-        plan = buildPlan(draft, context, errors)
-    }
-    if (errors) {
-        error '[deploy] 计划有误：\n  - ' + errors.join('\n  - ')
-    }
-    echo describePlan(plan)
-    return plan
-}
-
-// 校验计划草稿，并与任务的默认参数合并；发现的问题追加到 errors
+// 校验计划草稿，并与任务的默认参数合并；发现的问题追加到 errors。
+// 可选字段用 == null 判断是否提供，不用 ?:：Groovy 中 0、''、[] 为假，会被当成未提供而跳过类型检查。
 @NonCPS
 Map buildPlan(Map raw, Map context, List errors) {
-    List unknownKeys = raw.keySet().findAll { !(it in ['targets', 'skip_deploy', 'pre', 'post']) } as List
+    List unknownKeys = raw.keySet().findAll { !(it in PLAN_KEYS) } as List
     if (unknownKeys) {
-        errors << "不支持的字段 ${unknownKeys}，可用字段 [targets, skip_deploy, pre, post]"
+        errors << "不支持的字段 ${unknownKeys}，可用字段 ${PLAN_KEYS}"
     }
-    Object targets = raw.targets ?: []
+    Object targets = raw.targets == null ? [] : raw.targets
     if (!(targets instanceof List)) {
         errors << 'targets 必须是列表'
         targets = []
@@ -405,8 +449,8 @@ Map buildPlan(Map raw, Map context, List errors) {
     }
     Map plan = [targets: targets.collect { it.toString() }, skipDeploy: raw.skip_deploy == true, pre: [], post: [],
                 baseDir: context.baseDir, ansible: context.ansible]
-    ['pre', 'post'].each { String phase ->
-        Object entries = raw[phase] ?: []
+    PHASES.each { String phase ->
+        Object entries = raw[phase] == null ? [] : raw[phase]
         if (!(entries instanceof List)) {
             errors << "${phase} 必须是列表"
             return
@@ -435,15 +479,15 @@ Map buildPlan(Map raw, Map context, List errors) {
 @NonCPS
 Map buildTask(String where, String phase, Object item, Map context, List errors) {
     Object entry = item instanceof String ? [name: item] : item
-    if (!(entry instanceof Map) || !entry.name) {
+    if (!(entry instanceof Map) || !(entry.name instanceof String)) {
         errors << "${where}：应为任务名，或包含 name 的映射"
         return null
     }
-    List badKeys = entry.keySet().findAll { !(it in ['name', 'id', 'policy', 'params', 'timeout_minutes']) } as List
+    List badKeys = entry.keySet().findAll { !(it in ENTRY_KEYS) } as List
     if (badKeys) {
-        errors << "${where}：不支持的字段 ${badKeys}，可用字段 [name, id, policy, params, timeout_minutes]"
+        errors << "${where}：不支持的字段 ${badKeys}，可用字段 ${ENTRY_KEYS}"
     }
-    Map task = context.tasks[entry.name.toString()]
+    Map task = context.tasks[entry.name]
     if (task == null) {
         errors << "${where}：未知任务 '${entry.name}'，可用任务 ${context.tasks.keySet()}"
         return null
@@ -451,21 +495,20 @@ Map buildTask(String where, String phase, Object item, Map context, List errors)
     if (!(phase in task.phases)) {
         errors << "${where}：任务 ${task.name} 不能用于 ${phase}，只能用于 ${task.phases}"
     }
-    String id = (entry.id ?: task.name).toString()
+    String id = entry.id == null ? task.name : String.valueOf(entry.id)
     if (!(id ==~ /[A-Za-z0-9_-]+/)) {
         errors << "${where}：id '${id}' 只能包含字母、数字、_、-"
     }
-    String policy = (entry.policy ?: task.policy).toString()
-    if (!(policy in ['abort', 'warn'])) {
-        errors << "${where}：未知策略 '${policy}'，只能是 abort 或 warn"
+    String policy = entry.policy == null ? task.policy : String.valueOf(entry.policy)
+    if (!(policy in POLICIES)) {
+        errors << "${where}：未知策略 '${policy}'，只能是 ${POLICIES.join(' 或 ')}"
     }
-    // 用 containsKey 而不是 ?:，否则 0 会被当成未填写而改用默认值
-    Object timeoutMinutes = entry.containsKey('timeout_minutes') ? entry.timeout_minutes : task.timeoutMinutes
+    Object timeoutMinutes = entry.timeout_minutes == null ? task.timeoutMinutes : entry.timeout_minutes
     if (!(timeoutMinutes instanceof Integer) || timeoutMinutes < 1) {
         errors << "${where}：timeout_minutes 必须是正整数"
         timeoutMinutes = task.timeoutMinutes
     }
-    Object given = entry.params ?: [:]
+    Object given = entry.params == null ? [:] : entry.params
     if (!(given instanceof Map)) {
         errors << "${where}：params 必须是映射"
         given = [:]
@@ -476,13 +519,13 @@ Map buildTask(String where, String phase, Object item, Map context, List errors)
         errors << "${where}：任务 ${task.name} 不接受参数 ${unknownParams}，可用参数 ${declared.keySet()}"
     }
     Map params = [:]
-    task.params.each { Map p ->
-        Object value = given[p.name] != null ? checkValue("${where}：参数 ${p.name}", given[p.name], p, errors) : p.default
-        if (p.required && (value == null || value.toString().trim().isEmpty())) {
-            errors << "${where}：任务 ${task.name} 必须提供参数 ${p.name}"
+    task.params.each { Map param ->
+        Object value = given[param.name] != null ? checkValue("${where}：参数 ${param.name}", given[param.name], param, errors) : param.default
+        if (param.required && (value == null || value.toString().trim().isEmpty())) {
+            errors << "${where}：任务 ${task.name} 必须提供参数 ${param.name}"
         }
         if (value != null) {
-            params[p.name] = value
+            params[param.name] = value
         }
     }
     return [id     : id, name: task.name, phase: phase, description: task.description, runOn: task.runOn,
@@ -491,6 +534,7 @@ Map buildTask(String where, String phase, Object item, Map context, List errors)
 
 // 按参数类型检查一个值；问题追加到 errors。Ansible 会渲染 extra vars 中的 Jinja 表达式，
 // 能触发构建的人借此可以在 Jenkins 节点上执行命令，所以拒绝含模板语法的值。
+// YAML 会把未加引号的 yes、2026-01-01、1.0 解析成布尔、日期、小数，str 参数只接受字符串和整数，避免静默转换。
 @NonCPS
 Object checkValue(String label, Object value, Map param, List errors) {
     switch (param.type) {
@@ -507,8 +551,8 @@ Object checkValue(String label, Object value, Map param, List errors) {
             errors << "${label} 应为 true 或 false，实际为 '${value}'"
             return value
         default:
-            if (value instanceof Map || value instanceof List) {
-                errors << "${label} 应为字符串"
+            if (!(value instanceof String || value instanceof Integer || value instanceof Long)) {
+                errors << "${label} 应为字符串（YAML 中请加引号），实际为 '${value}'"
                 return value
             }
             String text = value.toString()
@@ -533,20 +577,24 @@ String describePlan(Map plan) {
     List lines = ['[deploy] 本次执行计划：',
                   "  主机组：${plan.targets ?: '（无）'}",
                   "  部署：${plan.skipDeploy ? '跳过' : '执行'}"]
-    ['pre', 'post'].each { String phase ->
-        lines << "  ${phase == 'pre' ? '部署前' : '部署后'}任务：${plan[phase] ? '' : '（无）'}"
-        plan[phase].each { Map t ->
-            lines << "    - ${t.id} [${t.policy}] ${t.params}"
+    PHASES.each { String phase ->
+        lines << "  ${PHASE_TITLES[phase]}任务：${plan[phase] ? '' : '（无）'}"
+        plan[phase].each { Map task ->
+            lines << "    - ${task.id} [${task.policy}] ${task.params}"
         }
     }
     return lines.join('\n')
 }
 
+@NonCPS
+List tasksForPhase(Map context, String phase) {
+    return context.tasks.values().findAll { phase in it.phases } as List
+}
+
 // ===================================================================================
-// 执行
+// 执行（需要工作区）
 // ===================================================================================
 
-// 依次执行一个阶段的任务，每个任务一个 stage；结果追加到 results
 def runTasks(Map plan, String phase, List results) {
     for (Map task in plan[phase]) {
         stage("${phase}: ${task.id}") {
@@ -559,12 +607,14 @@ def runTask(Map plan, Map task, List results) {
     echo "[deploy] ${task.id}（${task.description}）策略=${task.policy} 参数=${task.params}"
     // 参数写进 JSON 文件，用 -e @file 传给 Ansible：ansiblePlaybook 的 extraVars 会把数字变成字符串
     String varsFile = ".deploy-run/${task.phase}-${task.id}.json"
-    writeJSON file: varsFile, json: task.params + [task_role: task.name,
-                                                    task_hosts: task.runOn == 'targets' ? 'deploy_targets' : 'localhost']
+    writeJSON file: varsFile, json: task.params + [task_role : task.name,
+                                                    task_hosts: task.runOn == 'targets' ? TARGETS_GROUP : 'localhost']
     Map args = [playbook: "${plan.baseDir}/ansible/run-task.yml", extras: "-e @${varsFile}"]
     if (task.runOn == 'targets') {
         args.limit = plan.targets.join(':')
     }
+    Map result = [id: task.id, name: task.name, phase: task.phase, policy: task.policy, params: task.params]
+    results << result
     long started = System.currentTimeMillis()
     String failure = null
     try {
@@ -575,16 +625,17 @@ def runTask(Map plan, Map task, List results) {
         // ansible-playbook 返回非 0（断言失败、参数校验失败、主机不可达等）时，插件抛出 AbortException
         failure = e.message
     } catch (InterruptedException e) {
-        // 超时按任务失败处理，手动中止照常抛出。timeout 中止 ansiblePlaybook 时抛出的异常不带超时原因，
-        // 所以用已耗时区分
+        // 超时与手动中止到达这里时都是普通的 InterruptedException，不带原因（catchError 同样分不清），
+        // 只能用已耗时区分：超时按任务失败处理，手动中止照常抛出
         if (System.currentTimeMillis() - started < task.timeoutMinutes * 60000L) {
+            result.status = 'ABORTED'
+            result.seconds = elapsedSeconds(started)
             throw e
         }
         failure = "超过 ${task.timeoutMinutes} 分钟未完成"
     }
-    Map result = [id     : task.id, name: task.name, phase: task.phase, policy: task.policy, params: task.params,
-                  seconds: (int) ((System.currentTimeMillis() - started) / 1000), status: failure ? 'FAILED' : 'PASSED']
-    results << result
+    result.seconds = elapsedSeconds(started)
+    result.status = failure ? 'FAILED' : 'PASSED'
     if (failure == null) {
         return
     }
@@ -608,12 +659,15 @@ def deploy(Map plan, List results) {
         result.status = 'FAILED'
         result.message = e.message
         throw e
+    } catch (InterruptedException e) {
+        result.status = 'ABORTED'
+        throw e
     } finally {
-        result.seconds = (int) ((System.currentTimeMillis() - started) / 1000)
+        result.seconds = elapsedSeconds(started)
     }
 }
 
-// 所有 ansible-playbook 调用的公共部分：ansible.cfg、vault 密码、SSH 私钥
+// 插件在工作区根目录启动 ansible-playbook，那里没有 ansible.cfg，所以用 ANSIBLE_CONFIG 指定
 def runPlaybook(Map plan, Map args) {
     Map common = [vaultCredentialsId: plan.ansible.vaultCredentialsId]
     if (plan.ansible.sshCredentialsId) {
@@ -624,7 +678,6 @@ def runPlaybook(Map plan, Map args) {
     }
 }
 
-// 打印结果汇总，并归档 deploy-report.json
 def report(List results) {
     if (!results) {
         return
@@ -635,11 +688,16 @@ def report(List results) {
 }
 
 @NonCPS
+int elapsedSeconds(long started) {
+    return (int) ((System.currentTimeMillis() - started) / 1000)
+}
+
+@NonCPS
 String formatReport(List results) {
     List lines = ['[deploy] 结果：']
-    results.each { Map r ->
-        lines << "  ${r.phase.padRight(6)} ${r.id.padRight(16)} ${r.policy.padRight(5)} ${(r.status ?: '-').padRight(6)}" +
-                " ${String.valueOf(r.seconds).padLeft(4)}s${r.outcome ? ' -> ' + r.outcome : ''}"
+    results.each { Map row ->
+        lines << "  ${row.phase.padRight(6)} ${row.id.padRight(16)} ${row.policy.padRight(5)} ${(row.status ?: '-').padRight(7)}" +
+                " ${String.valueOf(row.seconds).padLeft(4)}s${row.outcome ? ' -> ' + row.outcome : ''}"
     }
     return lines.join('\n')
 }
@@ -648,7 +706,7 @@ String formatReport(List results) {
 @NonCPS
 String groovyLiteral(Object value) {
     if (value instanceof Map) {
-        return value ? '[' + value.collect { k, v -> groovyLiteral(k.toString()) + ': ' + groovyLiteral(v) }.join(', ') + ']' : '[:]'
+        return value ? '[' + value.collect { key, entry -> groovyLiteral(key.toString()) + ': ' + groovyLiteral(entry) }.join(', ') + ']' : '[:]'
     }
     if (value instanceof Collection) {
         return '[' + value.collect { groovyLiteral(it) }.join(', ') + ']'
@@ -660,7 +718,7 @@ String groovyLiteral(Object value) {
 }
 
 @NonCPS
-List csv(Object value) {
+List splitList(Object value) {
     return (value ?: '').toString().tokenize(',').collect { it.trim() }.findAll { it }
 }
 

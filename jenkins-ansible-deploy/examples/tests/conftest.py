@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -6,10 +7,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 EXAMPLES = Path(__file__).resolve().parent.parent
 ANSIBLE_DIR = EXAMPLES / 'ansible'
 VAULT_PASSWORD_FILE = EXAMPLES / 'tests' / 'example-vault-password.txt'
+CATALOG = yaml.safe_load((EXAMPLES / 'jenkins' / 'tasks.yml').read_text())['tasks']
 
 
 def run_ansible(command, project=ANSIBLE_DIR, vault=True, extra_vars=None, tmp_path=None):
@@ -24,7 +27,7 @@ def run_ansible(command, project=ANSIBLE_DIR, vault=True, extra_vars=None, tmp_p
     env.update(ANSIBLE_CONFIG=str(project / 'ansible.cfg'), ANSIBLE_NOCOLOR='1')
     if vault:
         env['ANSIBLE_VAULT_PASSWORD_FILE'] = str(VAULT_PASSWORD_FILE)
-    return subprocess.run(args, cwd=project, env=env, capture_output=True, text=True)
+    return subprocess.run(args, cwd=project, env=env, capture_output=True, text=True, timeout=300)
 
 
 def recap(stdout):
@@ -45,13 +48,9 @@ def ansible_copy(tmp_path):
     return target
 
 
-@pytest.fixture(scope='session')
-def jenkins():
-    from jenkins_server.client import Jenkins
-    if not os.environ.get('JENKINS_URL') or not os.environ.get('DEPLOY_REPO_URL'):
-        pytest.skip('set JENKINS_URL and DEPLOY_REPO_URL (printed by tests/jenkins_server/setup_jenkins.py)')
-    return Jenkins(os.environ['JENKINS_URL'])
-
+# ---------------------------------------------------------------------------
+# Jenkins integration tests (marker: jenkins)
+# ---------------------------------------------------------------------------
 
 JOB_XML = '''<?xml version="1.1" encoding="UTF-8"?>
 <flow-definition plugin="workflow-job">
@@ -61,26 +60,54 @@ JOB_XML = '''<?xml version="1.1" encoding="UTF-8"?>
       <userRemoteConfigs><hudson.plugins.git.UserRemoteConfig><url>{repo}</url></hudson.plugins.git.UserRemoteConfig></userRemoteConfigs>
       <branches><hudson.plugins.git.BranchSpec><name>*/main</name></hudson.plugins.git.BranchSpec></branches>
     </scm>
-    <scriptPath>jenkins-ansible-deploy/examples/{jenkinsfile}</scriptPath>
+    <scriptPath>{script_path}</scriptPath>
     <lightweight>true</lightweight>
   </definition>
 </flow-definition>'''
 
 
+@pytest.fixture(scope='session')
+def jenkins():
+    from jenkins_server.client import Jenkins
+    if not os.environ.get('JENKINS_URL') or not os.environ.get('DEPLOY_REPO_URL'):
+        pytest.skip('set JENKINS_URL and DEPLOY_REPO_URL (printed by tests/jenkins_server/setup_jenkins.py)')
+    return Jenkins(os.environ['JENKINS_URL'])
+
+
+def create_registered_job(jenkins, name, jenkinsfile):
+    """Create a pipeline job and run its first build, which only registers the build parameters."""
+    from jenkins_server.setup_jenkins import SAMPLE_DIR
+    jenkins.delete_job(name)
+    script_path = f'{SAMPLE_DIR.name}/{EXAMPLES.name}/{jenkinsfile}'
+    jenkins.create_job(name, JOB_XML.format(repo=os.environ['DEPLOY_REPO_URL'], script_path=script_path))
+    number = jenkins.start_build(name)
+    assert jenkins.wait_for_build(name, number) == 'NOT_BUILT', jenkins.console(name, number)
+    return name
+
+
+def job_name(node_id):
+    # parametrized test ids are long and similar; a hash of the full id keeps job names unique
+    readable = re.sub(r'[^A-Za-z0-9_-]', '-', node_id.split('::')[-1])[:50]
+    return f'{readable}-{hashlib.sha1(node_id.encode()).hexdigest()[:8]}'
+
+
 @pytest.fixture
 def new_job(jenkins, request):
-    """Create a pipeline job for one test and run its first build, which registers the build parameters."""
+    """A job of its own for one test."""
     created = []
 
     def create(jenkinsfile):
-        name = re.sub(r'[^A-Za-z0-9_-]', '-', request.node.name)[:80] + f'-{len(created)}'
-        jenkins.delete_job(name)
-        jenkins.create_job(name, JOB_XML.format(repo=os.environ['DEPLOY_REPO_URL'], jenkinsfile=jenkinsfile))
-        created.append(name)
-        number = jenkins.start_build(name)
-        assert jenkins.wait_for_build(name, number) == 'NOT_BUILT', jenkins.console(name, number)
-        return name
+        created.append(create_registered_job(jenkins, f'{job_name(request.node.nodeid)}-{len(created)}', jenkinsfile))
+        return created[-1]
 
     yield create
     for name in created:
         jenkins.delete_job(name)
+
+
+@pytest.fixture(scope='module')
+def shared_active_job(jenkins, request):
+    """One Jenkinsfile (方案 D) job shared by the tests of a module whose builds do not depend on each other."""
+    name = create_registered_job(jenkins, job_name(request.node.nodeid) + '-shared', 'Jenkinsfile')
+    yield name
+    jenkins.delete_job(name)

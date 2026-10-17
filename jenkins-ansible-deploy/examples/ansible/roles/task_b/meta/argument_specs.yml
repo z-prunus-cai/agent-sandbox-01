@@ -4,7 +4,9 @@ argument_specs:
     options:
       task_b_path:
         type: str
-        description: 文件路径，相对于 Ansible 目录（playbook 所在目录）
+        default: inventory/hosts.yml
+        description: 文件路径，相对于 Ansible 目录（playbook 所在目录），不能是绝对路径或含 ..
       task_b_min_bytes:
         type: int
+        default: 1
         description: 文件的最小字节数

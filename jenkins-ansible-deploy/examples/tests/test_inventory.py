@@ -1,3 +1,4 @@
+import ipaddress
 import json
 
 import yaml
@@ -47,9 +48,21 @@ def test_engine_reads_the_same_groups_from_hosts_yml_as_ansible_does():
     # the Jenkinsfile reads hosts.yml with readYaml instead of calling ansible-inventory
     hosts_yml = yaml.safe_load((ANSIBLE_DIR / 'inventory' / 'hosts.yml').read_text())
     from_file = list(hosts_yml['all']['children']['deploy_targets']['children'])
-    listing = json.loads(run_ansible(['ansible-inventory', '--list']).stdout)
+    result = run_ansible(['ansible-inventory', '--list'])
 
-    assert from_file == listing['deploy_targets']['children']
+    assert result.returncode == 0, result.stderr
+    assert from_file == json.loads(result.stdout)['deploy_targets']['children']
+
+
+def test_every_host_address_is_a_documentation_address():
+    # RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 are reserved for examples
+    networks = [ipaddress.ip_network(n) for n in ('192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24')]
+    result = run_ansible(['ansible-inventory', '--list'])
+    host_vars = json.loads(result.stdout)['_meta']['hostvars']
+
+    assert len(host_vars) == 5
+    for host, variables in host_vars.items():
+        assert any(ipaddress.ip_address(variables['ansible_host']) in network for network in networks), host
 
 
 def test_check_inventory_passes_for_every_deploy_target():

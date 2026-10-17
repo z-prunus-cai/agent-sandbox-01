@@ -4,11 +4,14 @@ argument_specs:
     options:
       task_c_mode:
         type: str
+        default: plan
         choices: [plan, apply]
         description: 执行模式
       task_c_verbose:
         type: bool
+        default: false
         description: 是否输出详细信息
       task_c_label:
         type: str
+        default: ""
         description: 附加标签，可留空

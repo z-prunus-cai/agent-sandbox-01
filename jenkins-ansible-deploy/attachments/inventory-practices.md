@@ -10,7 +10,7 @@
 
 1. 采用目录式 inventory：`ansible.cfg` 中设 `inventory = inventory`。`hosts.yml` 只描述主机与组的关系，变量一律放在 `inventory/group_vars/` 和 `inventory/host_vars/`。playbook 所在的 `examples/ansible/` 下不建 `group_vars/` 和 `host_vars/`。
 2. 所有 Ansible 命令都用环境变量 `ANSIBLE_CONFIG` 指向 `examples/ansible/ansible.cfg`。它优先于当前目录下的 `ansible.cfg`；配置里的相对路径以配置文件所在目录为基准，所以从哪个目录运行，结果都一样。
-3. 变量优先级从低到高：role defaults → `group_vars/all` → 子组（`web` 等）→ `host_vars` → extra vars。`meta/argument_specs.yml` 里的 `default` 只是文档，运行时不生效。
+3. 变量优先级从低到高：role defaults → `group_vars/all` → 子组（`web` 等）→ `host_vars` → extra vars。`meta/argument_specs.yml` 里的 `default` 只是文档，运行时不生效；示例仍写出它，并与 `defaults/main.yml` 保持一致（`test_catalog.py` 检查）。
 4. 一台主机只属于 `web`、`api`、`worker` 中的一个组。同级组的同名变量按组名字母顺序合并，结果不直观。
 5. 命名：变量名只用小写字母、数字和下划线；role 自己定义的变量加 `<role 名>_` 前缀；inventory 中的应用参数以 `app_` 开头；加密值以 `vault_` 开头。前两条由 ansible-lint 的 `var-naming` 规则检查。
 6. 敏感值放在整文件加密的 `group_vars/all/vault.yml`，`main.yml` 中写 `app_api_token: "{{ vault_app_api_token }}"` 引用它。

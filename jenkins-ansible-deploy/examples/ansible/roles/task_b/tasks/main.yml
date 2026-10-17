@@ -1,3 +1,11 @@
+- name: Check the path stays inside the Ansible directory
+  ansible.builtin.assert:
+    that:
+      - not task_b_path.startswith('/')
+      - "'..' not in task_b_path.split('/')"
+    fail_msg: "task_b_path must be relative to the Ansible directory without '..', got {{ task_b_path }}"
+    quiet: true
+
 - name: Read file status
   ansible.builtin.stat:
     path: "{{ playbook_dir }}/{{ task_b_path }}"
