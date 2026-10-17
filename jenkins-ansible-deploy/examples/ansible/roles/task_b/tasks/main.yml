@@ -4,12 +4,17 @@
       - task_b_path | length > 0
       - not task_b_path.startswith('/')
       - "'..' not in task_b_path.split('/')"
+      # 路径中的符号链接也不能指向目录外
+      - ((playbook_dir ~ '/' ~ task_b_path) | realpath).startswith((playbook_dir | realpath) ~ '/')
     fail_msg: "task_b_path must be a non-empty path relative to the Ansible directory without '..', got '{{ task_b_path }}'"
     quiet: true
 
 - name: Read file status
   ansible.builtin.stat:
     path: "{{ playbook_dir }}/{{ task_b_path }}"
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
   register: task_b_file
 
 - name: Check the file exists and is large enough

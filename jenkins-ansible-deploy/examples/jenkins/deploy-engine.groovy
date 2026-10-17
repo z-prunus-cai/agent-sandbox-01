@@ -89,8 +89,10 @@ Map taskDefinitions(Map raw, List errors) {
                 errors << "任务 ${name} 的参数 ${key}：choices 只能用于 str 类型"
             }
             Object defaultValue = item.defaults[key]
-            if (containsTemplate(defaultValue)) {
-                errors << "任务 ${name} 的参数 ${key}：defaults/main.yml 中的默认值不能含模板语法"
+            Map param = [name: key, type: type, choices: option.choices ? option.choices.collect { it.toString() } : null]
+            if (defaultValue != null) {
+                // 默认值同样以 extra vars 传入：类型、choices、模板语法与用户输入的值一样检查
+                checkValue("任务 ${name} 的参数 ${key} 在 defaults/main.yml 中的默认值", defaultValue, param, errors)
             }
             params << [name       : key, type: type, required: option.required == true,
                        description: (option.description instanceof List ? option.description.join(' ') : (option.description ?: '')).toString(),
@@ -515,8 +517,9 @@ Map buildTask(String where, String phase, Object item, Map context, List errors)
         errors << "${where}：任务 ${task.name} 不能用于 ${phase}，只能用于 ${task.phases}"
     }
     String id = entry.id == null ? task.name : String.valueOf(entry.id)
-    if (!(id ==~ /[A-Za-z0-9_-]+/)) {
-        errors << "${where}：id '${id}' 只能包含字母、数字、_、-"
+    // id 用在参数文件名中，限制长度
+    if (!(id ==~ /[A-Za-z0-9_-]{1,64}/)) {
+        errors << "${where}：id '${id}' 只能包含字母、数字、_、-，最长 64 个字符"
     }
     String policy = entry.policy == null ? task.policy : String.valueOf(entry.policy)
     if (!(policy in POLICIES)) {
@@ -661,7 +664,7 @@ def runTask(Map plan, Map task, List results) {
         throw e
     }
     result.seconds = elapsedSeconds(started)
-    result.status = failure ? 'FAILED' : 'PASSED'
+    result.status = failure != null ? 'FAILED' : 'PASSED'
     if (failure == null) {
         return
     }
@@ -709,16 +712,15 @@ def runPlaybook(Map plan, Map args) {
 }
 
 def report(List results) {
-    // 参数文件含本次的参数值，不留在可复用的工作区中
+    // 参数文件和报告都含本次的参数值：报告归档后，与参数文件一起从可复用的工作区中删除
     dir('.deploy-run') {
+        if (results) {
+            echo formatReport(results)
+            writeJSON file: 'deploy-report.json', json: results, pretty: 2
+            archiveArtifacts artifacts: 'deploy-report.json'
+        }
         deleteDir()
     }
-    if (!results) {
-        return
-    }
-    echo formatReport(results)
-    writeJSON file: 'deploy-report.json', json: results, pretty: 2
-    archiveArtifacts artifacts: 'deploy-report.json'
 }
 
 @NonCPS

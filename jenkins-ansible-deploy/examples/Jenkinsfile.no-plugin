@@ -51,7 +51,9 @@ pipeline {
             stages {
                 stage('Restore files') {
                     steps {
-                        deleteDir()
+                        dir(settings.baseDir) {
+                            deleteDir()
+                        }
                         unstash 'deploy-source'
                     }
                 }

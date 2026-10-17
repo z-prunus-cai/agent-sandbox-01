@@ -10,7 +10,8 @@ import urllib.request
 class Jenkins:
     def __init__(self, url):
         self.url = url.rstrip('/')
-        # Jenkins issues the CSRF crumb per session, so the session cookie must be kept
+        # Jenkins issues the CSRF crumb per session, so the session cookie must be kept;
+        # the Jenkins under test is local, so proxy settings from the environment are ignored
         self._opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), urllib.request.ProxyHandler({}))
         self._crumb_header = None
@@ -83,7 +84,7 @@ class Jenkins:
         raise TimeoutError(f'{job}: build did not start')
 
     def build_info(self, job, number):
-        return self.json(f'/job/{job}/{number}', 'building,result,description,artifacts[relativePath]')
+        return self.json(f'/job/{job}/{number}', 'building,result,description')
 
     def wait_for_build(self, job, number, timeout_seconds=600, queue_seconds=60):
         """Wait until the build finishes and return its result (SUCCESS, UNSTABLE, FAILURE, ABORTED, NOT_BUILT).
@@ -139,10 +140,14 @@ class Jenkins:
             raise RuntimeError(f'submit input: HTTP {status}: {body[:500]}')
 
     def abort_input(self, job, number, input_id):
-        self.request(f'/job/{job}/{number}/input/{input_id}/abort', b'')
+        status, body, _ = self.request(f'/job/{job}/{number}/input/{input_id}/abort', b'')
+        if status not in (200, 302):
+            raise RuntimeError(f'abort input: HTTP {status}: {body[:500]}')
 
     def stop_build(self, job, number):
-        self.request(f'/job/{job}/{number}/stop', b'')
+        status, body, _ = self.request(f'/job/{job}/{number}/stop', b'')
+        if status not in (200, 302):
+            raise RuntimeError(f'stop build: HTTP {status}: {body[:500]}')
 
     def console(self, job, number):
         status, body, _ = self.request(f'/job/{job}/{number}/consoleText')

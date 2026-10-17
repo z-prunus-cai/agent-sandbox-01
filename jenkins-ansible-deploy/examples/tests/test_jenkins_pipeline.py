@@ -6,6 +6,8 @@ import subprocess
 
 import pytest
 
+from conftest import EXAMPLES
+
 pytestmark = pytest.mark.jenkins
 
 ACTIVE = 'Jenkinsfile'
@@ -19,6 +21,15 @@ def run(jenkins, job, params):
 
 def plan(text):
     return {'DEPLOY_PLAN': text}
+
+
+def repository():
+    return os.environ['DEPLOY_REPO_URL'].removeprefix('file://')
+
+
+def git(*args):
+    return subprocess.run(['git', '-C', repository(), '-c', 'user.name=test', '-c', 'user.email=test@example.com', *args],
+                          check=True, capture_output=True, text=True).stdout.strip()
 
 
 def playbook_command_lines(console):
@@ -55,11 +66,13 @@ def test_parameter_page_scripts_run_in_the_sandbox_without_approval(jenkins, new
     # the test Jenkins has no security, so it would approve a non-sandboxed script silently: check the job itself
     job = new_job(ACTIVE)
     config = jenkins.config_xml(job)
+    active_choices = config.count('<org.biouno.unochoice.')
     approvals = jenkins.run_script(
         'def approval = org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval.get()\n'
         'println approval.approvedScriptHashes.size() + approval.pendingScripts.size()')
 
-    assert config.count('<sandbox>true</sandbox>') == 10      # 5 scripts and their fallbacks
+    assert active_choices > 0
+    assert config.count('<sandbox>true</sandbox>') == 2 * active_choices      # every script and its fallback
     assert '<sandbox>false</sandbox>' not in config
     assert approvals.strip() == '0'
 
@@ -84,18 +97,29 @@ def test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only(jenki
     assert 'worker-0' not in console
 
 
-def test_each_task_is_a_stage_and_the_report_lists_every_step(jenkins, new_job):
-    job = new_job(ACTIVE)
-
-    result, console, number = run(jenkins, job, plan('''
+REPORT_PLAN = '''
 targets: [api]
 pre: [task_b]
 post: [{name: check_a, params: {check_a_min_connections: 500}}]
-'''))
-    report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+'''
+
+
+def test_each_task_runs_in_its_own_stage_named_by_phase_and_id(jenkins, new_job):
+    job = new_job(ACTIVE)
+
+    result, console, _ = run(jenkins, job, plan(REPORT_PLAN))
 
     assert result == 'UNSTABLE', console
     assert '[Pipeline] { (pre: task_b)' in console and '[Pipeline] { (post: check_a)' in console
+
+
+def test_report_lists_every_step_with_its_result(jenkins, new_job):
+    job = new_job(ACTIVE)
+
+    result, console, number = run(jenkins, job, plan(REPORT_PLAN))
+    report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+
+    assert result == 'UNSTABLE', console
     assert [(row['phase'], row['id'], row['name'], row['policy'], row['status'], row.get('outcome')) for row in report] == [
         ('pre', 'task_b', 'task_b', 'abort', 'PASSED', None),
         ('deploy', 'deploy', 'deploy', 'abort', 'PASSED', None),
@@ -302,6 +326,7 @@ def test_no_plugin_form_shows_only_selected_tasks_and_its_values_are_used(jenkin
     assert pending['names'] == ['pre.task_a.policy', 'pre.task_a.task_a_message', 'pre.task_a.task_a_repeat',
                                 'pre.task_a.task_a_delay_seconds', 'post.check_a.policy', 'post.check_a.check_a_min_connections']
 
+    # check_a's default policy is warn; choosing abort in the form is what makes this build fail
     jenkins.submit_input(job, number, pending['id'], {
         'pre.task_a.policy': 'warn', 'pre.task_a.task_a_message': 'from form', 'pre.task_a.task_a_repeat': '3',
         'pre.task_a.task_a_delay_seconds': '0', 'post.check_a.policy': 'abort', 'post.check_a.check_a_min_connections': '150'})
@@ -379,43 +404,22 @@ def test_no_plugin_runs_the_files_it_validated_even_if_the_branch_moves_while_wa
     job = new_job(BASIC)
     number = jenkins.start_build(job, {'SKIP_DEPLOY': 'true', 'PRE_task_b': 'true'})
     [pending] = jenkins.wait_for_input(job, number)
-    hosts_yml = 'jenkins-ansible-deploy/examples/ansible/inventory/hosts.yml'
-    original = commit_change(hosts_yml, '\n# a line added while the build waits\n')
+    hosts_yml = os.path.join(repository(), EXAMPLES.parent.name, EXAMPLES.name, 'ansible', 'inventory', 'hosts.yml')
+    validated_size = os.path.getsize(hosts_yml)
+    head = git('rev-parse', 'HEAD')
     try:
+        with open(hosts_yml, 'a', encoding='utf-8') as hosts:
+            hosts.write('\n# a line added while the build waits\n')
+        git('commit', '-q', '-a', '-m', 'change while waiting')
         jenkins.submit_input(job, number, pending['id'], {
             'pre.task_b.policy': 'abort', 'pre.task_b.task_b_path': 'inventory/hosts.yml', 'pre.task_b.task_b_min_bytes': '1'})
         result = jenkins.wait_for_build(job, number)
     finally:
-        restore(hosts_yml, original)
+        git('reset', '-q', '--hard', head)
 
     assert result == 'SUCCESS'
-    assert f'"msg": "inventory/hosts.yml: {len(original.encode())} bytes"' in jenkins.console(job, number)
+    assert f'"msg": "inventory/hosts.yml: {validated_size} bytes"' in jenkins.console(job, number)
 
-
-def repository():
-    return os.environ['DEPLOY_REPO_URL'].removeprefix('file://')
-
-
-def commit_change(path, appended):
-    """Append text to a file in the test repository and commit it; return the original content."""
-    file_path = os.path.join(repository(), path)
-    with open(file_path, encoding='utf-8') as source:
-        original = source.read()
-    with open(file_path, 'a', encoding='utf-8') as target:
-        target.write(appended)
-    git_commit('change while waiting')
-    return original
-
-
-def restore(path, original):
-    with open(os.path.join(repository(), path), 'w', encoding='utf-8') as target:
-        target.write(original)
-    git_commit('restore')
-
-
-def git_commit(message):
-    subprocess.run(['git', '-C', repository(), '-c', 'user.name=test', '-c', 'user.email=test@example.com',
-                    'commit', '-q', '-a', '-m', message], check=True)
 
 
 def test_no_plugin_without_form_rejects_a_missing_required_parameter(jenkins, new_job):
@@ -436,3 +440,4 @@ def test_no_plugin_deploy_plan_skips_the_form(jenkins, new_job):
     assert result == 'SUCCESS', console
     assert 'Input requested' not in console
     assert playbook_runs(console) == ['run-task.yml']
+    assert '(pre: task_b)' in console and '(pre: task_a)' not in console

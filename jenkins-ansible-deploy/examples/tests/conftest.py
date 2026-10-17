@@ -111,20 +111,20 @@ def shared_active_job(jenkins, request):
 @pytest.fixture
 def vault_credential_removed(jenkins):
     """Remove the vault credential for one test and put it back afterwards."""
-    jenkins.run_script('''
+    assert jenkins.run_script('''
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider
 import com.cloudbees.plugins.credentials.domains.Domain
 def provider = SystemCredentialsProvider.getInstance()
-provider.getStore().removeCredentials(Domain.global(), provider.getCredentials().find { it.id == 'ansible-vault-password' })
-''')
+println provider.getStore().removeCredentials(Domain.global(), provider.getCredentials().find { it.id == 'ansible-vault-password' })
+''').strip() == 'true'
     yield
     password = VAULT_PASSWORD_FILE.read_text().strip()
-    jenkins.run_script(f'''
+    assert jenkins.run_script(f'''
 import com.cloudbees.plugins.credentials.CredentialsScope
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider
 import com.cloudbees.plugins.credentials.domains.Domain
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
 import hudson.util.Secret
-SystemCredentialsProvider.getInstance().getStore().addCredentials(Domain.global(), new StringCredentialsImpl(
+println SystemCredentialsProvider.getInstance().getStore().addCredentials(Domain.global(), new StringCredentialsImpl(
     CredentialsScope.GLOBAL, 'ansible-vault-password', 'ansible-vault password (example)', Secret.fromString('{password}')))
-''')
+''').strip() == 'true'

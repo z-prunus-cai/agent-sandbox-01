@@ -59,10 +59,10 @@ def test_every_host_address_is_a_documentation_address():
     networks = [ipaddress.ip_network(network) for network in ('192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24')]
     result = run_ansible(['ansible-inventory', '--list'])
     assert result.returncode == 0, result.stderr
-    host_vars = json.loads(result.stdout)['_meta']['hostvars']
+    variables_by_host = json.loads(result.stdout)['_meta']['hostvars']
 
-    assert len(host_vars) == 5
-    for host, variables in host_vars.items():
+    assert len(variables_by_host) == 5
+    for host, variables in variables_by_host.items():
         assert any(ipaddress.ip_address(variables['ansible_host']) in network for network in networks), host
 
 

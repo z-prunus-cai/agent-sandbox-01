@@ -85,6 +85,20 @@ def test_task_fails_with_a_clear_message_and_stops(tmp_path, role, params, limit
     assert f'TASK [{skipped_task}' not in result.stdout
 
 
+def test_controller_task_rejects_a_symbolic_link_that_leaves_the_ansible_directory(tmp_path, ansible_copy):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'secret.txt').write_text('outside the Ansible directory')
+    (ansible_copy / 'link').symlink_to(outside)
+
+    result = run_ansible(['ansible-playbook', 'run-task.yml'], project=ansible_copy, tmp_path=tmp_path,
+                         extra_vars={'task_role': 'task_b', 'task_hosts': 'localhost', 'task_b_path': 'link/secret.txt'})
+
+    assert result.returncode == 2
+    assert "task_b_path must be a non-empty path relative to the Ansible directory" in result.stdout
+    assert 'TASK [task_b : Read file status]' not in result.stdout
+
+
 def test_controller_task_fails_when_the_file_is_missing(tmp_path):
     result = run_task(tmp_path, 'task_b', {'task_b_path': 'no-such-file.yml'})
 
@@ -118,11 +132,12 @@ def test_role_defaults_apply_when_jenkins_passes_no_value(tmp_path):
     assert 'app=api' not in result.stdout  # task_c_verbose defaults to false
 
 
-def test_check_reads_each_hosts_value_and_reports_its_task(tmp_path):
+def test_check_passes_when_every_host_meets_the_minimum(tmp_path):
     result = run_task(tmp_path, 'check_a', {'check_a_min_connections': 1}, limit='api')
 
     assert result.returncode == 0, result.stdout
     assert 'TASK [check_a : Compare with the host' in result.stdout
+    assert 'api-01: app_max_connections=300' in result.stdout
 
 
 def test_bool_parameter_switches_the_verbose_output_on(tmp_path):

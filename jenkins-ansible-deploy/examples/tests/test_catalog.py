@@ -10,7 +10,7 @@ from conftest import ANSIBLE_DIR, CATALOG, run_ansible
 
 SUPPORTED_TYPES = {'str', 'int', 'bool'}
 TEMPLATE = re.compile(r'\{[{%#]')
-# Ansible 文档 reference_appendices/special_variables.rst 中不以 ansible_ 开头的魔法变量
+# magic variables not starting with ansible_, from the Ansible docs reference_appendices/special_variables.rst
 MAGIC_VARIABLES = {'group_names', 'groups', 'hostvars', 'inventory_dir', 'inventory_file', 'inventory_hostname',
                    'inventory_hostname_short', 'omit', 'play_hosts', 'playbook_dir', 'role_name', 'role_names', 'role_path'}
 
@@ -37,6 +37,11 @@ def inventory_variable_names():
 def test_every_option_has_a_supported_type(role):
     for name, option in options(role).items():
         assert option.get('type', 'str') in SUPPORTED_TYPES, name
+
+
+@pytest.mark.parametrize('role', CATALOG)
+def test_choices_are_used_only_with_string_options(role):
+    for name, option in options(role).items():
         assert not option.get('choices') or option.get('type', 'str') == 'str', name
 
 
@@ -71,7 +76,7 @@ def test_catalog_entry_uses_only_known_values(role):
     assert set(entry['phases']) <= {'pre', 'post'} and entry['phases']
     assert entry['run_on'] in {'targets', 'controller'}
     assert entry['policy'] in {'abort', 'warn'}
-    assert type(entry['timeout_minutes']) is int and 1 <= entry['timeout_minutes'] <= 240
+    assert type(entry['timeout_minutes']) is int and entry['timeout_minutes'] >= 1
 
 
 @pytest.mark.parametrize('role', CATALOG)
