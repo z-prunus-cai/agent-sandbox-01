@@ -5,7 +5,7 @@
 // 按项目修改
 Map settings = [
     baseDir: 'jenkins-ansible-deploy/examples',                  // 本目录在仓库中的路径
-    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 密码
+    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 口令
               sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机；不需要时设为 null
 ]
 
@@ -26,6 +26,9 @@ pipeline {
                 script {
                     engine = load "${settings.baseDir}/jenkins/deploy-engine.groovy"
                     request = engine.prepareRequest(settings, params, 'basic')
+                    // Run 在另一个 agent 上执行；不另行检出，否则等待 input 期间分支上的新提交会被检出，
+                    // 校验过的任务目录、inventory 与实际运行的不是同一份
+                    stash name: 'deploy-source', includes: "${settings.baseDir}/**"
                 }
             }
         }
@@ -40,11 +43,19 @@ pipeline {
 
         stage('Run') {
             agent any
+            options { skipDefaultCheckout() }
             when {
                 beforeAgent true
                 expression { plan }
             }
             stages {
+                stage('Restore files') {
+                    steps {
+                        deleteDir()
+                        unstash 'deploy-source'
+                    }
+                }
+
                 stage('Pre-deploy tasks') {
                     when { expression { plan.pre } }
                     steps {

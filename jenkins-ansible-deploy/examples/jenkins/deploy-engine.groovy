@@ -178,7 +178,7 @@ return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(
 
 // 生成参数表单的脚本。Active Choices 提交时把所有 name="value" 的输入框的值用逗号连成一个字符串，
 // 所以每个输入框前放一个隐藏的标记 @@任务名.参数名，解析时按标记切分，值中有逗号也不会错位。
-// 插件的 HTML 过滤会去掉 fieldset、legend、label 和 aria-* 属性，所以分组用 div，必填用文字标出。
+// 插件的 HTML 过滤会去掉 fieldset、legend、label、title 和 aria-* 属性，所以分组用 div，必填用文字标出。
 @NonCPS
 String optionsFormScript(List tasks, String referencedParameter) {
     return """def tasks = ${groovyLiteral(tasks)}
@@ -209,8 +209,9 @@ chosen.each { task ->
         } else if (param.type == 'bool') {
             html << select(['true', 'false'], param.default == true)
         } else {
+            // placeholder 是过滤后唯一能给输入框提供可访问名称的属性；下拉框没有这样的属性
             html << '<input type="' + (param.type == 'int' ? 'number' : 'text') + '" name="value" value="' + escapeHtml(param.default) + '"' +
-                    (param.required ? ' placeholder="必填"' : '') + ' class="jenkins-input" style="width:320px">'
+                    ' placeholder="' + escapeHtml(param.name + (param.required ? '（必填）' : '')) + '" class="jenkins-input" style="width:320px">'
         }
         html << ' ' + escapeHtml(param.description) + '</td></tr>'
     }

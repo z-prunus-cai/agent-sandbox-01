@@ -77,7 +77,9 @@ def test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in
     expect(field(page, 'task_a.task_a_repeat')).to_have_attribute('type', 'number')
     expect(field(page, 'task_a.task_a_repeat')).to_have_value('1')
     expect(field(page, 'task_a.task_a_message')).to_have_value('')
-    expect(field(page, 'task_a.task_a_message')).to_have_attribute('placeholder', '必填')
+    # placeholder is the only accessible name the Active Choices sanitizer leaves on an input
+    expect(page.get_by_role('textbox', name='task_a_message（必填）')).to_be_visible()
+    expect(page.get_by_role('spinbutton', name='task_a_repeat')).to_have_value('1')
     expect(page.locator('tr', has=field(page, 'task_a.task_a_message')).locator('td').first).to_have_text('task_a_message（必填）')
 
 

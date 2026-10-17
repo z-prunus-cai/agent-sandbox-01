@@ -1,5 +1,8 @@
 """Integration tests against a real Jenkins: the pipeline behaviour of both Jenkinsfiles."""
 import json
+import os
+import re
+import subprocess
 
 import pytest
 
@@ -23,7 +26,7 @@ def playbook_command_lines(console):
 
 
 def playbook_runs(console):
-    return [line.split()[0].rsplit('/', 1)[1] for line in playbook_command_lines(console)]
+    return [command.split()[0].rsplit('/', 1)[1] for command in playbook_command_lines(console)]
 
 
 @pytest.mark.parametrize('jenkinsfile, expected', [
@@ -34,9 +37,31 @@ def playbook_runs(console):
 def test_first_build_registers_parameters_from_catalog_and_inventory_and_runs_nothing(jenkins, new_job, jenkinsfile, expected):
     job = new_job(jenkinsfile)
 
+    first_build = jenkins.build_info(job, 1)
+    assert first_build['result'] == 'NOT_BUILT'
+    assert first_build['description'] == '已登记构建参数，请用 Build with Parameters 重新运行'
     assert jenkins.parameter_names(job) == expected
     assert playbook_runs(jenkins.console(job, 1)) == []
-    assert jenkins.build_info(job, 1)['description'] == '已登记构建参数，请用 Build with Parameters 重新运行'
+
+
+@pytest.mark.parametrize('jenkinsfile', [ACTIVE, BASIC])
+def test_builds_of_one_job_do_not_run_concurrently(jenkins, new_job, jenkinsfile):
+    job = new_job(jenkinsfile)
+
+    assert jenkins.json(f'/job/{job}', 'concurrentBuild')['concurrentBuild'] is False
+
+
+def test_parameter_page_scripts_run_in_the_sandbox_without_approval(jenkins, new_job):
+    # the test Jenkins has no security, so it would approve a non-sandboxed script silently: check the job itself
+    job = new_job(ACTIVE)
+    config = jenkins.config_xml(job)
+    approvals = jenkins.run_script(
+        'def approval = org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval.get()\n'
+        'println approval.approvedScriptHashes.size() + approval.pendingScripts.size()')
+
+    assert config.count('<sandbox>true</sandbox>') == 10      # 5 scripts and their fallbacks
+    assert '<sandbox>false</sandbox>' not in config
+    assert approvals.strip() == '0'
 
 
 def test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only(jenkins, new_job):
@@ -48,11 +73,14 @@ def test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only(jenki
 
     assert result == 'SUCCESS', console
     commands = playbook_command_lines(console)
-    assert [c.split()[0].rsplit('/', 1)[1] for c in commands] == ['run-task.yml', 'run-task.yml', 'deploy.yml']
+    assert playbook_runs(console) == ['run-task.yml', 'run-task.yml', 'deploy.yml']
     assert ' -l web:api ' in commands[0] and ' -l web:api ' in commands[2]
     assert ' -l ' not in commands[1]                                # task_b runs on the Jenkins node itself
-    assert 'inventory/hosts.yml: ' in console                         # and really ran, not "no hosts matched"
     assert '    - task_a [warn] [task_a_message:hi, task_a_repeat:2, task_a_delay_seconds:0]' in console
+    # the selected hosts really ran: without the inventory Ansible would print "no hosts matched" and still succeed
+    assert '"msg": "web-01: hi (2/2)"' in console and '"msg": "api-01: hi (2/2)"' in console
+    assert 'inventory/hosts.yml: ' in console
+    assert 'deploy web 2.3.1 to web-02' in console and 'deploy api 1.8.0 to api-01' in console
     assert 'worker-0' not in console
 
 
@@ -68,14 +96,15 @@ post: [{name: check_a, params: {check_a_min_connections: 500}}]
 
     assert result == 'UNSTABLE', console
     assert '[Pipeline] { (pre: task_b)' in console and '[Pipeline] { (post: check_a)' in console
-    assert [(r['phase'], r['id'], r['name'], r['policy'], r['status'], r.get('outcome')) for r in report] == [
+    assert [(row['phase'], row['id'], row['name'], row['policy'], row['status'], row.get('outcome')) for row in report] == [
         ('pre', 'task_b', 'task_b', 'abort', 'PASSED', None),
         ('deploy', 'deploy', 'deploy', 'abort', 'PASSED', None),
         ('post', 'check_a', 'check_a', 'warn', 'FAILED', 'continued')]
-    assert all(isinstance(r['seconds'], int) for r in report)
+    assert all(type(row['seconds']) is int for row in report)
     assert report[2]['params'] == {'check_a_min_connections': 500}
-    summary = console[console.index('[deploy] 结果：'):].splitlines()
-    assert summary[3].split() == ['post', 'check_a', 'warn', 'FAILED', summary[3].split()[4], '->', 'continued']
+    summary_row = console[console.index('[deploy] 结果：'):].splitlines()[3].split()
+    assert summary_row[:4] == ['post', 'check_a', 'warn', 'FAILED'] and summary_row[5:] == ['->', 'continued']
+    assert re.fullmatch(r'\d+s', summary_row[4])
 
 
 def test_deploy_plan_runs_entries_in_listed_order_and_repeats_a_task_by_id(jenkins, new_job):
@@ -92,6 +121,7 @@ pre:
     assert result == 'SUCCESS', console
     assert console.index('(pre: check_c_first)') < console.index('(pre: task_c)') < console.index('(pre: check_c_second)')
     assert '"msg": "worker-02: task_c mode=apply label="' in console
+    assert '"msg": "worker-02: app=worker version=1.8.0"' in console    # task_c_verbose: true arrived as a boolean
     assert 'web-0' not in console and 'api-01' not in console
 
 
@@ -113,6 +143,7 @@ def test_controller_only_run_needs_no_target_group(jenkins, new_job):
 
     assert result == 'SUCCESS', console
     assert playbook_runs(console) == ['run-task.yml']
+    assert 'inventory/hosts.yml: ' in console
 
 
 @pytest.mark.parametrize('deploy_plan, message', [
@@ -131,7 +162,7 @@ def test_controller_only_run_needs_no_target_group(jenkins, new_job):
     pytest.param('{targets: [web], pre: [task_a]}', 'pre[0]：任务 task_a 必须提供参数 task_a_message', id='missing-required'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "  "}}]}',
                  'pre[0]：任务 task_a 必须提供参数 task_a_message', id='blank-required'),
-    pytest.param('{targets: [web], pre: [{name: check_c, params: [x]}]}', 'pre[0]：params 必须是映射', id='params-not-map'),
+    pytest.param('{targets: [web], pre: [{name: check_c, params: []}]}', 'pre[0]：params 必须是映射', id='params-empty-list'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, ansible_connection: local}}]}',
                  'pre[0]：任务 task_a 不接受参数 [ansible_connection]', id='undeclared-param'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, task_a_repeat: two}}]}',
@@ -203,6 +234,7 @@ pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_repeat: 9}
 
     assert result == 'UNSTABLE', console
     assert '[deploy] 任务 task_a 失败：Ansible playbook execution failed（warn：继续执行）' in console
+    assert 'task_a_repeat must be between 1 and 5, got 9' in console
     assert playbook_runs(console) == ['run-task.yml', 'deploy.yml']
 
 
@@ -219,7 +251,7 @@ post: [check_c]
     assert result == 'FAILURE'
     assert '[deploy] 任务 task_b 失败：Ansible playbook execution failed（abort：停止流水线）' in console
     assert playbook_runs(console) == ['run-task.yml']
-    assert [(r['id'], r['status'], r['outcome']) for r in report] == [('task_b', 'FAILED', 'aborted')]
+    assert [(row['id'], row['status'], row['outcome']) for row in report] == [('task_b', 'FAILED', 'stopped')]
 
 
 def test_timeout_counts_as_task_failure_and_follows_the_policy(jenkins, new_job):
@@ -250,39 +282,17 @@ pre: [{name: task_a, policy: warn, params: {task_a_message: x, task_a_delay_seco
     assert 'warn：继续执行' not in console
     assert playbook_runs(console) == ['run-task.yml']
     report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
-    assert [(r['id'], r['status']) for r in report] == [('task_a', 'ABORTED')]
+    assert [(row['id'], row['status']) for row in report] == [('task_a', 'ABORTED')]
 
 
-def test_missing_vault_credential_stops_the_build_before_any_playbook_runs(jenkins, new_job):
+def test_missing_vault_credential_stops_the_build_before_any_playbook_runs(jenkins, new_job, vault_credential_removed):
     job = new_job(ACTIVE)
-    jenkins.run_script('''
-import com.cloudbees.plugins.credentials.SystemCredentialsProvider
-import com.cloudbees.plugins.credentials.domains.Domain
-def provider = SystemCredentialsProvider.getInstance()
-provider.getStore().removeCredentials(Domain.global(), provider.getCredentials().find { it.id == 'ansible-vault-password' })
-''')
-    try:
-        result, console, _ = run(jenkins, job, plan('{skip_deploy: true, pre: [task_b]}'))
-    finally:
-        restore_vault_credential(jenkins)
+
+    result, console, _ = run(jenkins, job, plan('{skip_deploy: true, pre: [task_b]}'))
 
     assert result == 'FAILURE'
     assert 'ansible-vault-password' in console
     assert playbook_runs(console) == []
-
-
-def restore_vault_credential(jenkins):
-    from conftest import VAULT_PASSWORD_FILE
-    password = VAULT_PASSWORD_FILE.read_text().strip()
-    jenkins.run_script(f'''
-import com.cloudbees.plugins.credentials.CredentialsScope
-import com.cloudbees.plugins.credentials.SystemCredentialsProvider
-import com.cloudbees.plugins.credentials.domains.Domain
-import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
-import hudson.util.Secret
-SystemCredentialsProvider.getInstance().getStore().addCredentials(Domain.global(), new StringCredentialsImpl(
-    CredentialsScope.GLOBAL, 'ansible-vault-password', 'ansible-vault password (example)', Secret.fromString('{password}')))
-''')
 
 
 def test_no_plugin_form_shows_only_selected_tasks_and_its_values_are_used(jenkins, new_job):
@@ -348,6 +358,64 @@ def test_no_plugin_without_form_uses_defaults(jenkins, new_job):
     assert result == 'SUCCESS', console
     assert 'Input requested' not in console
     assert '    - task_b [abort] [task_b_path:inventory/hosts.yml, task_b_min_bytes:1]' in console
+    assert playbook_runs(console) == ['run-task.yml']
+    assert 'inventory/hosts.yml: ' in console
+
+
+def test_no_plugin_bool_from_the_form_reaches_ansible(jenkins, new_job):
+    job = new_job(BASIC)
+    number = jenkins.start_build(job, {'TARGET_api': 'true', 'SKIP_DEPLOY': 'true', 'PRE_task_c': 'true'})
+    [pending] = jenkins.wait_for_input(job, number)
+
+    jenkins.submit_input(job, number, pending['id'], {
+        'pre.task_c.policy': 'abort', 'pre.task_c.task_c_mode': 'plan', 'pre.task_c.task_c_verbose': True,
+        'pre.task_c.task_c_label': ''})
+
+    assert jenkins.wait_for_build(job, number) == 'SUCCESS'
+    assert '"msg": "api-01: app=api version=1.8.0"' in jenkins.console(job, number)
+
+
+def test_no_plugin_runs_the_files_it_validated_even_if_the_branch_moves_while_waiting(jenkins, new_job):
+    job = new_job(BASIC)
+    number = jenkins.start_build(job, {'SKIP_DEPLOY': 'true', 'PRE_task_b': 'true'})
+    [pending] = jenkins.wait_for_input(job, number)
+    hosts_yml = 'jenkins-ansible-deploy/examples/ansible/inventory/hosts.yml'
+    original = commit_change(hosts_yml, '\n# a line added while the build waits\n')
+    try:
+        jenkins.submit_input(job, number, pending['id'], {
+            'pre.task_b.policy': 'abort', 'pre.task_b.task_b_path': 'inventory/hosts.yml', 'pre.task_b.task_b_min_bytes': '1'})
+        result = jenkins.wait_for_build(job, number)
+    finally:
+        restore(hosts_yml, original)
+
+    assert result == 'SUCCESS'
+    assert f'"msg": "inventory/hosts.yml: {len(original.encode())} bytes"' in jenkins.console(job, number)
+
+
+def repository():
+    return os.environ['DEPLOY_REPO_URL'].removeprefix('file://')
+
+
+def commit_change(path, appended):
+    """Append text to a file in the test repository and commit it; return the original content."""
+    file_path = os.path.join(repository(), path)
+    with open(file_path, encoding='utf-8') as source:
+        original = source.read()
+    with open(file_path, 'a', encoding='utf-8') as target:
+        target.write(appended)
+    git_commit('change while waiting')
+    return original
+
+
+def restore(path, original):
+    with open(os.path.join(repository(), path), 'w', encoding='utf-8') as target:
+        target.write(original)
+    git_commit('restore')
+
+
+def git_commit(message):
+    subprocess.run(['git', '-C', repository(), '-c', 'user.name=test', '-c', 'user.email=test@example.com',
+                    'commit', '-q', '-a', '-m', message], check=True)
 
 
 def test_no_plugin_without_form_rejects_a_missing_required_parameter(jenkins, new_job):

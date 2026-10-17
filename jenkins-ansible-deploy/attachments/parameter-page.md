@@ -13,7 +13,7 @@
 | 只显示所选任务的参数 | 同一页上，勾选后立即出现 | 构建开始后由 `input` 步骤弹出 |
 | 输入控件 | 整数为数字框，布尔、枚举、失败策略为下拉框，必填参数名后标“（必填）”，每个任务一个带边框的分组 | 字符串和整数为文本框，布尔为勾选框，枚举、失败策略为下拉框；平铺一列 |
 | 填写的值记在哪里 | 构建参数（构建页的 Parameters 中可见） | `input` 的提交记录；执行计划打印在控制台 |
-| 等待填写时 | 不涉及 | 构建暂停在不分配执行器的 `Task options` 阶段，最多 30 分钟 |
+| 等待填写时 | 不涉及 | 构建暂停在不分配执行器的 `Task options` 阶段，最多 30 分钟；之后运行的是 `Prepare` 中 `stash` 的文件 |
 | API / 上游 job 触发 | `DEPLOY_PLAN` | `DEPLOY_PLAN`，或传勾选框参数并设 `EDIT_TASK_OPTIONS=false`（使用默认值） |
 | 需要的插件 | `uno-choice` | 无 |
 
@@ -68,7 +68,7 @@ IN : <input type="text" name="value" placeholder="必填" class="jenkins-input">
 OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" />
 ```
 
-`label`、`aria-*`、`title`、`input` 上的 `required` 都被去掉，所以表单在参数名后写“（必填）”，并给必填输入框加 `placeholder="必填"`。
+`label`、`aria-*`、`title`、`input` 上的 `required` 都被去掉，所以表单在参数名后写“（必填）”，并给每个文本框和数字框加 `placeholder`（参数名，必填时加“（必填）”）：浏览器把 `placeholder` 当作没有其他名称时的可访问名称。下拉框的属性只放行 `id`、`class`、`style`、`disabled`、`multiple`、`name`、`required`、`size`，没有能给它命名的；需要读屏软件时用方案 C。
 
 ### 3.3 参数表单
 
@@ -80,19 +80,19 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
   <table><tbody>
     <tr><td style="padding:3px 12px 3px 0">失败时</td><td>
       <input type="hidden" name="value" value="@@task_c.policy">
-      <select name="value" class="jenkins-select__input"><option value="abort" selected="selected">abort</option><option value="warn">warn</option></select>
+      <select name="value"><option value="abort" selected="selected">abort</option><option value="warn">warn</option></select>
       abort：停止流水线；warn：标记不稳定后继续</td></tr>
     <tr><td style="padding:3px 12px 3px 0">task_c_mode</td><td>
       <input type="hidden" name="value" value="@@task_c.task_c_mode">
-      <select name="value" class="jenkins-select__input"><option value="plan" selected="selected">plan</option><option value="apply">apply</option></select>
+      <select name="value"><option value="plan" selected="selected">plan</option><option value="apply">apply</option></select>
       执行模式</td></tr>
     <tr><td style="padding:3px 12px 3px 0">task_c_verbose</td><td>
       <input type="hidden" name="value" value="@@task_c.task_c_verbose">
-      <select name="value" class="jenkins-select__input"><option value="true">true</option><option value="false" selected="selected">false</option></select>
+      <select name="value"><option value="true">true</option><option value="false" selected="selected">false</option></select>
       是否输出详细信息</td></tr>
     <tr><td style="padding:3px 12px 3px 0">task_c_label</td><td>
       <input type="hidden" name="value" value="@@task_c.task_c_label">
-      <input type="text" name="value" value="" class="jenkins-input" style="width:320px">
+      <input type="text" name="value" value="" placeholder="task_c_label" class="jenkins-input" style="width:320px">
       附加标签，可留空</td></tr>
   </tbody></table>
 </div>
@@ -100,7 +100,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 （为便于阅读加了换行和缩进，内容与页面一致。）
 
-控件按参数类型生成：`choices` → 下拉框；`bool` → `true` / `false` 下拉框（保证每个标记后面都恰好跟一个值）；`int` → `type="number"`；其余 → 文本框。预填值是 role 的 `defaults/main.yml`。必填参数（如 `task_a_message`）的名称一格为 `task_a_message（必填）`，输入框带 `placeholder="必填"`（`test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text`）。
+控件按参数类型生成：`choices` → 下拉框；`bool` → `true` / `false` 下拉框（保证每个标记后面都恰好跟一个值）；`int` → `type="number"`；其余 → 文本框。预填值是 role 的 `defaults/main.yml`。必填参数（如 `task_a_message`）的名称一格为 `task_a_message（必填）`，输入框的可访问名称同样是 `task_a_message（必填）`（`test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text`）。
 
 **勾选变化会重新生成整个表单**，已经填写的值丢失：脚本只能看到被引用参数（`PRE_TASKS`）的值，看不到表单自己的旧值。先勾选全部任务，再填写参数（`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`）。
 

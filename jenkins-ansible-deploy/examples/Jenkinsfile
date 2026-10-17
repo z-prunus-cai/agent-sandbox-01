@@ -5,7 +5,7 @@
 // 按项目修改
 Map settings = [
     baseDir: 'jenkins-ansible-deploy/examples',                  // 本目录在仓库中的路径
-    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 密码
+    ansible: [vaultCredentialsId: 'ansible-vault-password',      // Secret text：ansible-vault 口令
               sshCredentialsId  : 'deploy-ssh-key'],             // SSH Username with private key：连接目标主机；不需要时设为 null
 ]
 
