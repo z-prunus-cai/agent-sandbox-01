@@ -445,7 +445,7 @@ ERROR: [deploy] 计划有误：
 
 规则：`deploy-engine.groovy` 的 `runPlaybook`用 `withEnv(["ANSIBLE_CONFIG=<工作区>/<baseDir>/ansible/ansible.cfg"])` 包住每次 `ansiblePlaybook` 调用，并统一传入 `vaultCredentialsId` 与 `credentialsId`。
 
-机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java:47`），那里没有 `ansible.cfg`。`ansible.cfg` 中的 `inventory`、`roles_path` 是相对路径，相对于该文件所在目录解析，所以同一个文件既给 Jenkins 用，也给在 `examples/ansible` 下手工运行用。
+机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java:47`），那里没有 `ansible.cfg`。ansible-core 先查 `ANSIBLE_CONFIG`，再查当前目录的 `ansible.cfg`（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:266-296`）；`ansible.cfg` 中 `inventory`、`roles_path` 的相对路径以该文件所在目录为基准展开（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:672`、`.reference-cache/ansible/ansible@2.21.5/lib/ansible/utils/path.py:51`）。所以同一个文件既给 Jenkins 用，也给在 `examples/ansible` 下手工运行用。详见 [attachments/inventory-practices.md](attachments/inventory-practices.md) 第 1.2 节。
 
 证据：第 3.7 节的命令行没有 `-i`，inventory 与 roles 仍被找到。
 
