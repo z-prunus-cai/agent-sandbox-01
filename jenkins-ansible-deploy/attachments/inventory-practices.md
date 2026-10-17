@@ -9,12 +9,12 @@
 ## 结论
 
 1. 采用目录式 inventory：`ansible.cfg` 中设 `inventory = inventory`。`hosts.yml` 只描述主机与组的关系，变量一律放在 `inventory/group_vars/` 和 `inventory/host_vars/`。playbook 所在的 `examples/ansible/` 下不建 `group_vars/` 和 `host_vars/`。
-2. 所有 Ansible 命令都用环境变量 `ANSIBLE_CONFIG` 指向 `examples/ansible/ansible.cfg`。它优先于当前目录下的 `ansible.cfg`；配置里的相对路径以配置文件所在目录为基准，所以从哪个目录运行，结果都一样。
+2. 不在 `examples/ansible` 下运行 Ansible 时（Jenkins 就是这样），用环境变量 `ANSIBLE_CONFIG` 指向 `examples/ansible/ansible.cfg`。它优先于当前目录下的 `ansible.cfg`；配置里的相对路径以配置文件所在目录为基准，所以从哪个目录运行，结果都一样。在 `examples/ansible` 下运行时可以省略。
 3. 变量优先级从低到高：role defaults → `group_vars/all` → 子组（`web` 等）→ `host_vars` → extra vars。`meta/argument_specs.yml` 里的 `default` 只是文档，运行时不生效；示例仍写出它，并与 `defaults/main.yml` 保持一致（`test_catalog.py` 检查）。
 4. 一台主机只属于 `web`、`api`、`worker` 中的一个组。同级组的同名变量按组名字母顺序合并，结果不直观。
 5. 命名：变量名只用小写字母、数字和下划线；role 自己定义的变量加 `<role 名>_` 前缀；inventory 中的应用参数以 `app_` 开头；加密值以 `vault_` 开头。前两条由 ansible-lint 的 `var-naming` 规则检查。
 6. 敏感值放在整文件加密的 `group_vars/all/vault.yml`，`main.yml` 中写 `app_api_token: "{{ vault_app_api_token }}"` 引用它。
-7. Jenkins 侧把 vault 口令存成 “Secret file” 或 “Secret text” 凭据，通过 `vaultCredentialsId` 交给插件。插件把口令写进权限为 0400 的临时文件，用 `--vault-password-file` 传给 ansible-playbook，进程结束后在 `finally` 中删除该文件。
+7. Jenkins 侧把 vault 口令存成 “Secret text” 凭据，通过 `vaultCredentialsId` 交给插件（插件也接受 “Secret file”，但示例的凭据检查按 Secret text 绑定，用 Secret file 时要改 `checkCredentials`，见 BRIEF 第 4.9 节）。插件把口令写进权限为 0400 的临时文件，用 `--vault-password-file` 传给 ansible-playbook，进程结束后在 `finally` 中删除该文件。
 8. `ansible-inventory --graph` 不读变量，不需要 vault 口令。`--list` 和 `--host` 需要口令，且输出解密后的明文，所以不在 CI 中运行。
 9. `check-inventory.yml` 用 `ansible.builtin.validate_argument_spec`，按 `app_deploy` 的参数声明校验每台主机。它不连接主机，一次报告全部问题。
 10. ansible-lint 用 `ansible-lint --offline --profile production` 运行，并且要提供 vault 口令，否则 `vault.yml` 不会被检查。
@@ -24,27 +24,7 @@
 
 ### 1.1 目录式 inventory，hosts 文件只放主机与组
 
-规则：把整个 `inventory/` 目录作为一个 inventory 源，`hosts.yml` 中不写 `vars:`。下面是示例 `examples/ansible/inventory/hosts.yml` 的内容（已去掉注释）：
-
-```yaml
-all:
-  children:
-    deploy_targets:
-      children:
-        web:
-          hosts:
-            web-01:
-            web-02:
-        api:
-          hosts:
-            api-01:
-        worker:
-          hosts:
-            worker-01:
-            worker-02:
-```
-
-变量的分布：`group_vars/all/main.yml`：`app_base_dir`、`app_run_user`、`app_api_token`；`group_vars/all/vault.yml`（加密）：只有 `vault_app_api_token`；`group_vars/web.yml`、`api.yml`、`worker.yml`：各有 `app_name`、`app_version`、`app_port`、`app_max_connections`；`host_vars/<主机>.yml`：`ansible_host`（192.0.2.0/24 内的地址）；`web-02.yml` 另外把 `app_max_connections` 改为 200。
+规则：把整个 `inventory/` 目录作为一个 inventory 源，`hosts.yml` 中不写 `vars:`。示例的 `hosts.yml` 和各变量文件的内容见 [BRIEF.md 第 3.2 节](../BRIEF.md#32-ansibleinventory)。
 
 机制：一个目录可以作为单一 inventory 源。Ansible 汇总目录内的各个源，从顶层往下按字母序读取。加载 inventory 源时，名为 `group_vars`、`host_vars` 的目录总是被跳过。这两个目录由默认的 vars 插件 `host_group_vars` 读取；vars 插件是在 inventory 之外为主机和组提供变量的插件。这些变量文件里可以使用列表、字典等结构。组目录（如 `group_vars/all/`）下的所有文件按字典序读取。`ansible_host` 是连接时用的实际地址，与主机别名是两回事。
 
@@ -267,7 +247,7 @@ ok: [web-01]
 
 ### 2.3 Jenkins Ansible 插件如何把 vault 口令交给 ansible-playbook
 
-规则：vault 口令在 Jenkins 凭据库中存为 “Secret file” 或 “Secret text” 凭据；`runPlaybook` 给每次 `ansiblePlaybook` 调用加上 `vaultCredentialsId: plan.ansible.vaultCredentialsId`（`examples/jenkins/deploy-engine.groovy` 的 `runPlaybook`）；`vaultTmpPath` 保持默认值。
+规则：vault 口令在 Jenkins 凭据库中存为 “Secret text” 凭据（插件也接受 “Secret file”；示例的 `checkCredentials` 按 Secret text 绑定检查）；`runPlaybook` 给每次 `ansiblePlaybook` 调用加上 `vaultCredentialsId: plan.ansible.vaultCredentialsId`（`examples/jenkins/deploy-engine.groovy` 的 `runPlaybook`）；`vaultTmpPath` 保持默认值。
 
 机制与出处：**凭据类型**：README 写明可以用 “Secret text” 或 “Secret file”，下拉框里也只列出 `FileCredentials` 和 `StringCredentials`（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/README.md:188`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java:351`）。按 ID 查找凭据时用的是 `StandardCredentials`，所以其他类型的凭据也能找到；但只有上面两类会生成 `--vault-password-file`，其他类型被直接跳过（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java:313`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:272`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:276`）。**写临时文件**：口令文件写在 `vaultTmpPath` 下；没有设置时，写在步骤的工作区。文件名形如 `vault*.password`，权限为 0400。Secret file 是复制文件内容，Secret text 是写入明文口令。0400 不含执行位，所以 ansible 把它当作普通口令文件读取（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:271`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/Utils.java:74`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/Utils.java:76`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/Utils.java:93`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/Utils.java:95`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/README.md:97`）。**传递方式**：命令行上只出现口令文件的路径（`--vault-password-file <路径>`），不出现口令本身（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:275`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookInvocation.java:128`）。**何时删除**：ansible-playbook 进程结束后，插件在 `finally` 中删除口令文件和 SSH 私钥文件，成功和失败时都会执行。删除失败时只打印一条以 `[WARNING] temp file` 开头的警告，不会让构建失败（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:312`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:316`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:318`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/Utils.java:111`）。
 

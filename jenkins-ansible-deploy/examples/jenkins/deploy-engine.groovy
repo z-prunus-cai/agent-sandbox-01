@@ -357,7 +357,7 @@ pre:
 post: 同 pre''')
 }
 
-// 得到本次执行计划。只用到不需要工作区的步骤：无插件版 在不分配执行器的 stage 中调用，等待 input 时不占执行器。
+// 得到本次执行计划。只用到不需要工作区的步骤：无插件版在不分配执行器的 stage 中调用，等待 input 时不占执行器。
 // 第一次运行（两种参数页都登记 DEPLOY_PLAN，它不存在即参数尚未登记）返回 null，结果 NOT_BUILT；
 // 计划有误时一次列出全部问题，在运行任何 playbook 之前失败。
 Map resolvePlan(Map request) {

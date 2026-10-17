@@ -14,7 +14,7 @@
 | 输入控件 | 整数为数字框，布尔、枚举、失败策略为下拉框，必填参数名后标“（必填）”，每个任务一个带边框的分组 | 字符串和整数为文本框，布尔为勾选框，枚举、失败策略为下拉框；平铺一列 |
 | 填写的值记在哪里 | 构建参数（构建页的 Parameters 中可见） | `input` 的提交记录；执行计划打印在控制台 |
 | 等待填写时 | 不涉及 | 构建暂停在不分配执行器的 `Task options` 阶段，最多 30 分钟；之后运行的是 `Prepare` 中 `stash` 的文件 |
-| API / 上游 job 触发 | `DEPLOY_PLAN` | `DEPLOY_PLAN`，或传勾选框参数并设 `EDIT_TASK_OPTIONS=false`（使用默认值） |
+| API / 上游 job 触发 | `DEPLOY_PLAN` | `DEPLOY_PLAN` |
 | 需要的插件 | `uno-choice` | 无 |
 
 ## 2. 参数定义只能用 `properties()` 生成
@@ -150,7 +150,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 `input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java:256-260`）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicSelection` 在这种情况下自己组成 Map（`test_no_plugin_form_with_a_single_field_returns_its_value`）。
 
-提交后，每个值转成字符串，按 `<阶段>` 分组成与Active Choices 版 相同的 `[任务.字段: 值]`，交给同一个 `selectionPlan()`。点 “Abort” 时构建为 ABORTED，不运行任何 playbook（`test_no_plugin_abort_in_form_aborts_the_build`）。
+提交后，每个值转成字符串，按 `<阶段>` 分组成与Active Choices 版相同的 `[任务.字段: 值]`，交给同一个 `selectionPlan()`。点 “Abort” 时构建为 ABORTED，不运行任何 playbook（`test_no_plugin_abort_in_form_aborts_the_build`）。
 
 ### 4.3 不弹出表单
 
