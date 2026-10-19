@@ -2,5 +2,5 @@
 app_base_dir: /opt/apps
 app_run_user: app
 # 敏感值只在 vault.yml 中保存，这里用 vault_ 前缀的变量间接引用，便于搜索变量名。
-# 示例的 vault.yml 用公开的示例口令（tests/example-vault-password.txt）加密，内容也是示例值；真实项目要换口令和内容
+# 示例的 vault.yml 用公开的示例口令（jenkins-ansible-deploy/tests/example-vault-password.txt）加密，内容也是示例值；真实项目要换口令和内容
 app_api_token: "{{ vault_app_api_token }}"

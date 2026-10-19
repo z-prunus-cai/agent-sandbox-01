@@ -33,7 +33,7 @@ Jenkinsfile 从 SCM 加载，运行在 Groovy 沙箱中，**不需要任何脚�
 | `examples/Jenkinsfile.no-plugin` | 无插件版：不装插件，勾选任务后在构建开始时弹出参数表单（两步式） |
 | `examples/jenkins/` | 两个 Jenkinsfile 共用的引擎代码与任务目录 |
 | `examples/ansible/` | inventory、部署 playbook、额外任务（每个任务一个 role） |
-| `examples/tests/` | 自动化测试 |
+| `tests/` | 自动化测试 |
 
 ## 4. 行为
 

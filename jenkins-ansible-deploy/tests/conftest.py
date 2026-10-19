@@ -9,9 +9,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-EXAMPLES = Path(__file__).resolve().parent.parent
+TESTS = Path(__file__).resolve().parent
+EXAMPLES = TESTS.parent / 'examples'
 ANSIBLE_DIR = EXAMPLES / 'ansible'
-VAULT_PASSWORD_FILE = EXAMPLES / 'tests' / 'example-vault-password.txt'
+VAULT_PASSWORD_FILE = TESTS / 'example-vault-password.txt'
 CATALOG = yaml.safe_load((EXAMPLES / 'jenkins' / 'tasks.yml').read_text())['tasks']
 
 

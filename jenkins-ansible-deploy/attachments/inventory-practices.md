@@ -2,7 +2,7 @@
 
 适用版本：ansible-core 2.21.5、ansible-lint 26.10.1、Jenkins Ansible 插件 635.v34b_48e979c86。
 
-出处有两种写法：上游源码与文档写成 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>`，指上游仓库在该版本的同一路径与行号，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)；示例代码按文件与函数名引用。文中实验都在示例目录 `examples/ansible/` 上运行；需要改文件的实验，在该目录的副本上改动后运行。vault 口令文件是 `examples/tests/example-vault-password.txt`，内容为示例口令 `example-only-password`；在 `examples/ansible/` 下写作 `../tests/example-vault-password.txt`。
+出处有两种写法：上游源码与文档写成 `.reference-cache/<owner>/<name>@<version>/<path>:<行号>`，指上游仓库在该版本的同一路径与行号，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)；示例代码按文件与函数名引用。文中实验都在示例目录 `examples/ansible/` 上运行；需要改文件的实验，在该目录的副本上改动后运行。vault 口令文件是 `tests/example-vault-password.txt`，内容为示例口令 `example-only-password`；在 `examples/ansible/` 下写作 `../../tests/example-vault-password.txt`。
 
 术语：**inventory（清单）**是描述被管理主机及其分组的数据源；**主机组（group）**是一组主机，组可以包含子组，所有组都是 `all` 的后代；**变量层**是给主机赋值的不同位置，例如 `group_vars`、`host_vars`、命令行；**role（角色）**是一个目录，放可复用的任务、默认变量和元数据。
 
@@ -34,7 +34,7 @@
 
 ### 1.2 用 ANSIBLE_CONFIG 指定配置，相对路径以配置文件为基准
 
-规则：`examples/ansible/ansible.cfg` 只写两个相对路径：`inventory = inventory` 和 `roles_path = roles`。所有命令都通过 `ANSIBLE_CONFIG` 使用这个文件。Jenkins 侧，`runPlaybook` 在每次 `ansiblePlaybook` 调用外包一层 `withEnv(["ANSIBLE_CONFIG=${env.WORKSPACE}/${plan.baseDir}/ansible/ansible.cfg"])`（`examples/jenkins/deploy-engine.groovy` 的 `runPlaybook` 函数）。playbook 写成相对于工作区的路径（同文件中运行 `deploy.yml` 的调用）。测试用同样的方式运行 Ansible（`examples/tests/conftest.py` 的 `run_ansible`）。
+规则：`examples/ansible/ansible.cfg` 只写两个相对路径：`inventory = inventory` 和 `roles_path = roles`。所有命令都通过 `ANSIBLE_CONFIG` 使用这个文件。Jenkins 侧，`runPlaybook` 在每次 `ansiblePlaybook` 调用外包一层 `withEnv(["ANSIBLE_CONFIG=${env.WORKSPACE}/${plan.baseDir}/ansible/ansible.cfg"])`（`examples/jenkins/deploy-engine.groovy` 的 `runPlaybook` 函数）。playbook 写成相对于工作区的路径（同文件中运行 `deploy.yml` 的调用）。测试用同样的方式运行 Ansible（`tests/conftest.py` 的 `run_ansible`）。
 
 机制：**查找顺序**：ansible-core 依次查找 `ANSIBLE_CONFIG`、当前目录的 `ansible.cfg`、`~/.ansible.cfg`、`/etc/ansible/ansible.cfg`，只用找到的第一个。如果当前目录全局可写，就跳过这个目录（`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/reference_appendices/general_precedence.rst:33`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:266`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:279`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:296`）。**相对路径**：从配置文件读到的值，以该文件作为来源（origin）。`inventory` 的类型是 `pathlist`，`roles_path` 的类型是 `pathspec`，这两类值里的相对路径以来源文件所在目录为基准展开（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:672`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/base.yml:807`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/base.yml:1096`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:99`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py:202`；`.reference-cache/ansible/ansible@2.21.5/lib/ansible/utils/path.py:51`）。**插件侧**：插件把步骤的环境变量（包括 `withEnv` 设的值）复制给子进程，并以步骤工作目录为 cwd 启动 ansible-playbook。`runPlaybook` 不设 `inventory`，所以插件不加 `-i`（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java:385`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:73`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java:47`；`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:93`）。
 
@@ -56,7 +56,7 @@ DEFAULT_ROLES_PATH(<仓库>/jenkins-ansible-deploy/examples/ansible/ansible.cfg)
 按 Jenkins 的方式，从工作区根目录运行部署（输出节选，退出码 0）：
 
 ```text
-$ ANSIBLE_CONFIG=$PWD/examples/ansible/ansible.cfg ansible-playbook --vault-password-file examples/tests/example-vault-password.txt examples/ansible/deploy.yml --limit web
+$ ANSIBLE_CONFIG=$PWD/examples/ansible/ansible.cfg ansible-playbook --vault-password-file tests/example-vault-password.txt examples/ansible/deploy.yml --limit web
     "msg": "deploy web 2.3.1 to web-01 (192.0.2.11) dir=/opt/apps/web port=8080 max_connections=100 user=app"
     "msg": "deploy web 2.3.1 to web-02 (192.0.2.12) dir=/opt/apps/web port=8080 max_connections=200 user=app"
 ```
@@ -113,7 +113,7 @@ $ ANSIBLE_CONFIG=$PWD/examples/ansible/ansible.cfg ansible-playbook --vault-pass
 实验 1：host_vars 高于 group_vars。
 
 ```text
-$ ansible-inventory --vault-password-file ../tests/example-vault-password.txt --host web-02
+$ ansible-inventory --vault-password-file ../../tests/example-vault-password.txt --host web-02
 {
     "ansible_host": "192.0.2.12",
     "app_api_token": "{{ vault_app_api_token }}",
@@ -132,7 +132,7 @@ $ ansible-inventory --vault-password-file ../tests/example-vault-password.txt --
 实验 2：子组高于 `all`。示例中没有跨层重名的变量，所以在副本的 `group_vars/web.yml` 末尾加一行 `app_run_user: web`（`all` 中的值是 `app`）：
 
 ```text
-$ ansible web-01,api-01 --vault-password-file ../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_run_user
+$ ansible web-01,api-01 --vault-password-file ../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_run_user
 web-01 | SUCCESS => {
     "app_run_user": "web"
 }
@@ -144,7 +144,7 @@ api-01 | SUCCESS => {
 实验 3：extra vars 高于 host_vars；用 `key=value` 形式传入时，得到的是字符串。
 
 ```text
-$ ansible web-02 --vault-password-file ../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_max_connections -e app_max_connections=500
+$ ansible web-02 --vault-password-file ../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_max_connections -e app_max_connections=500
 web-02 | SUCCESS => {
     "app_max_connections": "500"
 }
@@ -173,7 +173,7 @@ TASK [task_c : Run in the selected mode] ***************************************
 实验 6：隐式 localhost 也会拿到 `group_vars/all`。inventory 中没有定义 localhost 时，Ansible 会自动创建一个“隐式 localhost”。它不属于任何组，但会读取 `host_vars` 和 `all` 组的变量（`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/inventory_guide/implicit_localhost.rst:6`；`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/inventory_guide/implicit_localhost.rst:33`）：
 
 ```text
-$ ansible localhost --vault-password-file ../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_base_dir
+$ ansible localhost --vault-password-file ../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_base_dir
 localhost | SUCCESS => {
     "app_base_dir": "/opt/apps"
 }
@@ -214,7 +214,7 @@ ansible-vault 是 Ansible 自带的对称加密工具，既可以加密单个值
 实验：
 
 ```text
-$ head -c 26 inventory/group_vars/all/vault.yml; echo; ansible-vault view --vault-password-file ../tests/example-vault-password.txt inventory/group_vars/all/vault.yml
+$ head -c 26 inventory/group_vars/all/vault.yml; echo; ansible-vault view --vault-password-file ../../tests/example-vault-password.txt inventory/group_vars/all/vault.yml
 $ANSIBLE_VAULT;1.1;AES256
 
 # 只放 vault_ 前缀的敏感变量，整个文件用 ansible-vault 加密
@@ -231,7 +231,7 @@ vault_app_api_token: example-only-token
 
 出处：`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/reference_appendices/logging.rst:16`；`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/reference_appendices/faq.rst:734`；`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/reference_appendices/faq.rst:751`（建议只用于单个任务）；`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/reference_appendices/faq.rst:753`（不影响 `ANSIBLE_DEBUG` 的输出）。
 
-实验：在副本中加一个 playbook，用同一个 `debug` 任务输出 `app_api_token`，一次不加 `no_log: true`，一次加上。运行 `ansible-playbook --vault-password-file ../tests/example-vault-password.txt show-token.yml`（输出节选）：
+实验：在副本中加一个 playbook，用同一个 `debug` 任务输出 `app_api_token`，一次不加 `no_log: true`，一次加上。运行 `ansible-playbook --vault-password-file ../../tests/example-vault-password.txt show-token.yml`（输出节选）：
 
 ```text
 TASK [Without no_log] **********************************************************
@@ -293,7 +293,7 @@ $ ansible-inventory --graph no_such_group
 [ERROR]: Pattern must be valid group name when using --graph
 ```
 
-以上命令的退出码依次为 0、4、4、4、5。提供口令后，`ansible-inventory --vault-password-file ../tests/example-vault-password.txt --list --yaml` 的输出中，每台主机都带有明文的秘密值（节选）：
+以上命令的退出码依次为 0、4、4、4、5。提供口令后，`ansible-inventory --vault-password-file ../../tests/example-vault-password.txt --list --yaml` 的输出中，每台主机都带有明文的秘密值（节选）：
 
 ```text
             web-01:
@@ -326,7 +326,7 @@ $ ansible-inventory --graph no_such_group
 实验 1：全部通过。主机地址都在文档保留网段 192.0.2.0/24 内、没有真实主机，所有主机仍然返回 `ok`，说明校验时没有连接主机。退出码为 0；从工作区根目录以 `ANSIBLE_CONFIG` 运行 `examples/ansible/check-inventory.yml`，结果相同（输出节选）：
 
 ```text
-$ ansible-playbook --vault-password-file ../tests/example-vault-password.txt check-inventory.yml
+$ ansible-playbook --vault-password-file ../../tests/example-vault-password.txt check-inventory.yml
 ok: [web-01]
 ok: [web-02]
 ok: [api-01]
@@ -346,7 +346,7 @@ web-02                     : ok=1    changed=0    unreachable=0    failed=0    s
 
 实验 3：不提供口令运行 `ansible-playbook check-inventory.yml`，退出码为 4，报错 `[ERROR]: Attempting to decrypt but no vault secrets found.`。在副本中把 `main.yml` 里的引用写错成 `vault_app_api_tokn`，校验报未定义：`fatal: [web-01]: FAILED! => {"changed": false, "msg": "Task failed: 'vault_app_api_tokn' is undefined"}`。
 
-实验 4（“秘密变量只声明 `type: str`”这条建议的依据）：role argument_specs 的格式说明中没有列出 `no_log` 字段（`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst:321`）。在副本中做两处改动：把 `app_api_token` 的规格改成 `type: int`，并加上 `no_log: true`；在校验任务上也加 `no_log: true`。然后运行 `ansible-playbook --vault-password-file ../tests/example-vault-password.txt check-inventory.yml --limit web-01`，退出码为 2。任务结果被遮住了，但 `[ERROR]` 行仍然打印出明文（节选）：
+实验 4（“秘密变量只声明 `type: str`”这条建议的依据）：role argument_specs 的格式说明中没有列出 `no_log` 字段（`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst:321`）。在副本中做两处改动：把 `app_api_token` 的规格改成 `type: int`，并加上 `no_log: true`；在校验任务上也加 `no_log: true`。然后运行 `ansible-playbook --vault-password-file ../../tests/example-vault-password.txt check-inventory.yml --limit web-01`，退出码为 2。任务结果被遮住了，但 `[ERROR]` 行仍然打印出明文（节选）：
 
 ```text
 [ERROR]: Task failed: Action failed: Validation of arguments failed:
@@ -360,7 +360,7 @@ fatal: [web-01]: FAILED! => {"censored": "the output has been hidden due to the 
 
 ### 3.3 ansible-lint
 
-规则：在 `examples/ansible/` 下运行 `ansible-lint --offline --profile production`，同时设置 `ANSIBLE_CONFIG` 和 `ANSIBLE_VAULT_PASSWORD_FILE`（`examples/tests/test_inventory.py` 的 `test_ansible_lint_passes_with_production_profile`，环境变量由 `examples/tests/conftest.py` 的 `run_ansible` 设置）。`run-task.yml` 需要 `task_role` 和 `task_hosts` 两个变量，`examples/ansible/.ansible-lint` 中的 `extra_vars` 为它们提供示例值。
+规则：在 `examples/ansible/` 下运行 `ansible-lint --offline --profile production`，同时设置 `ANSIBLE_CONFIG` 和 `ANSIBLE_VAULT_PASSWORD_FILE`（`tests/test_inventory.py` 的 `test_ansible_lint_passes_with_production_profile`，环境变量由 `tests/conftest.py` 的 `run_ansible` 设置）。`run-task.yml` 需要 `task_role` 和 `task_hosts` 两个变量，`examples/ansible/.ansible-lint` 中的 `extra_vars` 为它们提供示例值。
 
 机制与出处：`--offline` 表示不安装 `requirements.yml` 中的依赖，也不刷新 schema。`--profile` 选择规则集，`production` 是最严格的一档（`.reference-cache/ansible/ansible-lint@26.10.1/src/ansiblelint/cli.py:495`；`.reference-cache/ansible/ansible-lint@26.10.1/src/ansiblelint/cli.py:340`；`.reference-cache/ansible/ansible-lint@26.10.1/docs/profiles.md:7`；`.reference-cache/ansible/ansible-lint@26.10.1/docs/profiles.md:97`）。ansible-lint 从当前目录读取 `.ansible-lint`。它内部对每个 playbook 运行 `ansible-playbook --syntax-check`；配置了 `extra_vars` 时会一并传入（`.reference-cache/ansible/ansible-lint@26.10.1/docs/configuring.md:18`；`.reference-cache/ansible/ansible-lint@26.10.1/docs/usage.md:342`；`.reference-cache/ansible/ansible-lint@26.10.1/src/ansiblelint/runner.py:450`）。口令来源与 ansible-playbook 相同（例如 `ANSIBLE_VAULT_PASSWORD_FILE`），不支持交互输入。如果配置的口令文件是可执行文件，那么检查不受信任的内容时，可能执行其中的代码（`.reference-cache/ansible/ansible-lint@26.10.1/docs/usage.md:307`；`.reference-cache/ansible/ansible-lint@26.10.1/docs/usage.md:314`；`.reference-cache/ansible/ansible-lint@26.10.1/docs/usage.md:318`）。
 
@@ -375,7 +375,7 @@ fatal: [web-01]: FAILED! => {"censored": "the output has been hidden due to the 
 
    Passed: 0 failure(s), 0 warning(s) in 36 files processed of 37 encountered. Profile 'production' was required, and it passed.
    ```
-2. 加上 `ANSIBLE_VAULT_PASSWORD_FILE=$PWD/../tests/example-vault-password.txt` 后，警告消失，检查同样通过。
+2. 加上 `ANSIBLE_VAULT_PASSWORD_FILE=$PWD/../../tests/example-vault-password.txt` 后，警告消失，检查同样通过。
 3. 在副本的 `vault.yml` 中加入 `vaultBackupKey: example-only-value` 并重新加密。不提供口令时，结果仍是 `Passed`，退出码为 0；提供口令后，退出码为 2：
 
    ```text
@@ -388,7 +388,7 @@ fatal: [web-01]: FAILED! => {"censored": "the output has been hidden due to the 
 
 ### 3.4 在 CI 中运行
 
-示例的自动化测试（`examples/tests/`）承担 inventory 的 CI 检查。它们按 Jenkins 的方式运行 Ansible：`ANSIBLE_CONFIG` 指向 `examples/ansible/ansible.cfg`，口令来自 `ANSIBLE_VAULT_PASSWORD_FILE`，任务参数通过 `-e @file` 传入（`examples/tests/conftest.py` 的 `run_ansible`）。与 inventory 相关的检查：
+示例的自动化测试（`tests/`）承担 inventory 的 CI 检查。它们按 Jenkins 的方式运行 Ansible：`ANSIBLE_CONFIG` 指向 `examples/ansible/ansible.cfg`，口令来自 `ANSIBLE_VAULT_PASSWORD_FILE`，任务参数通过 `-e @file` 传入（`tests/conftest.py` 的 `run_ansible`）。与 inventory 相关的检查：
 
 1. 不提供口令运行 `ansible-inventory --graph deploy_targets`，断言输出的组树（`test_deploy_targets_graph_lists_every_group_with_its_hosts_without_vault_password`）；
 2. 不提供口令运行 `ansible-inventory --list`，必须失败（`test_listing_variables_without_vault_password_fails`）；

@@ -24,8 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from client import Jenkins  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-EXAMPLES = HERE.parent.parent
-SAMPLE_DIR = EXAMPLES.parent  # the Jenkinsfiles' baseDir is <SAMPLE_DIR name>/<EXAMPLES name> inside the repository
+SAMPLE_DIR = HERE.parent.parent  # the Jenkinsfiles' baseDir is <SAMPLE_DIR name>/examples inside the repository
 JENKINS_WAR = ('https://get.jenkins.io/war-stable/2.580.1/jenkins.war',
                '393bf2476352dd726519fd1f92ce66eac7d23c0936e6967420b717060c4c40d0')
 PLUGIN_MANAGER = ('https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/2.15.0/'
@@ -117,7 +116,7 @@ def main():
 
     key = ed25519.Ed25519PrivateKey.generate().private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH, serialization.NoEncryption()).decode()
-    vault_password = (EXAMPLES / 'tests' / 'example-vault-password.txt').read_text().strip()
+    vault_password = (SAMPLE_DIR / 'tests' / 'example-vault-password.txt').read_text().strip()
     print(jenkins.run_script(f'def VAULT_PASSWORD = {groovy_string(vault_password)}\n'
                              f'def PRIVATE_KEY = {groovy_string(key)}\n' + CREDENTIALS_SCRIPT).strip())
     print(f'export JENKINS_URL={url}')

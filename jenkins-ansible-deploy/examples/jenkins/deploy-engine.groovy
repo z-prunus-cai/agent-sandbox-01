@@ -81,7 +81,7 @@ Map taskDefinitions(Map raw, List errors) {
                 return
             }
             // 参数以 extra vars 传入，优先级最高：名称必须带任务名前缀，不能与引擎变量或 ansible_* 重名。
-            // 与 inventory 变量、Ansible 特殊变量的冲突由 tests/test_catalog.py 检查（这里读不到解密后的 inventory）
+            // 与 inventory 变量、Ansible 特殊变量的冲突由 jenkins-ansible-deploy/tests/test_catalog.py 检查（这里读不到解密后的 inventory）
             if (!key.startsWith(name + '_') || key in ENGINE_VARS || key.startsWith('ansible_')) {
                 errors << "任务 ${name} 的参数 ${key}：名称必须以 ${name}_ 开头，且不能是 ${ENGINE_VARS} 或 ansible_*"
             }

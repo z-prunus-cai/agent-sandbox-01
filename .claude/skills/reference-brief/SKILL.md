@@ -19,7 +19,7 @@ is lost and a detail is unclear, ask the user again; never reconstruct it from m
 never write it down to keep it.
 
 What reaches the disk is technical only: `spec.md`, example code, tests, the brief, and
-experiment logs under `work/`, which is git-ignored and never pushed.
+experiments and logs under `work/`, which is git-ignored and never pushed.
 
 ## Phase 1 — Interview
 
@@ -72,15 +72,17 @@ citation nor an experiment does not enter the deliverable.
 - Log every run in a new `work/log/<UTC timestamp>/`: exact command, exit status, real
   output. Never write down output you did not see.
 - Keep failed approaches and their symptoms; they become the brief's traps.
-- Move the final code to `<deliverable>/examples/` with tests: Given-When-Then; one
-  behaviour per test, named for the whole scenario; assert what must happen and what must
-  not; exception tests assert that no other effect happened; real objects, mocks only at
-  heavy boundaries; F.I.R.S.T.; data tables where only inputs vary.
+- Move the final example code to `<deliverable>/examples/` and the tests that verify it to
+  `<deliverable>/tests/`. The tests prove that each claim in the brief holds and stay usable
+  for later work; they are held to a lower bar than the examples: each must fail if its
+  claim were wrong, and their style is not polished.
 
 ## Phase 4 — Review
 
 Five independent reviewer subagents in one message, one lens each. Each gets the spec, the
-deliverable paths, the cache path and its lens below, and returns findings with `file:line`,
+deliverable paths, the cache path and its lens below. Lenses A, B and E judge the example
+code, the brief and the attachments; C judges every deliverable file, tests included;
+D judges the tests. Each returns findings with `file:line`,
 evidence kept apart from inference, a concrete fix and a severity: BLOCKER, MAJOR or MINOR.
 A finding without cited evidence is MINOR at most.
 
@@ -95,8 +97,9 @@ A finding without cited evidence is MINOR at most.
   express; names in full words, never initialisms; no secrets, internal hosts, personal
   paths or names, ticket IDs, AI attribution; domain-neutral examples; nothing that reveals
   a purpose, an audience, a business or a person's situation.
-- **D — tests.** The test rules in Phase 3. Missing tests: for every key point, would some
-  test fail if it broke? Test libraries used as their documentation recommends.
+- **D — verification.** For every claim in the brief and every behaviour of the example
+  code, is there a test that would fail if it were wrong? List each claim with nothing
+  behind it, and each test that passes whatever the code does. Test style is out of scope.
 - **E — established practice.** Each library used the way its documentation recommends at
   the pinned version; no deprecated APIs; the mature common solution over a hand-rolled
   one; accessibility where there is a UI. Every finding cites what it read.
@@ -106,6 +109,7 @@ Then:
    file: confirmed, not a defect, or already fixed. Only confirmed findings are repaired.
 2. Repair, re-run the tests, log the runs; re-review only the changed files with the same
    lenses, until a round has no MAJOR.
+   A test is changed only when it fails to verify a claim or breaks lens C.
 3. If a file or defect class still has a MAJOR after three rounds, stop and give the user the
    common cause, two or three ways forward, and their cost.
 
@@ -123,7 +127,8 @@ never leaves a step only in an attachment. The main file has:
 4. **Key points** — the rule, the mechanism behind it, its evidence (a cache citation, or
    the command and its output quoted in place), what breaks without it.
 5. **Traps** — approaches that fail, their symptoms, the fix.
-6. **Checks** — commands that confirm a later change still holds.
+6. **Checks** — commands that run the examples and the tests in `tests/`, with the output
+   to expect; rerun them after any later change.
 7. **Attachments** — the list of links above, one line each.
 
 Write for a reader with no context: explicit steps; every term defined at first use; whole
@@ -142,8 +147,8 @@ counts, finding history.
 3. A fresh subagent with no context follows only `BRIEF.md` and the attachments it links,
    and lists every step it could not carry out without outside knowledge, and every
    attachment that is not linked or that repeats or contradicts the main file. Close each gap.
-4. Copy the deliverable to a clean directory, follow the brief's own setup and checks: every
-   test passes.
+4. Copy the deliverable to a clean directory, follow the brief's own setup and checks: the
+   output matches what the brief quotes and every test in `tests/` passes.
 
 Hand over the deliverable path, the four gate results with real output, and the spec's open
 assumptions.

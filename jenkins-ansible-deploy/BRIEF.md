@@ -11,7 +11,7 @@
 | 组件 | 版本 |
 | --- | --- |
 | Jenkins | 2.580.1（Java 21） |
-| Jenkins 插件 | `ansible` 635.v34b_48e979c86、`uno-choice`（Active Choices）2.8.11、`pipeline-utility-steps` 3.810.va_7672d206740、`credentials-binding` 728.v902a_273b_8947、`workflow-cps` 4395.v738456a_5da_6b_、`pipeline-input-step` 560.v56198a_642157、`workflow-aggregator` 608.v67378e9d3db_1；全部 65 个插件及版本见 `examples/tests/jenkins_server/plugins.txt` |
+| Jenkins 插件 | `ansible` 635.v34b_48e979c86、`uno-choice`（Active Choices）2.8.11、`pipeline-utility-steps` 3.810.va_7672d206740、`credentials-binding` 728.v902a_273b_8947、`workflow-cps` 4395.v738456a_5da_6b_、`pipeline-input-step` 560.v56198a_642157、`workflow-aggregator` 608.v67378e9d3db_1；全部 65 个插件及版本见 `tests/jenkins_server/plugins.txt` |
 | ansible-core | 2.21.5 |
 | ansible-lint | 26.10.1 |
 | Python | 3.13；测试用 pytest 9.1.1、playwright 1.64.0、PyYAML 6.0.1、cryptography 50.0.1 |
@@ -29,7 +29,7 @@ Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中，**不需要管理员�
 运行本目录的测试（从仓库根目录开始；集成测试同样要求本目录名为 `jenkins-ansible-deploy`）：
 
 ```bash
-cd jenkins-ansible-deploy/examples
+cd jenkins-ansible-deploy
 pip install ansible-core==2.21.5 ansible-lint==26.10.1 pytest==9.1.1 playwright==1.64.0 PyYAML==6.0.1 cryptography==50.0.1
 python3 -m pytest tests -m 'not jenkins'            # 只需要 Ansible，约 2 分钟
 
@@ -60,7 +60,7 @@ examples/
     run-task.yml             运行一个额外任务（role 名由 Jenkins 传入）
     check-inventory.yml      不连接主机，校验每台主机的 inventory 变量
     roles/                   app_deploy，以及额外任务 task_a、task_b、task_c、check_c、check_a
-  tests/                     pytest：Ansible 测试、Jenkins 集成测试、浏览器测试
+tests/                       pytest：Ansible 测试、Jenkins 集成测试、浏览器测试
 ```
 
 ### 3.1 一次构建的流程
@@ -191,7 +191,7 @@ task_a_delay_seconds: 0
 
 ```bash
 echo '{"task_role": "task_a", "task_hosts": "deploy_targets", "task_a_message": "hello", "task_a_repeat": 2}' > /tmp/vars.json
-ansible-playbook run-task.yml --limit api --vault-password-file ../tests/example-vault-password.txt -e @/tmp/vars.json
+ansible-playbook run-task.yml --limit api --vault-password-file ../../tests/example-vault-password.txt -e @/tmp/vars.json
 ```
 
 输出节选：
@@ -307,7 +307,7 @@ post:
 
 字符串参数的值在 YAML 中加引号：未加引号的 `yes`、`2026-01-01`、`1.0` 会被解析成布尔、日期、小数，引擎拒绝这些值。
 
-从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试大多这样触发构建（`examples/tests/jenkins_server/client.py` 的 `start_build`）；少数用例直接赋值 Active Choices 参数来模拟页面提交，见 [attachments/parameter-page.md](attachments/parameter-page.md) 第 3.5 节。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md:570-573`），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
+从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试大多这样触发构建（`tests/jenkins_server/client.py` 的 `start_build`）；少数用例直接赋值 Active Choices 参数来模拟页面提交，见 [attachments/parameter-page.md](attachments/parameter-page.md) 第 3.5 节。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md:570-573`），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
 
 参数页两种方案的界面细节与提交值的格式见 [attachments/parameter-page.md](attachments/parameter-page.md)。
 
@@ -445,7 +445,7 @@ Finished: ABORTED
 
 机制：`extraVars` 的每个值先被转成字符串（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java:390-432`；Map 只用于 `[value: …, hidden: …]` 包装一个标量，见同文件 `:399-409`），除 `true` / `false` 外都以 `-e key=value` 传入（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java:119-149`）；列表等非标量值被跳过（同文件 `:122-126`）。`key=value` 形式的值在 Ansible 中是字符串。
 
-证据：在 `examples/ansible` 下，同一任务分别用 `-e task_a_repeat=2` 和 `-e '{"task_a_repeat": 2, ...}'` 运行（两条命令都另加 `--vault-password-file ../tests/example-vault-password.txt`）：
+证据：在 `examples/ansible` 下，同一任务分别用 `-e task_a_repeat=2` 和 `-e '{"task_a_repeat": 2, ...}'` 运行（两条命令都另加 `--vault-password-file ../../tests/example-vault-password.txt`）：
 
 ```
 $ ansible-playbook run-task.yml --limit api -e task_role=task_a -e task_hosts=deploy_targets -e task_a_message=x -e task_a_repeat=2
@@ -466,7 +466,7 @@ $ ansible-playbook run-task.yml --limit api -e '{"task_role":"task_a","task_host
 
 机制：Ansible 会渲染 extra vars 中的 Jinja 表达式，而 extra vars 的优先级最高。不加限制时，能触发构建的人可以在 Jenkins 节点上执行命令，或传入 `ansible_connection` 之类的变量改变连接方式；参数名与 inventory 变量重名时，会静默覆盖 inventory 中的值。
 
-证据：在 `examples/ansible` 下，直接把含模板的值交给 Ansible（另加 `--vault-password-file ../tests/example-vault-password.txt`）：
+证据：在 `examples/ansible` 下，直接把含模板的值交给 Ansible（另加 `--vault-password-file ../../tests/example-vault-password.txt`）：
 
 ```
 $ cat vars.json
@@ -582,7 +582,7 @@ C HEAD=207de2cb2d4013bcfcc6bb97a22b007c3acadb29
 修改后运行：
 
 ```bash
-cd jenkins-ansible-deploy/examples
+cd jenkins-ansible-deploy
 python3 -m pytest tests -m 'not jenkins'      # inventory、playbook、任务目录约定、ansible-lint
 python3 -m pytest tests                        # 再加 Jenkins 与浏览器集成测试，需要第 2 节的本地 Jenkins
 ```
@@ -591,8 +591,8 @@ python3 -m pytest tests                        # 再加 Jenkins 与浏览器集�
 
 ```bash
 ansible-inventory --graph deploy_targets
-ansible-playbook check-inventory.yml --vault-password-file ../tests/example-vault-password.txt
-ANSIBLE_VAULT_PASSWORD_FILE=../tests/example-vault-password.txt ansible-lint --offline --profile production
+ansible-playbook check-inventory.yml --vault-password-file ../../tests/example-vault-password.txt
+ANSIBLE_VAULT_PASSWORD_FILE=../../tests/example-vault-password.txt ansible-lint --offline --profile production
 ```
 
 `check-inventory.yml` 不连接主机，对每台发布对象按 `app_deploy` 的 argument_specs 校验，一次报告所有主机的问题，例如把 `web` 的 `app_port` 改成 `eighty`、删掉 `api` 的 `app_version` 时：
