@@ -17,7 +17,7 @@ final class Styles {
 
     static final String WORD_NAMESPACE = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
     /** Parses a fragment whose root element is a WordprocessingML element, such as {@code <w:style>}. */
-    static final XmlOptions FRAGMENT = new XmlOptions().setLoadReplaceDocumentElement(null);
+    static final XmlOptions ELEMENT_OPTIONS = new XmlOptions().setLoadReplaceDocumentElement(null);
 
     enum Style {
         NORMAL("Normal", "Normal"),
@@ -51,6 +51,13 @@ final class Styles {
         static Style contents(int level) { return values()[CONTENTS_1.ordinal() + level - 1]; }
     }
 
+    /** Left indent of the Quote style, in twips; each nested quote adds it again. */
+    static final int QUOTE_INDENT = 240;
+    /** Left indent of the Source Code style, in twips. */
+    static final int CODE_INDENT = 96;
+    /** Left plus right cell margin of the table style, in twips. */
+    static final int CELL_MARGINS = 200;
+
     private static final int[] HEADING_SIZES = {32, 28, 26, 24, 22, 21, 21, 21, 21};
 
     private final Map<Style, String> ids = new EnumMap<>(Style.class);
@@ -74,16 +81,15 @@ final class Styles {
         XWPFStyles target = document.createStyles();
         StringBuilder xml = new StringBuilder("<w:styles ").append(WORD_NAMESPACE).append('>').append(documentDefaults(options));
         for (Style style : Style.values()) xml.append(definitionXml(style, options));
-        target.setStyles(CTStyles.Factory.parse(xml.append("</w:styles>").toString(), FRAGMENT));
+        target.setStyles(CTStyles.Factory.parse(xml.append("</w:styles>").toString(), ELEMENT_OPTIONS));
         Styles result = new Styles(target);
         for (Style style : Style.values()) result.ids.put(style, style.defaultId);
         return result;
     }
 
     /**
-     * Finds each style in a template by its name, not its ID. The ID only links paragraphs to the style inside one
-     * document and can be any string (a template may call "heading 1" simply "1"). Styles the template lacks are
-     * added.
+     * Finds each style in a template by its name, not its ID: the ID only links paragraphs to the style inside one
+     * document and can be any string, such as "1" for "heading 1". Styles the template lacks are added.
      */
     static Styles fromTemplate(XWPFDocument document, ComposeOptions options) throws XmlException {
         if (document.getStyles() == null) return create(document, options);
@@ -93,7 +99,7 @@ final class Styles {
             String id = findByName(target, style.name);
             if (id == null && target.styleExist(style.defaultId)) id = style.defaultId;
             if (id == null) {
-                target.addStyle(new XWPFStyle(CTStyle.Factory.parse(definitionXml(style, options), FRAGMENT), target));
+                target.addStyle(new XWPFStyle(CTStyle.Factory.parse(definitionXml(style, options), ELEMENT_OPTIONS), target));
                 id = style.defaultId;
             }
             result.ids.put(style, id);
@@ -150,7 +156,7 @@ final class Styles {
             case CONTENTS_1, CONTENTS_2, CONTENTS_3, CONTENTS_4, CONTENTS_5, CONTENTS_6, CONTENTS_7, CONTENTS_8, CONTENTS_9 -> {
                 int level = style.ordinal() - Style.CONTENTS_1.ordinal();
                 yield head.formatted("paragraph", "") + "<w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:uiPriority w:val=\"39\"/>"
-                        + "<w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"9016\"/></w:tabs>"
+                        + "<w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"" + PageSetup.A4_TEXT_WIDTH + "\"/></w:tabs>"
                         + "<w:spacing w:after=\"60\"/><w:ind w:left=\"" + (420 * level) + "\"/></w:pPr></w:style>";
             }
             case LIST_PARAGRAPH -> head.formatted("paragraph", "") + """
@@ -158,17 +164,17 @@ final class Styles {
                 <w:pPr><w:spacing w:after="60"/><w:contextualSpacing/></w:pPr></w:style>""";
             case QUOTE -> head.formatted("paragraph", "") + """
                 <w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="29"/><w:qFormat/>
-                <w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="BFBFBF"/></w:pBdr><w:ind w:left="240"/></w:pPr>
-                <w:rPr><w:color w:val="595959"/></w:rPr></w:style>""";
+                <w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="BFBFBF"/></w:pBdr><w:ind w:left="%d"/></w:pPr>
+                <w:rPr><w:color w:val="595959"/></w:rPr></w:style>""".formatted(QUOTE_INDENT);
             case SOURCE_CODE -> head.formatted("paragraph", "") + """
                 <w:basedOn w:val="Normal"/>
                 <w:pPr><w:keepLines/>
                   <w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="D9D9D9"/><w:left w:val="single" w:sz="4" w:space="4" w:color="D9D9D9"/>
                   <w:bottom w:val="single" w:sz="4" w:space="4" w:color="D9D9D9"/><w:right w:val="single" w:sz="4" w:space="4" w:color="D9D9D9"/></w:pBdr>
                   <w:shd w:val="clear" w:color="auto" w:fill="F5F5F5"/><w:spacing w:before="60" w:after="180" w:line="240" w:lineRule="auto"/>
-                  <w:ind w:left="96" w:right="96"/><w:jc w:val="left"/></w:pPr>
+                  <w:ind w:left="%2$d" w:right="%2$d"/><w:jc w:val="left"/></w:pPr>
                 <w:rPr><w:rFonts w:ascii="%1$s" w:hAnsi="%1$s" w:cs="%1$s"/><w:noProof/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr></w:style>"""
-                    .formatted(monospace);
+                    .formatted(monospace, CODE_INDENT);
             case VERBATIM_CHARACTER -> head.formatted("character", "") + """
                 <w:rPr><w:rFonts w:ascii="%1$s" w:hAnsi="%1$s" w:cs="%1$s"/><w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/></w:rPr></w:style>"""
                     .formatted(monospace);
@@ -185,12 +191,12 @@ final class Styles {
                   <w:top w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/><w:left w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>
                   <w:bottom w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/><w:right w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>
                   <w:insideH w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>
-                </w:tblBorders><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="100" w:type="dxa"/>
-                  <w:bottom w:w="40" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>""";
+                </w:tblBorders><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="%1$d" w:type="dxa"/>
+                  <w:bottom w:w="40" w:type="dxa"/><w:right w:w="%1$d" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>""".formatted(CELL_MARGINS / 2);
         };
     }
 
     static String attribute(String value) {
-        return value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
+        return Texts.xmlSafe(value).replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
     }
 }

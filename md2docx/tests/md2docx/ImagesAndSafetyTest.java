@@ -40,7 +40,7 @@ class ImagesAndSafetyTest {
     }
 
     @Test
-    void relativeImageIsReadFromTheSectionDirectoryAndCentredWhenAlone() throws Exception {
+    void relativeImageIsReadFromTheSectionDirectoryAndCenteredWhenAlone() throws Exception {
         Files.createDirectories(directory.resolve("images"));
         Files.write(directory.resolve("images/a.png"), image("png", 40, 20));
         byte[] docx = compose(Section.untitled("![Alt text](images/a.png)").baseDirectory(directory));
@@ -142,6 +142,7 @@ class ImagesAndSafetyTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Timeout(10)
     void localFilesNeverOpensANetworkConnection() throws Exception {
         AtomicBoolean connected = new AtomicBoolean();
         try (ServerSocket server = new ServerSocket(0)) {
@@ -175,6 +176,10 @@ class ImagesAndSafetyTest {
         for (String refused : List.of("javascript", "file:", "other.md", "data:")) {
             assertFalse(relations.contains(refused), refused);
         }
+        String xml = part(docx, "word/document.xml");
+        List<String> hyperlinkRunStyles = java.util.regex.Pattern.compile("<w:hyperlink [^>]*><w:r><w:rPr><w:rStyle w:val=\"([^\"]+)\"")
+                .matcher(xml).results().map(match -> match.group(1)).toList();
+        assertEquals(List.of("Hyperlink", "Hyperlink", "Hyperlink", "Hyperlink", "Hyperlink"), hyperlinkRunStyles);
         try (XWPFDocument document = open(docx)) {
             assertTrue(document.getParagraphs().get(0).getText().contains("j file rel data"));
         }
@@ -198,5 +203,122 @@ class ImagesAndSafetyTest {
             assertEquals(1, document.getAllPictures().size());
             assertTrue(document.getParagraphs().get(0).getText().contains("[b]"));
         }
+    }
+
+    @Test
+    void symbolicLinkLeavingTheDirectoryIsRefused() throws Exception {
+        Path root = Files.createDirectories(directory.resolve("root"));
+        Path outside = Files.write(directory.resolve("outside.png"), image("png", 5, 5));
+        Files.createSymbolicLink(root.resolve("link.png"), outside);
+        Files.createSymbolicLink(root.resolve("inside-link.png"), Files.write(root.resolve("real.png"), image("png", 5, 5)));
+        assertNull(ImageResolver.localFiles().resolve("link.png", root));
+        assertArrayEquals(Files.readAllBytes(root.resolve("real.png")), ImageResolver.localFiles().resolve("inside-link.png", root));
+    }
+
+    @Test
+    void imagesAboveTheSizeLimitAreNotRead() throws Exception {
+        Path big = directory.resolve("big.png");
+        try (var file = new java.io.RandomAccessFile(big.toFile(), "rw")) {
+            file.setLength(ImageResolver.MAXIMUM_BYTES + 1);
+        }
+        assertNull(ImageResolver.localFiles().resolve("big.png", directory));
+        String data = "data:image/png;base64," + "A".repeat((int) (ImageResolver.MAXIMUM_BYTES / 3 * 4 + 8));
+        assertNull(ImageResolver.localFiles().resolve(data, directory));
+        assertEquals(List.of("-: [big]"), paragraphs(compose(Section.untitled("![big](big.png)").baseDirectory(directory))));
+    }
+
+    @Test
+    void alternativeTextIsWrittenToBothPictureDescriptions() throws Exception {
+        Files.write(directory.resolve("a.png"), image("png", 5, 5));
+        String xml = part(compose(Section.untitled("![Chart of results](a.png)\n\n![](a.png)").baseDirectory(directory)), "word/document.xml");
+        assertEquals(2, TestSupport.count(xml, "descr=\"Chart of results\""));
+        assertEquals(2, TestSupport.count(xml, "descr=\"\""));
+        assertFalse(xml.contains("image.png"));
+    }
+
+    @Test
+    void imageInsideAFootnoteBecomesItsAlternativeText() throws Exception {
+        Files.write(directory.resolve("p.png"), image("png", 5, 5));
+        byte[] docx = compose(Section.untitled("Body[^a].\n\n[^a]: pic ![alt](p.png)\n").baseDirectory(directory));
+        String footnotes = part(docx, "word/footnotes.xml");
+        assertTrue(footnotes.contains("[alt]"));
+        assertFalse(footnotes.contains("r:embed"));
+        try (XWPFDocument document = open(docx)) {
+            assertEquals(0, document.getAllPictures().size());
+        }
+    }
+
+    @Test
+    void linkTargetWithACharacterXmlDoesNotAllowStaysText() throws Exception {
+        byte[] docx = compose(Section.untitled("[x](http://example.com/&#xFFFE;) [spaces](<http://example.com/a b>)"));
+        try (XWPFDocument document = open(docx)) {
+            assertEquals("x spaces", document.getParagraphs().get(0).getText());
+        }
+        String relations = part(docx, "word/_rels/document.xml.rels");
+        assertTrue(relations.contains("Target=\"http://example.com/a%20b\""));
+        assertEquals(1, TestSupport.count(relations, "hyperlink\""));
+    }
+
+    @Test
+    void htmlBlockWithManyUnclosedCommentsAndTagsTakesLinearTime() {
+        String comments = "<div>\n" + "<!--".repeat(40_000);
+        String tags = "<div>\n" + "<a".repeat(40_000);
+        long start = System.nanoTime();
+        compose(Section.untitled(comments), Section.untitled(tags));
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(millis < 3_000, millis + " ms");
+    }
+
+    @Test
+    void htmlBlockCharacterReferencesAreDecoded() {
+        assertEquals(List.of("-: A & B <tag> é \\*"),
+                paragraphs(compose(Section.untitled("<div>A &amp; B &lt;tag&gt; &#233; \\*</div>"))));
+    }
+
+    @Test
+    void childSectionsDoNotInheritTheImageDirectory() throws Exception {
+        Files.write(directory.resolve("a.png"), image("png", 5, 5));
+        byte[] docx = compose(Section.of("P", "![p](a.png)").baseDirectory(directory).child(Section.untitled("![c](a.png)")));
+        try (XWPFDocument document = open(docx)) {
+            assertEquals(1, document.getAllPictures().size());
+        }
+        assertEquals("-: [c]", paragraphs(docx).get(2));
+    }
+
+    @Test
+    void tallImageIsLimitedToNinetyPercentOfTheTextHeight() throws Exception {
+        Files.write(directory.resolve("tall.png"), image("png", 100, 5000));
+        byte[] docx = compose(Section.untitled("![](tall.png)").baseDirectory(directory));
+        try (XWPFDocument document = open(docx)) {
+            var extent = document.getParagraphs().get(0).getRuns().get(0).getEmbeddedPictures().get(0).getCTPicture().getSpPr().getXfrm().getExt();
+            assertEquals(0.9 * (16838 - 2 * 1440) * 635, extent.getCy(), 635);
+        }
+    }
+
+    @Test
+    void imageInATableCellIsLimitedToTheCellWidthMinusItsMargins() throws Exception {
+        Files.write(directory.resolve("wide.png"), image("png", 3000, 300));
+        byte[] docx = compose(Section.untitled("| a | b |\n| - | - |\n| ![](wide.png) | text |").baseDirectory(directory));
+        try (XWPFDocument document = open(docx)) {
+            var cell = document.getTables().get(0).getRow(1).getCell(0);
+            long cellWidth = Long.parseLong(cell.getCTTc().getTcPr().getTcW().getW().toString());
+            long imageWidth = cell.getParagraphs().get(0).getRuns().get(0).getEmbeddedPictures().get(0)
+                    .getCTPicture().getSpPr().getXfrm().getExt().getCx();
+            assertEquals((cellWidth - 200) * 635, imageWidth, 635);
+        }
+    }
+
+    @Test
+    void paragraphWithTextAndAnImageIsNotCentered() throws Exception {
+        Files.write(directory.resolve("a.png"), image("png", 5, 5));
+        try (XWPFDocument document = open(compose(Section.untitled("text ![x](a.png)").baseDirectory(directory)))) {
+            assertEquals("LEFT", document.getParagraphs().get(0).getAlignment().name());
+        }
+    }
+
+    @Test
+    void destinationThatLooksLikeASchemeIsRefusedEvenWhenSuchAFileExists() throws Exception {
+        Files.write(directory.resolve("x:y.png"), image("png", 5, 5));
+        assertNull(ImageResolver.localFiles().resolve("x:y.png", directory));
     }
 }

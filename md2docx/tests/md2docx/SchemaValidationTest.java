@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SchemaValidationTest {
 
-    private static final String MAIN = "org.openxmlformats.schemas.wordprocessingml.x2006.main.";
+    private static final String MAIN_SCHEMA_PACKAGE = "org.openxmlformats.schemas.wordprocessingml.x2006.main.";
 
     @Test
     void fullSchemasAreOnTheClassPath() {
@@ -54,9 +54,13 @@ class SchemaValidationTest {
         validate("defaults", new MarkdownDocxComposer().compose(sections), errors, parts);
         validate("empty", new MarkdownDocxComposer(everything).compose(List.of()), errors, parts);
         assertEquals(List.of(), errors);
+        // the demo image is in both the "all options" and the "defaults" document
+        assertEquals(2, pictures[0]);
         assertEquals(Set.of("word/document.xml", "word/footer1.xml", "word/footnotes.xml", "word/numbering.xml",
                 "word/settings.xml", "word/styles.xml"), parts);
     }
+
+    private static final int[] pictures = {0};
 
     private static void validate(String name, byte[] docx, List<String> errors, Set<String> parts) throws Exception {
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(docx))) {
@@ -64,7 +68,7 @@ class SchemaValidationTest {
                 String type = schemaFor(entry.getName());
                 if (type == null) continue;
                 parts.add(entry.getName());
-                SchemaType schema = (SchemaType) Class.forName(MAIN + type).getField("type").get(null);
+                SchemaType schema = (SchemaType) Class.forName(MAIN_SCHEMA_PACKAGE + type).getField("type").get(null);
                 XmlObject xml = XmlObject.Factory.parse(new ByteArrayInputStream(zip.readAllBytes()), new XmlOptions().setDocumentType(schema));
                 List<XmlError> found = new ArrayList<>();
                 xml.validate(new XmlOptions().setErrorListener(found));
@@ -73,12 +77,12 @@ class SchemaValidationTest {
                     if (error.getMessage().contains("strict wildcard") && error.getMessage().contains("drawingml/2006/picture")) continue;
                     errors.add(name + " " + entry.getName() + ": " + error);
                 }
-                if (entry.getName().equals("word/document.xml")) validatePictures(name, xml, errors);
+                if (entry.getName().equals("word/document.xml")) pictures[0] += validatePictures(name, xml, errors);
             }
         }
     }
 
-    private static void validatePictures(String name, XmlObject document, List<String> errors) throws Exception {
+    private static int validatePictures(String name, XmlObject document, List<String> errors) throws Exception {
         SchemaType picture = (SchemaType) Class.forName("org.openxmlformats.schemas.drawingml.x2006.picture.PicDocument").getField("type").get(null);
         for (XmlObject element : document.selectPath(
                 "declare namespace pic='http://schemas.openxmlformats.org/drawingml/2006/picture' .//pic:pic")) {
@@ -87,6 +91,7 @@ class SchemaValidationTest {
             standalone.validate(new XmlOptions().setErrorListener(found));
             found.forEach(error -> errors.add(name + " pic:pic: " + error));
         }
+        return document.selectPath("declare namespace pic='http://schemas.openxmlformats.org/drawingml/2006/picture' .//pic:pic").length;
     }
 
     private static String schemaFor(String part) {
@@ -103,9 +108,9 @@ class SchemaValidationTest {
     private static boolean fullSchemasPresent() {
         try {
             // CTFtnDocProps is in poi-ooxml-full only
-            Class.forName(MAIN + "CTFtnDocProps");
+            Class.forName(MAIN_SCHEMA_PACKAGE + "CTFtnDocProps");
             return true;
-        } catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException missing) {
             return false;
         }
     }

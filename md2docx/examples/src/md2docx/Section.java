@@ -2,6 +2,7 @@ package md2docx;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -26,7 +27,6 @@ public final class Section {
         this.titleSource = titleSource;
     }
 
-    /** A section with the given title and Markdown body. */
     public static Section of(String title, String markdown) {
         return new Section(requireText(title), markdown, TitleSource.GIVEN);
     }
@@ -68,7 +68,7 @@ public final class Section {
     TitleSource titleSource() { return titleSource; }
     Path baseDirectory() { return baseDirectory; }
     Boolean pageBreakBefore() { return pageBreakBefore; }
-    List<Section> children() { return children; }
+    List<Section> children() { return Collections.unmodifiableList(children); }
 
     private static String requireText(String title) {
         if (title == null || title.isBlank()) throw new IllegalArgumentException("title must not be blank");

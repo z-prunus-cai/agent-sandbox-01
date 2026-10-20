@@ -11,6 +11,7 @@ import org.commonmark.node.Text;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -24,9 +25,20 @@ final class Images {
     private Images() {
     }
 
-    /** Adds the picture to {@code run}, or returns false when it cannot be loaded or is not a supported format. */
-    static boolean add(XWPFRun run, ImageResolver resolver, Image image, Path baseDirectory,
+    /**
+     * Adds the picture to {@code run}; when it cannot be loaded, is not a supported format, or {@code embed} is
+     * false, writes {@code [alternative text]} instead.
+     */
+    static void render(XWPFRun run, Image image, boolean embed, ImageResolver resolver, Path baseDirectory,
                        int maximumWidthTwips, int maximumHeightTwips) {
+        String alternative = Texts.xmlSafe(Texts.plainText(image));
+        if (!embed || !add(run, image, alternative, resolver, baseDirectory, maximumWidthTwips, maximumHeightTwips)) {
+            Texts.write(run, "[" + (alternative.isEmpty() ? "image" : alternative) + "]");
+        }
+    }
+
+    private static boolean add(XWPFRun run, Image image, String alternative, ImageResolver resolver, Path baseDirectory,
+                               int maximumWidthTwips, int maximumHeightTwips) {
         try {
             byte[] bytes = resolver.resolve(image.getDestination(), baseDirectory);
             PictureType type = bytes == null ? null : type(bytes);
@@ -36,12 +48,8 @@ final class Images {
             double height = pixels[1] * (double) Units.EMU_PER_PIXEL;
             double scale = Math.min(1, Math.min(maximumWidthTwips * (double) EMU_PER_TWIP / width,
                     maximumHeightTwips * 0.9 * EMU_PER_TWIP / height));
-            run.addPicture(new ByteArrayInputStream(bytes), type, "image" + type.extension,
-                    (int) (width * scale), (int) (height * scale));
-            String alternative = Texts.plainText(image);
-            if (!alternative.isEmpty()) {
-                run.getCTR().getDrawingArray(0).getInlineArray(0).getDocPr().setDescr(Texts.xmlSafe(alternative));
-            }
+            // POI writes this "file name" into both alternative-text attributes of the picture
+            run.addPicture(new ByteArrayInputStream(bytes), type, alternative, (int) (width * scale), (int) (height * scale));
             return true;
         } catch (Exception unreadable) {
             return false;
@@ -67,9 +75,9 @@ final class Images {
         return null;
     }
 
-    /** Reads the size from the image header without decoding the pixels. */
+    /** Reads the size from the image header without decoding the pixels, and without a temporary file. */
     private static int[] pixelSize(byte[] bytes) throws IOException {
-        try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+        try (ImageInputStream input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
             if (!readers.hasNext()) return null;
             ImageReader reader = readers.next();

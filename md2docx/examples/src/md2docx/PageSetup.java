@@ -1,5 +1,7 @@
 package md2docx;
 
+import org.apache.poi.ooxml.util.POIXMLUnits;
+import org.apache.poi.util.Units;
 import org.apache.poi.wp.usermodel.HeaderFooterType;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -10,7 +12,6 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSimpleField;
 
-import java.math.BigDecimal;
 import java.math.BigInteger;
 
 /** Page size and margins, in twips (1/20 point; 1440 twips = 1 inch = 2.54 cm). */
@@ -18,9 +19,14 @@ record PageSetup(int textWidthTwips, int textHeightTwips) {
 
     private static final int A4_WIDTH = 11906;
     private static final int A4_HEIGHT = 16838;
+    /** 2.54 cm on every side. */
     private static final int MARGIN = 1440;
+    /** Distance from the page edge to the header, 1.5 cm. */
+    private static final int HEADER_DISTANCE = 851;
+    /** Distance from the page edge to the footer, 1.75 cm. */
+    private static final int FOOTER_DISTANCE = 992;
+    static final int A4_TEXT_WIDTH = A4_WIDTH - 2 * MARGIN;
 
-    /** A4 with 2.54 cm margins, for a document without a template. */
     static void applyA4(XWPFDocument document) {
         CTBody body = document.getDocument().getBody();
         CTSectPr section = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();
@@ -32,8 +38,8 @@ record PageSetup(int textWidthTwips, int textHeightTwips) {
         margins.setBottom(BigInteger.valueOf(MARGIN));
         margins.setLeft(BigInteger.valueOf(MARGIN));
         margins.setRight(BigInteger.valueOf(MARGIN));
-        margins.setHeader(BigInteger.valueOf(851));
-        margins.setFooter(BigInteger.valueOf(992));
+        margins.setHeader(BigInteger.valueOf(HEADER_DISTANCE));
+        margins.setFooter(BigInteger.valueOf(FOOTER_DISTANCE));
         margins.setGutter(BigInteger.ZERO);
     }
 
@@ -41,10 +47,29 @@ record PageSetup(int textWidthTwips, int textHeightTwips) {
     static PageSetup of(XWPFDocument document) {
         CTBody body = document.getDocument().getBody();
         CTSectPr section = body.isSetSectPr() ? body.getSectPr() : null;
-        return new PageSetup(textSize(section, true), textSize(section, false));
+        int width = A4_WIDTH;
+        int height = A4_HEIGHT;
+        int left = MARGIN;
+        int right = MARGIN;
+        int top = MARGIN;
+        int bottom = MARGIN;
+        if (section != null && section.isSetPgSz()) {
+            CTPageSz size = section.getPgSz();
+            if (size.isSetW()) width = twips(POIXMLUnits.parseLength(size.xgetW()));
+            if (size.isSetH()) height = twips(POIXMLUnits.parseLength(size.xgetH()));
+        }
+        if (section != null && section.isSetPgMar()) {
+            CTPageMar margins = section.getPgMar();
+            left = twips(POIXMLUnits.parseLength(margins.xgetLeft()));
+            right = twips(POIXMLUnits.parseLength(margins.xgetRight()));
+            top = twips(POIXMLUnits.parseLength(margins.xgetTop()));
+            bottom = twips(POIXMLUnits.parseLength(margins.xgetBottom()));
+        }
+        return new PageSetup(Math.max(width - Math.abs(left) - Math.abs(right), MARGIN),
+                Math.max(height - Math.abs(top) - Math.abs(bottom), MARGIN));
     }
 
-    /** A centred PAGE field in the default footer, unless the template already has a footer. */
+    /** A centered PAGE field in the default footer, unless the template already has a footer. */
     static void addPageNumbers(XWPFDocument document) {
         if (!document.getFooterList().isEmpty()) return;
         XWPFParagraph paragraph = document.createFooter(HeaderFooterType.DEFAULT).createParagraph();
@@ -54,28 +79,8 @@ record PageSetup(int textWidthTwips, int textHeightTwips) {
         field.addNewR().addNewT().setStringValue("1");
     }
 
-    private static int textSize(CTSectPr section, boolean horizontal) {
-        int page = horizontal ? A4_WIDTH : A4_HEIGHT;
-        int first = MARGIN;
-        int second = MARGIN;
-        if (section != null && section.isSetPgSz()) {
-            page = twips(horizontal ? section.getPgSz().getW() : section.getPgSz().getH(), page);
-        }
-        if (section != null && section.isSetPgMar()) {
-            CTPageMar margins = section.getPgMar();
-            first = twips(horizontal ? margins.getLeft() : margins.getTop(), first);
-            second = twips(horizontal ? margins.getRight() : margins.getBottom(), second);
-        }
-        return Math.max(page - Math.abs(first) - Math.abs(second), 1440);
-    }
-
-    /** Sizes are plain twips in practice; values with a unit such as "2.5cm" fall back to the default. */
-    private static int twips(Object value, int fallback) {
-        if (value == null) return fallback;
-        try {
-            return new BigDecimal(value.toString()).intValue();
-        } catch (NumberFormatException withUnit) {
-            return fallback;
-        }
+    /** POI parses lengths with or without a unit, such as "1440" or "2.54cm", into EMU. */
+    private static int twips(long emu) {
+        return (int) Math.round(emu / (Units.EMU_PER_POINT / 20.0));
     }
 }

@@ -3,7 +3,7 @@ package md2docx;
 import org.apache.poi.xwpf.usermodel.Borders;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
-import org.apache.poi.xwpf.usermodel.XWPFFootnote;
+import org.apache.poi.xwpf.usermodel.XWPFHyperlinkRun;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
@@ -11,10 +11,11 @@ import org.commonmark.ext.footnotes.FootnoteDefinition;
 import org.commonmark.ext.footnotes.FootnoteReference;
 import org.commonmark.ext.gfm.strikethrough.Strikethrough;
 import org.commonmark.ext.gfm.tables.TableBlock;
-import org.commonmark.ext.task.list.items.TaskListItemMarker;
 import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
+import org.commonmark.node.CustomBlock;
+import org.commonmark.node.DefinitionMap;
 import org.commonmark.node.Emphasis;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.HardLineBreak;
@@ -27,35 +28,23 @@ import org.commonmark.node.Link;
 import org.commonmark.node.LinkReferenceDefinition;
 import org.commonmark.node.ListBlock;
 import org.commonmark.node.Node;
-import org.commonmark.node.OrderedList;
 import org.commonmark.node.Paragraph;
 import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.StrongEmphasis;
 import org.commonmark.node.Text;
 import org.commonmark.node.ThematicBreak;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTHyperlink;
 
 import java.math.BigInteger;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.regex.Pattern;
 
-/** Renders the body of one section: its Markdown blocks and inline content. */
+/** Renders the body of one section: its Markdown blocks and inline content. Each feature lives in its own class. */
 final class Fragment {
 
-    private static final int LIST_INDENT = 420;
-    private static final int QUOTE_INDENT = 360;
-
-    /** Where blocks go: the document body or a footnote. */
-    interface Container {
-        XWPFParagraph paragraph();
-
-        XWPFTable table(int rows, int columns);
-
-        List<IBodyElement> elements();
-
-        boolean isBody();
-    }
+    private static final Pattern LINE_BREAK_TAG = Pattern.compile("(?i)<br\\s*/?>");
+    private static final Pattern CARRIAGE_RETURN = Pattern.compile("\r\n?");
 
     private record Place(Container container, int listLevel, int quoteDepth) {
         Place inList(int level) { return new Place(container, level, quoteDepth); }
@@ -63,12 +52,22 @@ final class Fragment {
         Place inQuote() { return new Place(container, listLevel, quoteDepth + 1); }
 
         int indent() {
-            return (listLevel >= 0 ? LIST_INDENT * (listLevel + 1) : 0) + (quoteDepth > 0 ? 240 + QUOTE_INDENT * (quoteDepth - 1) : 0);
+            return (listLevel >= 0 ? Lists.INDENT * (listLevel + 1) : 0) + Styles.QUOTE_INDENT * quoteDepth;
         }
     }
 
-    private record Format(boolean bold, boolean italic, boolean strike, Links.Target link) {
-        static final Format PLAIN = new Format(false, false, false, new Links.TextOnly());
+    /** One Markdown link: all its runs go into the same Word hyperlink, created with the first run. */
+    private static final class OpenLink {
+        final Links.Target target;
+        CTHyperlink element;
+
+        OpenLink(Links.Target target) {
+            this.target = target;
+        }
+    }
+
+    private record Format(boolean bold, boolean italic, boolean strike, OpenLink link) {
+        static final Format PLAIN = new Format(false, false, false, null);
 
         Format withBold() { return new Format(true, italic, strike, link); }
 
@@ -76,7 +75,9 @@ final class Fragment {
 
         Format withStrike() { return new Format(bold, italic, true, link); }
 
-        Format withLink(Links.Target target) { return new Format(bold, italic, strike, target); }
+        Format withLink(Links.Target target) {
+            return new Format(bold, italic, strike, target instanceof Links.TextOnly ? null : new OpenLink(target));
+        }
     }
 
     private final Composition composition;
@@ -86,7 +87,7 @@ final class Fragment {
     private final Heading titleNode;
     private final int levelBase;
     private final int shallowestLevel;
-    private final Map<String, FootnoteDefinition> footnoteDefinitions = new HashMap<>();
+    private final DefinitionMap<FootnoteDefinition> footnoteDefinitions;
     private final Container body;
     private int imageWidthTwips;
 
@@ -101,19 +102,8 @@ final class Fragment {
         this.titleNode = titleNode;
         this.levelBase = levelBase;
         this.imageWidthTwips = composition.page.textWidthTwips();
-        int[] shallowest = {Integer.MAX_VALUE};
-        if (root != null) {
-            root.accept(new AbstractVisitor() {
-                @Override
-                public void visit(Heading heading) {
-                    if (heading != titleNode) shallowest[0] = Math.min(shallowest[0], heading.getLevel());
-                }
-            });
-            for (Node node = root.getFirstChild(); node != null; node = node.getNext()) {
-                if (node instanceof FootnoteDefinition definition) footnoteDefinitions.putIfAbsent(definition.getLabel(), definition);
-            }
-        }
-        this.shallowestLevel = shallowest[0] == Integer.MAX_VALUE ? 1 : shallowest[0];
+        this.shallowestLevel = shallowestHeading(root, titleNode);
+        this.footnoteDefinitions = Footnotes.definitions(root);
         this.body = new Container() {
             @Override
             public XWPFParagraph paragraph() {
@@ -132,6 +122,25 @@ final class Fragment {
         };
     }
 
+    /** Headings inside footnote definitions do not count: they never become document headings. */
+    private static int shallowestHeading(Node root, Heading titleNode) {
+        int[] shallowest = {Integer.MAX_VALUE};
+        if (root != null) {
+            root.accept(new AbstractVisitor() {
+                @Override
+                public void visit(Heading heading) {
+                    if (heading != titleNode) shallowest[0] = Math.min(shallowest[0], heading.getLevel());
+                }
+
+                @Override
+                public void visit(CustomBlock block) {
+                    if (!(block instanceof FootnoteDefinition)) visitChildren(block);
+                }
+            });
+        }
+        return shallowest[0] == Integer.MAX_VALUE ? 1 : shallowest[0];
+    }
+
     void sectionHeading(int level, String title) {
         heading(new Place(body, -1, 0), level, titleNode, title);
     }
@@ -148,14 +157,27 @@ final class Fragment {
         // the title is rendered by the section, footnotes where they are referenced
         if (node == titleNode || node instanceof FootnoteDefinition || node instanceof LinkReferenceDefinition) return;
         if (node instanceof Heading heading) {
-            int level = Math.max(1, Math.min(9, levelBase + heading.getLevel() - shallowestLevel + 1));
+            int level = Math.max(1, Math.min(Composition.MAXIMUM_LEVEL, levelBase + heading.getLevel() - shallowestLevel + 1));
             heading(place, level, heading, null);
         } else if (node instanceof Paragraph) {
-            XWPFParagraph paragraph = paragraph(place, null);
+            XWPFParagraph paragraph = paragraph(place);
             renderInlines(node, paragraph, Format.PLAIN);
             if (Images.onlyImages(node)) paragraph.setAlignment(ParagraphAlignment.CENTER);
         } else if (node instanceof ListBlock list) {
-            renderList(list, place);
+            composition.lists.render(list, place.listLevel + 1, new Lists.Output() {
+                @Override
+                public XWPFParagraph numberedParagraph(BigInteger numberingId, int level) {
+                    XWPFParagraph paragraph = place.container.paragraph();
+                    if (place.container.isBody()) paragraph.setStyle(composition.styles.id(Styles.Style.LIST_PARAGRAPH));
+                    paragraph.setNumID(numberingId);
+                    paragraph.setNumILvl(BigInteger.valueOf(Math.min(level, Composition.MAXIMUM_LEVEL - 1)));
+                    return paragraph;
+                }
+
+                @Override public void inlines(Node parent, XWPFParagraph paragraph) { renderInlines(parent, paragraph, Format.PLAIN); }
+
+                @Override public void block(Node block, int level) { renderBlock(block, place.inList(level)); }
+            });
         } else if (node instanceof BlockQuote) {
             renderBlocks(node, place.inQuote());
         } else if (node instanceof FencedCodeBlock fenced) {
@@ -163,18 +185,21 @@ final class Fragment {
         } else if (node instanceof IndentedCodeBlock indented) {
             renderCode(indented.getLiteral(), place);
         } else if (node instanceof ThematicBreak) {
-            paragraph(place, null).setBorderBottom(Borders.SINGLE);
+            paragraph(place).setBorderBottom(Borders.SINGLE);
         } else if (node instanceof TableBlock table) {
             Tables.render(table, place.container, composition.styles.id(Styles.Style.TABLE), composition.page.textWidthTwips(),
                     (cell, paragraph, header, widthTwips) -> {
                         int saved = imageWidthTwips;
-                        imageWidthTwips = Math.max(widthTwips - 200, 200);
-                        renderInlines(cell, paragraph, header ? Format.PLAIN.withBold() : Format.PLAIN);
-                        imageWidthTwips = saved;
+                        imageWidthTwips = Math.max(widthTwips - Styles.CELL_MARGINS, Styles.CELL_MARGINS);
+                        try {
+                            renderInlines(cell, paragraph, header ? Format.PLAIN.withBold() : Format.PLAIN);
+                        } finally {
+                            imageWidthTwips = saved;
+                        }
                     });
         } else if (node instanceof HtmlBlock html) {
-            String text = html.getLiteral().replaceAll("(?s)<!--.*?-->", "").replaceAll("<[^>]+>", "").strip();
-            if (!text.isEmpty()) Texts.write(paragraph(place, null).createRun(), text);
+            String text = Texts.htmlText(html.getLiteral());
+            if (!text.isEmpty()) Texts.write(paragraph(place).createRun(), text);
         } else {
             renderBlocks(node, place);
         }
@@ -183,7 +208,7 @@ final class Fragment {
     private void heading(Place place, int level, Node inlines, String plain) {
         if (!place.container.isBody()) {
             // a heading inside a footnote stays out of the outline and the table of contents
-            XWPFParagraph paragraph = paragraph(place, null);
+            XWPFParagraph paragraph = paragraph(place);
             if (inlines != null) renderInlines(inlines, paragraph, Format.PLAIN.withBold());
             else Texts.write(run(paragraph, Format.PLAIN.withBold()), plain);
             return;
@@ -193,59 +218,34 @@ final class Fragment {
         if (paragraph.getCTP().isSetPPr() && paragraph.getCTP().getPPr().isSetSpacing()) paragraph.getCTP().getPPr().unsetSpacing();
         paragraph.setStyle(composition.styles.id(Styles.Style.heading(level)));
         String text = inlines != null ? Texts.plainText(inlines) : plain;
-        composition.anchors.bookmarkHeading(paragraph, level, text, composition.headingNumbering.next(level), id, () -> {
+        String number = composition.headingNumbering == null ? null : composition.headingNumbering.next(level);
+        composition.anchors.bookmarkHeading(paragraph, level, text, number, id, () -> {
             if (inlines != null) renderInlines(inlines, paragraph, Format.PLAIN);
             else Texts.write(run(paragraph, Format.PLAIN), plain);
         });
     }
 
-    private XWPFParagraph paragraph(Place place, BigInteger numberingId) {
+    private XWPFParagraph paragraph(Place place) {
         XWPFParagraph paragraph = place.container.paragraph();
         if (place.container.isBody()) {
             if (place.listLevel >= 0) paragraph.setStyle(composition.styles.id(Styles.Style.LIST_PARAGRAPH));
             else if (place.quoteDepth > 0) paragraph.setStyle(composition.styles.id(Styles.Style.QUOTE));
         }
-        if (numberingId != null) {
-            paragraph.setNumID(numberingId);
-            paragraph.setNumILvl(BigInteger.valueOf(Math.min(place.listLevel, 8)));
-        } else if (place.indent() > 0) {
-            paragraph.setIndentationLeft(place.indent());
-        }
+        if (place.indent() > 0) paragraph.setIndentationLeft(place.indent());
         return paragraph;
     }
 
-    private void renderList(ListBlock list, Place place) {
-        boolean ordered = list instanceof OrderedList;
-        Integer start = list instanceof OrderedList orderedList ? orderedList.getMarkerStartNumber() : null;
-        BigInteger numberingId = composition.lists.newList(ordered, start == null ? 1 : start);
-        Place inner = place.inList(place.listLevel + 1);
-        for (Node item = list.getFirstChild(); item != null; item = item.getNext()) {
-            Node first = item.getFirstChild();
-            String checkbox = null;
-            if (first instanceof TaskListItemMarker marker) {
-                checkbox = marker.isChecked() ? "☒ " : "☐ ";
-                first = first.getNext();
-            }
-            // the numbered paragraph is the item's first paragraph, or an empty one when the item starts otherwise
-            XWPFParagraph paragraph = paragraph(inner, numberingId);
-            if (checkbox != null) Texts.write(paragraph.createRun(), checkbox);
-            Node rest = first;
-            if (first instanceof Paragraph) {
-                renderInlines(first, paragraph, Format.PLAIN);
-                rest = first.getNext();
-            }
-            for (Node node = rest; node != null; node = node.getNext()) renderBlock(node, inner);
-        }
-    }
-
     private void renderCode(String code, Place place) {
-        XWPFParagraph paragraph = paragraph(place, null);
+        XWPFParagraph paragraph = paragraph(place);
         paragraph.setStyle(composition.styles.id(Styles.Style.SOURCE_CODE));
-        if (place.indent() > 0) paragraph.setIndentationLeft(place.indent() + 96);
-        String[] lines = code.replaceAll("\r\n?", "\n").replaceAll("\n$", "").split("\n", -1);
-        for (int i = 0; i < lines.length; i++) {
-            if (i > 0) paragraph.createRun().addBreak();
-            Texts.write(paragraph.createRun(), lines[i].replace("\t", "    "));
+        if (place.indent() > 0) paragraph.setIndentationLeft(place.indent() + Styles.CODE_INDENT);
+        String normalized = CARRIAGE_RETURN.matcher(code).replaceAll("\n");
+        if (normalized.endsWith("\n")) normalized = normalized.substring(0, normalized.length() - 1);
+        String[] lines = normalized.split("\n", -1);
+        XWPFRun run = paragraph.createRun();
+        for (int line = 0; line < lines.length; line++) {
+            if (line > 0) run.addBreak();
+            run.setText(Texts.xmlSafe(lines[line].replace("\t", "    ")), line);
         }
     }
 
@@ -264,7 +264,7 @@ final class Fragment {
             renderInlines(node, paragraph, format.withStrike());
         } else if (node instanceof Code code) {
             XWPFRun run = run(paragraph, format);
-            if (format.link instanceof Links.TextOnly) run.setStyle(composition.styles.id(Styles.Style.VERBATIM_CHARACTER));
+            if (format.link == null) run.setStyle(composition.styles.id(Styles.Style.VERBATIM_CHARACTER));
             Texts.write(run, code.getLiteral());
         } else if (node instanceof Link link) {
             renderInlines(node, paragraph, format.withLink(Links.target(link.getDestination())));
@@ -273,75 +273,44 @@ final class Fragment {
         } else if (node instanceof HardLineBreak) {
             run(paragraph, format).addBreak();
         } else if (node instanceof HtmlInline html) {
-            if (html.getLiteral().matches("(?i)<br\\s*/?>")) run(paragraph, format).addBreak();
+            if (LINE_BREAK_TAG.matcher(html.getLiteral()).matches()) run(paragraph, format).addBreak();
         } else if (node instanceof Image image) {
-            XWPFRun run = run(paragraph, format);
-            if (!Images.add(run, composition.options.imageResolver, image, baseDirectory, imageWidthTwips, composition.page.textHeightTwips())) {
-                String alternative = Texts.plainText(image);
-                Texts.write(run, "[" + (alternative.isEmpty() ? "image" : alternative) + "]");
-            }
+            // POI adds a picture's relationship to the document part, so a picture inside a footnote would be broken
+            boolean embed = paragraph.getPart() == composition.document;
+            Images.render(run(paragraph, format), image, embed, composition.options.imageResolver, baseDirectory,
+                    imageWidthTwips, composition.page.textHeightTwips());
         } else if (node instanceof FootnoteReference reference) {
-            renderFootnoteReference(reference, paragraph);
+            composition.footnotes.reference(reference, footnoteDefinitions, paragraph,
+                    (definition, container) -> renderBlocks(definition, new Place(container, -1, 0)));
         } else {
             renderInlines(node, paragraph, format);
         }
     }
 
     private XWPFRun run(XWPFParagraph paragraph, Format format) {
-        XWPFRun run = switch (format.link) {
-            case Links.External external -> paragraph.createHyperlinkRun(external.url());
-            case Links.Internal internal -> composition.anchors.link(paragraph, id, internal.anchor());
-            case Links.TextOnly textOnly -> paragraph.createRun();
-        };
-        if (!(format.link instanceof Links.TextOnly)) run.setStyle(composition.styles.id(Styles.Style.HYPERLINK));
+        XWPFRun run;
+        OpenLink link = format.link;
+        if (link == null) {
+            run = paragraph.createRun();
+        } else if (link.element != null) {
+            run = new XWPFHyperlinkRun(link.element, link.element.addNewR(), paragraph);
+        } else {
+            XWPFHyperlinkRun first = switch (link.target) {
+                case Links.External external -> paragraph.createHyperlinkRun(external.url());
+                case Links.Internal internal -> composition.anchors.link(paragraph, id, internal.anchor());
+                case Links.TextOnly textOnly -> throw new IllegalStateException("text-only links have no hyperlink");
+            };
+            link.element = first.getCTHyperlink();
+            run = first;
+        }
+        if (link != null) run.setStyle(composition.styles.id(Styles.Style.HYPERLINK));
         if (format.bold) run.setBold(true);
         if (format.italic) run.setItalic(true);
         if (format.strike) run.setStrikeThrough(true);
         return run;
     }
 
-    private void renderFootnoteReference(FootnoteReference reference, XWPFParagraph paragraph) {
-        FootnoteDefinition definition = footnoteDefinitions.get(reference.getLabel());
-        if (definition == null) {
-            Texts.write(paragraph.createRun(), "[^" + reference.getLabel() + "]");
-            return;
-        }
-        BigInteger footnoteId = composition.footnotes.idFor(id, reference.getLabel(), () -> renderFootnote(definition));
-        XWPFRun run = paragraph.createRun();
-        run.setStyle(composition.styles.id(Styles.Style.FOOTNOTE_REFERENCE));
-        run.getCTR().addNewFootnoteReference().setId(footnoteId);
-    }
-
-    private BigInteger renderFootnote(FootnoteDefinition definition) {
-        XWPFFootnote footnote = composition.footnotes.create();
-        boolean[] first = {true};
-        Container container = new Container() {
-            @Override
-            public XWPFParagraph paragraph() {
-                XWPFParagraph paragraph = footnote.createParagraph();
-                paragraph.setStyle(composition.styles.id(Styles.Style.FOOTNOTE_TEXT));
-                if (first[0]) {
-                    first[0] = false;
-                    // the footnote's own number goes in front of its first paragraph
-                    if (paragraph.getRuns().isEmpty()) footnote.ensureFootnoteRef(paragraph);
-                    paragraph.getRuns().get(0).setStyle(composition.styles.id(Styles.Style.FOOTNOTE_REFERENCE));
-                    Texts.write(paragraph.createRun(), " ");
-                }
-                return paragraph;
-            }
-
-            @Override public XWPFTable table(int rows, int columns) { return footnote.createTable(rows, columns); }
-
-            @Override public List<IBodyElement> elements() { return footnote.getBodyElements(); }
-
-            @Override public boolean isBody() { return false; }
-        };
-        renderBlocks(definition, new Place(container, -1, 0));
-        if (first[0]) container.paragraph();
-        return footnote.getId();
-    }
-
-    /** A source line break between two Chinese characters must not become a space. */
+    /** A source line break between two wide characters (Chinese, Japanese, Korean, full-width) must not become a space. */
     private static boolean betweenWideCharacters(Node softBreak) {
         Node previous = softBreak.getPrevious();
         Node next = softBreak.getNext();

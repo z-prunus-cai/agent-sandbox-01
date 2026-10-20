@@ -30,6 +30,8 @@ final class Links {
     /** {@code #anchor} links to a heading; http, https, mailto and ftp become hyperlinks; everything else is text. */
     static Target target(String destination) {
         String trimmed = destination == null ? "" : destination.strip();
+        // commonmark decodes character references after the source was filtered, so check again
+        if (!Texts.xmlSafe(trimmed).equals(trimmed)) return new TextOnly();
         if (trimmed.startsWith("#") && trimmed.length() > 1) {
             String fragment = trimmed.substring(1);
             try {
@@ -40,9 +42,11 @@ final class Links {
             }
             return new Internal(fragment);
         }
+        // a destination in angle brackets may contain spaces, which a URI may not
+        String url = trimmed.replace(" ", "%20");
         try {
-            String scheme = new URI(trimmed).getScheme();
-            if (scheme != null && ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) return new External(trimmed);
+            String scheme = new URI(url).getScheme();
+            if (scheme != null && ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) return new External(url);
         } catch (URISyntaxException notAUrl) {
             // falls through to text
         }

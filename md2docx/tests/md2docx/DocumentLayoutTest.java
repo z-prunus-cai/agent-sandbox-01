@@ -53,7 +53,8 @@ class DocumentLayoutTest {
         byte[] docx = compose(ComposeOptions.builder().fonts("Arial", "SimSun", "Courier New").build(), SECTIONS);
         String styles = part(docx, "word/styles.xml");
         assertTrue(styles.contains("w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:eastAsia=\"SimSun\""));
-        assertTrue(styles.contains("w:ascii=\"Courier New\""));
+        assertTrue(TestSupport.styleXml(docx, "SourceCode").contains("w:ascii=\"Courier New\""));
+        assertTrue(TestSupport.styleXml(docx, "VerbatimChar").contains("w:ascii=\"Courier New\""));
     }
 
     @Test
@@ -95,7 +96,8 @@ class DocumentLayoutTest {
 
     @Test
     void headingNumbersAreAWordListOnTheHeadingStylesAndAppearInTheContents() {
-        byte[] docx = compose(ComposeOptions.builder().title("Doc").numberHeadings(true).tableOfContents(4).build(), SECTIONS);
+        byte[] docx = compose(ComposeOptions.builder().title("Doc").subtitle("Sub").numberHeadings(true).tableOfContents(4).build(),
+                SECTIONS[0], SECTIONS[1], Section.of("Three", "## Three A"));
         String styles = part(docx, "word/styles.xml");
         for (int level = 1; level <= 9; level++) {
             assertTrue(Pattern.compile("w:styleId=\"Heading" + level + "\">.*?<w:numPr><w:ilvl w:val=\"" + (level - 1) + "\"/>")
@@ -104,12 +106,18 @@ class DocumentLayoutTest {
         String numbering = part(docx, "word/numbering.xml");
         assertTrue(numbering.contains("<w:multiLevelType w:val=\"multilevel\"/>"));
         assertTrue(numbering.contains("<w:lvlText w:val=\"%1.%2.%3\"/>"));
-        assertEquals(List.of("TOC1: 1. One", "TOC2: 1.1 One A", "TOC3: 1.1.1 One A x", "TOC4: 1.1.1.1 deep", "TOC1: 2. Two"),
+        assertTrue(numbering.contains("<w:lvlText w:val=\"%1.\"/>"));
+        assertTrue(numbering.contains("<w:pStyle w:val=\"Heading2\"/>"));
+        assertEquals(List.of("TOC1: 1. One", "TOC2: 1.1 One A", "TOC3: 1.1.1 One A x", "TOC4: 1.1.1.1 deep", "TOC1: 2. Two",
+                        "TOC1: 3. Three", "TOC2: 3.1 Three A"),
                 paragraphs(docx).stream().filter(line -> line.startsWith("TOC") && !line.startsWith("TOCHeading")).toList());
-        // the body text has no typed numbers; Word draws them
+        // the numbers come from the list, not from the heading text
         assertTrue(paragraphs(docx).contains("Heading1: One"));
         String xml = part(docx, "word/document.xml");
-        assertTrue(xml.contains("<w:pStyle w:val=\"Title\"/><w:numPr><w:numId w:val=\"0\"/></w:numPr>"));
+        for (String style : List.of("Title", "Subtitle", "TOCHeading")) {
+            assertTrue(xml.contains("<w:pStyle w:val=\"" + style + "\"/><w:numPr><w:numId w:val=\"0\"/></w:numPr>"), style);
+        }
+        assertTrue(TestSupport.styleXml(docx, "Heading2").contains("<w:outlineLvl w:val=\"1\"/>"));
     }
 
     @Test
@@ -146,11 +154,61 @@ class DocumentLayoutTest {
     }
 
     @Test
-    void pageNumbersAreACentredPageFieldInTheFooter() {
+    void pageNumbersAreACenteredPageFieldInTheFooter() {
         byte[] docx = compose(ComposeOptions.builder().pageNumbers(true).build(), SECTIONS);
         String footer = part(docx, "word/footer1.xml");
         assertTrue(footer.contains("<w:jc w:val=\"center\"/>"));
         assertTrue(footer.contains("<w:fldSimple w:instr=\" PAGE \">"));
         assertTrue(part(docx, "word/document.xml").contains("<w:footerReference w:type=\"default\""));
+    }
+
+    @Test
+    void titleWithoutBodyAddsNoPageBreak() {
+        byte[] docx = compose(ComposeOptions.builder().title("Only").build());
+        assertFalse(part(docx, "word/document.xml").contains("pageBreakBefore"));
+        assertEquals(List.of("Title: Only", "-: "), paragraphs(docx));
+    }
+
+    @Test
+    void titleIsAlsoTheDocumentPropertyTitle() {
+        byte[] docx = compose(ComposeOptions.builder().title("Doc").build(), SECTIONS);
+        assertTrue(part(docx, "docProps/core.xml").contains("<dc:title>Doc</dc:title>"));
+    }
+
+    @Test
+    void tableUsesTheBordersOfItsStyle() {
+        String xml = part(compose(Section.untitled("| a |\n| - |\n| 1 |")), "word/document.xml");
+        assertTrue(xml.contains("<w:tblStyle w:val=\"MarkdownTable\"/>"));
+        assertFalse(xml.contains("<w:tblBorders>"));
+    }
+
+    @Test
+    void headerTextCountsAtMostSixteenCharactersForTheColumnWidth() {
+        int[] widths = TestSupport.open(compose(Section.untitled("| " + "h".repeat(30) + " | b |\n| - | - |\n| x | y |")))
+                .getTables().get(0).getCTTbl().getTblGrid().getGridColList().stream()
+                .mapToInt(column -> ((java.math.BigInteger) column.getW()).intValue()).toArray();
+        assertEquals(16.0 / 4, widths[0] / (double) widths[1], 0.01);
+    }
+
+    @Test
+    void contentsForManyHeadingsTakesLinearTime() {
+        StringBuilder markdown = new StringBuilder();
+        for (int heading = 0; heading < 16_000; heading++) markdown.append("## H").append(heading).append("\n\n");
+        ComposeOptions contents = ComposeOptions.builder().tableOfContents(2).build();
+        long start = System.nanoTime();
+        byte[] docx = compose(contents, Section.of("A", markdown.toString()));
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        // the previous, quadratic version needed 8 s for this input
+        assertTrue(millis < 4_000, millis + " ms");
+        List<String> result = paragraphs(docx);
+        assertEquals("TOC2: H0", result.get(2));
+        assertEquals("TOC2: H15999", result.get(16_001));
+        assertEquals("Heading1: A", result.get(16_002));
+    }
+
+    @Test
+    void bodyStartingWithATableStartsOnANewPageAfterTheFrontMatter() {
+        String xml = part(compose(ComposeOptions.builder().title("T").build(), Section.untitled("| a |\n| - |\n| 1 |")), "word/document.xml");
+        assertTrue(xml.contains("<w:t>T</w:t></w:r><w:r><w:br w:type=\"page\"/></w:r></w:p><w:tbl>"), xml);
     }
 }

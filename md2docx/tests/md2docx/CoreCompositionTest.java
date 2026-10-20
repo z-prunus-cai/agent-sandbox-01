@@ -84,6 +84,7 @@ class CoreCompositionTest {
             assertTrue(runs.stream().anyMatch(run -> run.text().equals("italic") && run.isItalic()));
             assertTrue(runs.stream().anyMatch(run -> run.text().equals("strike") && run.isStrikeThrough()));
             assertTrue(runs.stream().anyMatch(run -> run.text().equals("code") && "VerbatimChar".equals(run.getStyle())));
+            assertTrue(TestSupport.styleXml(docx, "VerbatimChar").contains("w:ascii=\"Consolas\""));
             assertFalse(runs.stream().anyMatch(run -> run.text().equals("bold") && run.isItalic()));
         }
     }
@@ -95,6 +96,10 @@ class CoreCompositionTest {
         assertTrue(xml.contains("<w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>a</w:t>"));
         assertTrue(xml.contains("<w:ilvl w:val=\"1\"/><w:numId w:val=\"2\"/></w:numPr></w:pPr><w:r><w:t>b</w:t>"));
         assertTrue(xml.contains("<w:ilvl w:val=\"0\"/><w:numId w:val=\"3\"/></w:numPr></w:pPr><w:r><w:t>one</w:t>"));
+        String numbering = part(docx, "word/numbering.xml");
+        for (String text : List.of("●", "○", "■", "%1.", "%2.")) {
+            assertTrue(numbering.contains("<w:lvlText w:val=\"" + text + "\"/>"), text);
+        }
         try (XWPFDocument document = open(docx)) {
             assertEquals("bullet", paragraphWithText(document, "a").getNumFmt());
             assertEquals("decimal", paragraphWithText(document, "one").getNumFmt());
@@ -109,13 +114,18 @@ class CoreCompositionTest {
 
     @Test
     void codeBlockKeepsIndentationAndEmptyLines() throws Exception {
-        byte[] docx = compose(Section.untitled("```\nif (x) {\n\n    y();\n}\n```"));
+        byte[] docx = compose(Section.untitled("```\nif (x) {\n\n    y();\n\tz\n}\n```"));
         try (XWPFDocument document = open(docx)) {
             XWPFParagraph code = document.getParagraphs().get(0);
             assertEquals("SourceCode", code.getStyle());
-            assertEquals("if (x) {\n\n    y();\n}", code.getText());
+            assertEquals("if (x) {\n\n    y();\n    z\n}", code.getText());
         }
-        assertTrue(part(docx, "word/document.xml").contains("xml:space=\"preserve\">    y();"));
+        String xml = part(docx, "word/document.xml");
+        assertTrue(xml.contains("xml:space=\"preserve\">    y();"));
+        // lines are separated by line breaks, not by newline characters inside the text
+        assertEquals(4, TestSupport.count(xml, "<w:br/>"));
+        assertFalse(java.util.regex.Pattern.compile("<w:t[^>]*>[^<]*\n").matcher(xml).find());
+        assertTrue(TestSupport.styleXml(docx, "SourceCode").contains("w:ascii=\"Consolas\""));
     }
 
     @Test
@@ -128,6 +138,9 @@ class CoreCompositionTest {
             assertTrue(inner.getIndentationLeft() > outer.getIndentationLeft());
         }
         assertTrue(part(docx, "word/document.xml").contains("<w:pBdr><w:bottom w:val=\"single\""));
+        String quote = TestSupport.styleXml(docx, "Quote");
+        assertTrue(quote.contains("<w:left w:val=\"single\""));
+        assertTrue(quote.contains("<w:color w:val=\"595959\"/>"));
     }
 
     @Test
@@ -141,6 +154,9 @@ class CoreCompositionTest {
             assertEquals("CENTER", table.getRow(1).getCell(1).getParagraphs().get(0).getAlignment().name());
             assertEquals("RIGHT", table.getRow(1).getCell(2).getParagraphs().get(0).getAlignment().name());
             assertTrue(table.getRow(0).getCell(0).getParagraphs().get(0).getRuns().get(0).isBold());
+            assertEquals("MarkdownTable", table.getStyleID());
+            assertEquals("E8EEF7", table.getRow(0).getCell(0).getColor());
+            assertEquals(null, table.getRow(1).getCell(0).getColor());
         }
     }
 
@@ -151,6 +167,21 @@ class CoreCompositionTest {
                 .mapToInt(column -> ((java.math.BigInteger) column.getW()).intValue()).toArray();
         assertEquals(2, widths.length);
         assertEquals(2.0, widths[0] / (double) widths[1], 0.01);
+        String xml = part(compose(Section.untitled("| a |\n| - |\n| 1 |")), "word/document.xml");
+        assertTrue(xml.contains("<w:tblLayout w:type=\"fixed\"/>"));
+    }
+
+    @Test
+    void columnWidthRulesForShortHeadersAndLongCells() {
+        java.util.function.Function<String, Double> ratio = markdown -> {
+            int[] widths = TestSupport.open(compose(Section.untitled(markdown))).getTables().get(0).getCTTbl().getTblGrid()
+                    .getGridColList().stream().mapToInt(column -> ((java.math.BigInteger) column.getW()).intValue()).toArray();
+            return widths[0] / (double) widths[1];
+        };
+        // both columns count at least 4 characters
+        assertEquals(1.0, ratio.apply("| a | b |\n| - | - |\n| x | y |"), 0.01);
+        // a body cell counts at most 40 characters
+        assertEquals(40.0 / 4, ratio.apply("| a | b |\n| - | - |\n| " + "x".repeat(60) + " | y |"), 0.01);
     }
 
     @Test
@@ -187,17 +218,44 @@ class CoreCompositionTest {
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             List<Future<byte[]>> results = new ArrayList<>();
-            for (int i = 0; i < 32; i++) results.add(pool.submit(() -> composer.compose(sections)));
+            for (int call = 0; call < 32; call++) results.add(pool.submit(() -> composer.compose(sections)));
             for (Future<byte[]> result : results) {
-                assertArrayEquals(stripTimestamps(expected), stripTimestamps(result.get()));
+                assertArrayEquals(comparableParts(expected), comparableParts(result.get()));
             }
         } finally {
             pool.shutdown();
         }
     }
 
-    /** The ZIP entries carry modification times; compare the document part instead. */
-    private static byte[] stripTimestamps(byte[] docx) {
+    /** The ZIP entries carry modification times; compare the document, footnotes and numbering parts instead. */
+    private static byte[] comparableParts(byte[] docx) {
         return (part(docx, "word/document.xml") + part(docx, "word/footnotes.xml") + part(docx, "word/numbering.xml")).getBytes();
+    }
+
+    @Test
+    void codeInsideALinkTakesTheLinkStyle() {
+        String xml = part(compose(Section.untitled("[`x`](https://example.org)")), "word/document.xml");
+        assertTrue(xml.contains("<w:rStyle w:val=\"Hyperlink\"/></w:rPr><w:t>x</w:t>"), xml);
+        assertFalse(xml.contains("VerbatimChar"));
+    }
+
+    @Test
+    void hardLineBreaksBecomeLineBreaks() {
+        assertEquals(List.of("-: x\ny", "-: x\ny", "-: a\nb"), paragraphs(compose(Section.untitled("x\\\ny\n\nx  \ny\n\na<br/>b"))));
+    }
+
+    @Test
+    void htmlCommentsAreRemovedEvenWhenTheyContainAGreaterThanSign() {
+        assertEquals(List.of("-: kept"), paragraphs(compose(Section.untitled("<div><!-- a > b -->kept</div>"))));
+    }
+
+    @Test
+    void composeLeavesTheOutputStreamOpen() throws Exception {
+        boolean[] closed = {false};
+        java.io.OutputStream out = new java.io.ByteArrayOutputStream() {
+            @Override public void close() { closed[0] = true; }
+        };
+        new MarkdownDocxComposer().compose(List.of(Section.of("A", "a")), out);
+        assertFalse(closed[0]);
     }
 }

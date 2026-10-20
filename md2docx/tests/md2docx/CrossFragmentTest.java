@@ -24,7 +24,7 @@ class CrossFragmentTest {
         try (XWPFDocument document = open(docx)) {
             List<String> notes = document.getFootnotes().stream()
                     .filter(note -> note.getId().intValue() > 0)
-                    .map(note -> note.getParagraphs().stream().map(paragraph -> paragraph.getText()).reduce("", String::concat).strip()).toList();
+                    .map(note -> note.getParagraphs().stream().map(TestSupport::runText).reduce("", String::concat).strip()).toList();
             assertEquals(List.of("first note", "second note"), notes);
         }
         String xml = part(docx, "word/document.xml");
@@ -32,9 +32,8 @@ class CrossFragmentTest {
         assertEquals(3, references.size());
         assertEquals(references.get(0), references.get(1));
         assertFalse(references.get(0).equals(references.get(2)));
-        String footnotes = part(docx, "word/footnotes.xml");
-        assertTrue(footnotes.contains("w:type=\"separator\" w:id=\"-1\""));
-        assertTrue(footnotes.contains("w:type=\"continuationSeparator\" w:id=\"0\""));
+        // no separator footnotes: ECMA-376 §17.11.9 would require listing them in the settings
+        assertFalse(part(docx, "word/footnotes.xml").contains("eparator"));
     }
 
     @Test
@@ -112,7 +111,78 @@ class CrossFragmentTest {
     private static String bookmarkOf(String xml, String text, int occurrence) {
         Matcher matcher = Pattern.compile("<w:bookmarkStart w:name=\"([^\"]+)\" w:id=\"\\d+\"/><w:r><w:t>" + Pattern.quote(text) + "</w:t>")
                 .matcher(xml);
-        for (int i = 0; i <= occurrence; i++) assertTrue(matcher.find(), "heading " + text + " #" + i);
+        for (int index = 0; index <= occurrence; index++) assertTrue(matcher.find(), "heading " + text + " #" + index);
         return matcher.group(1);
+    }
+
+    @Test
+    void footnoteReferringToAnotherFootnoteOrToItselfReusesTheFootnote() throws Exception {
+        byte[] docx = compose(Section.untitled("Body[^a].\n\n[^a]: see[^b] and again[^a]\n\n[^b]: inner\n"));
+        try (XWPFDocument document = open(docx)) {
+            List<String> notes = document.getFootnotes().stream()
+                    .map(note -> note.getParagraphs().stream().map(TestSupport::runText).reduce("", String::concat).strip())
+                    .toList();
+            // the first footnote refers to the second one and to itself
+            assertEquals(List.of("see[footnoteRef:2] and again[footnoteRef:1]", "inner"), notes);
+        }
+        String footnotes = part(docx, "word/footnotes.xml");
+        assertEquals(2, Pattern.compile("<w:footnoteReference ").matcher(footnotes).results().count());
+    }
+
+    @Test
+    void footnoteLabelsIgnoreCaseAndDefinitionsMayBeNested() throws Exception {
+        byte[] docx = compose(Section.untitled("x[^Note] y[^q]\n\n[^note]: case note\n\n> [^q]: quoted note\n"));
+        try (XWPFDocument document = open(docx)) {
+            List<String> notes = document.getFootnotes().stream()
+                    .map(note -> note.getParagraphs().stream().map(TestSupport::runText).reduce("", String::concat).strip())
+                    .toList();
+            assertEquals(List.of("case note", "quoted note"), notes);
+            assertEquals("x[footnoteRef:1] y[footnoteRef:2]", TestSupport.runText(document.getParagraphs().get(0)));
+        }
+    }
+
+    @Test
+    void headingInsideAFootnoteDoesNotChangeTheBodyHeadingLevels() {
+        byte[] docx = compose(Section.of("T", "## A\n\nx[^1]\n\n[^1]: # big\n"));
+        assertEquals("Heading2: A", TestSupport.paragraphs(docx).get(1));
+    }
+
+    @Test
+    void nestedOrderedListStartsAtItsOwnFirstNumber() {
+        byte[] docx = compose(Section.untitled("1. outer\n\n   5. inner five\n   6. inner six\n"));
+        String xml = part(docx, "word/document.xml");
+        String numbering = part(docx, "word/numbering.xml");
+        Matcher inner = Pattern.compile("<w:ilvl w:val=\"1\"/><w:numId w:val=\"(\\d+)\"/>").matcher(xml);
+        assertTrue(inner.find());
+        assertTrue(numbering.contains("<w:num w:numId=\"" + inner.group(1) + "\"><w:abstractNumId w:val=\"2\"/>"
+                + "<w:lvlOverride w:ilvl=\"1\"><w:startOverride w:val=\"5\"/></w:lvlOverride></w:num>"), numbering);
+    }
+
+    @Test
+    void oneMarkdownLinkIsOneWordHyperlink() {
+        byte[] docx = compose(Section.untitled("[**bold** and *italic*](https://example.org) [go **here**](#t)\n\n# T"));
+        String xml = part(docx, "word/document.xml");
+        assertEquals(2, Pattern.compile("<w:hyperlink ").matcher(xml).results().count());
+        assertEquals(1, Pattern.compile("Target=\"https://example.org\"").matcher(part(docx, "word/_rels/document.xml.rels")).results().count());
+    }
+
+    @Test
+    void footnoteReferenceAndTextUseTheFootnoteStyles() throws Exception {
+        byte[] docx = compose(Section.untitled("a[^1]\n\n[^1]: note\n\n    ## heading in a note\n"));
+        assertTrue(part(docx, "word/document.xml").contains("<w:rStyle w:val=\"FootnoteReference\"/></w:rPr><w:footnoteReference"));
+        assertTrue(TestSupport.styleXml(docx, "FootnoteReference").contains("<w:vertAlign w:val=\"superscript\"/>"));
+        try (XWPFDocument document = open(docx)) {
+            document.getFootnotes().get(0).getParagraphs()
+                    .forEach(paragraph -> assertEquals("FootnoteText", paragraph.getStyle()));
+        }
+        assertFalse(part(docx, "word/footnotes.xml").contains("Heading"));
+    }
+
+    @Test
+    void anchorLinksArePercentDecodedAndIgnoreAsciiCase() {
+        byte[] docx = compose(Section.untitled("# 背景\n\n# Setup\n\n[a](#%E8%83%8C%E6%99%AF) [b](#Setup)"));
+        String xml = part(docx, "word/document.xml");
+        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
+        assertEquals(List.of(bookmarkOf(xml, "背景", 0), bookmarkOf(xml, "Setup", 0)), anchors);
     }
 }

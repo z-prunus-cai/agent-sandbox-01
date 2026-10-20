@@ -42,7 +42,7 @@ final class Anchors {
 
     private static String asciiLowerCase(String text) {
         StringBuilder lower = new StringBuilder(text.length());
-        text.codePoints().forEach(c -> lower.appendCodePoint(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c));
+        text.codePoints().forEach(codePoint -> lower.appendCodePoint(codePoint >= 'A' && codePoint <= 'Z' ? codePoint + ('a' - 'A') : codePoint));
         return lower.toString();
     }
 

@@ -4,6 +4,8 @@ import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFNumbering;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.xmlbeans.XmlCursor;
 import org.apache.xmlbeans.XmlException;
 import org.commonmark.ext.autolink.AutolinkExtension;
 import org.commonmark.ext.footnotes.FootnotesExtension;
@@ -21,7 +23,10 @@ import java.util.List;
 /** One compose call: the document being built and everything shared between its fragments. */
 final class Composition implements AutoCloseable {
 
-    /** Thread-safe; commonmark parsers can be shared. */
+    /** WordprocessingML has nine heading outline levels and nine list levels. */
+    static final int MAXIMUM_LEVEL = 9;
+
+    /** commonmark parsers can be shared between threads. */
     private static final Parser PARSER = Parser.builder()
             .extensions(List.of(TablesExtension.create(), StrikethroughExtension.create(), TaskListItemsExtension.create(),
                     FootnotesExtension.create(), AutolinkExtension.create()))
@@ -32,6 +37,7 @@ final class Composition implements AutoCloseable {
     final Styles styles;
     final PageSetup page;
     final Lists lists;
+    /** Null when headings are not numbered. */
     final HeadingNumbering headingNumbering;
     final Anchors anchors = new Anchors();
     final Footnotes footnotes;
@@ -50,21 +56,24 @@ final class Composition implements AutoCloseable {
             styles = options.template != null ? Styles.fromTemplate(document, options) : Styles.create(document, options);
             XWPFNumbering numbering = document.createNumbering();
             lists = new Lists(numbering);
-            headingNumbering = options.numberHeadings ? HeadingNumbering.attach(numbering, styles) : HeadingNumbering.disabled();
-        } catch (XmlException e) {
+            headingNumbering = options.numberHeadings ? HeadingNumbering.attach(numbering, styles) : null;
+            page = PageSetup.of(document);
+            footnotes = new Footnotes(document, styles);
+            if (options.title != null) document.getProperties().getCoreProperties().setTitle(Texts.xmlSafe(options.title));
+        } catch (XmlException | RuntimeException failure) {
             document.close();
-            throw new IllegalStateException("built-in style or numbering definition is invalid", e);
+            throw failure instanceof XmlException ? new IllegalStateException("invalid built-in definition", failure)
+                    : (RuntimeException) failure;
         }
-        page = PageSetup.of(document);
-        footnotes = new Footnotes(document);
     }
 
     void compose(List<Section> sections) {
         for (Section section : sections) render(section, 1, true);
         anchors.resolve();
         // the front matter is inserted in front of the first body element, so there must be one
-        if (document.getBodyElements().isEmpty()) document.createParagraph();
-        FrontMatter.insert(document, options, styles, headingNumbering, anchors.headings());
+        boolean emptyBody = document.getBodyElements().isEmpty();
+        if (emptyBody) document.createParagraph();
+        FrontMatter.insert(document, options, styles, anchors.headings(), emptyBody);
         if (options.pageNumbers) PageSetup.addPageNumbers(document);
         if (options.tableOfContentsLevels > 0 && options.updateFieldsOnOpen) document.enforceUpdateFields();
     }
@@ -78,8 +87,18 @@ final class Composition implements AutoCloseable {
         document.close();
     }
 
+    /** A new paragraph in front of {@code element}. */
+    static XWPFParagraph insertBefore(XWPFDocument document, IBodyElement element) {
+        XmlCursor cursor = element instanceof XWPFParagraph paragraph
+                ? paragraph.getCTP().newCursor()
+                : ((XWPFTable) element).getCTTbl().newCursor();
+        try (cursor) {
+            return document.insertNewParagraph(cursor);
+        }
+    }
+
     private void render(Section section, int depth, boolean topLevel) {
-        depth = Math.min(depth, 9);
+        depth = Math.min(depth, MAXIMUM_LEVEL);
         Node root = section.markdown() == null ? null : PARSER.parse(Texts.xmlSafe(section.markdown()));
         Heading titleNode = section.titleSource() == Section.TitleSource.FIRST_HEADING && root != null
                 && root.getFirstChild() instanceof Heading first ? first : null;
@@ -103,7 +122,7 @@ final class Composition implements AutoCloseable {
         if (element instanceof XWPFParagraph paragraph) {
             paragraph.setPageBreak(true);
         } else {
-            XWPFParagraph paragraph = FrontMatter.insertBefore(document, element);
+            XWPFParagraph paragraph = insertBefore(document, element);
             paragraph.setPageBreak(true);
             paragraph.setSpacingAfter(0);
         }

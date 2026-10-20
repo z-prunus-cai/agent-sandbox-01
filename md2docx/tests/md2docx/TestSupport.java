@@ -20,8 +20,8 @@ final class TestSupport {
     static byte[] compose(ComposeOptions options, Section... sections) {
         try {
             return new MarkdownDocxComposer(options).compose(List.of(sections));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
         }
     }
 
@@ -32,8 +32,8 @@ final class TestSupport {
     static XWPFDocument open(byte[] docx) {
         try {
             return new XWPFDocument(new ByteArrayInputStream(docx));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
         }
     }
 
@@ -44,8 +44,8 @@ final class TestSupport {
                 if (entry.getName().equals(name)) return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
             }
             return null;
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
         }
     }
 
@@ -55,8 +55,8 @@ final class TestSupport {
             return document.getParagraphs().stream()
                     .map(paragraph -> (paragraph.getStyle() == null ? "-" : paragraph.getStyle()) + ": " + paragraph.getText())
                     .toList();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
         }
     }
 
@@ -69,5 +69,18 @@ final class TestSupport {
         int count = 0;
         for (int index = text.indexOf(part); index >= 0; index = text.indexOf(part, index + 1)) count++;
         return count;
+    }
+
+    /** The text of the paragraph's runs; POI's getText also lists the footnotes the paragraph refers to. */
+    static String runText(XWPFParagraph paragraph) {
+        return paragraph.getRuns().stream().map(run -> run.text()).reduce("", String::concat);
+    }
+
+    /** The XML of one style definition in word/styles.xml. */
+    static String styleXml(byte[] docx, String styleId) {
+        String styles = part(docx, "word/styles.xml");
+        int start = styles.indexOf("w:styleId=\"" + styleId + "\"");
+        if (start < 0) throw new AssertionError("no style " + styleId);
+        return styles.substring(start, styles.indexOf("</w:style>", start));
     }
 }

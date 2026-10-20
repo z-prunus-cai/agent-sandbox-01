@@ -32,7 +32,7 @@ class TemplateTest {
     Path directory;
 
     /**
-     * Like a template saved by a Chinese Word: heading styles named "heading 1" with the IDs "1" and "2", a Letter
+     * A template whose heading styles are named "heading 1" and "heading 2" but have the IDs "1" and "2", a Letter
      * page with 1-inch margins, a footer, and body text that must not survive.
      */
     private Path template(String fileName, boolean numberedHeadings) throws Exception {
@@ -46,7 +46,7 @@ class TemplateTest {
                       <w:style w:type="paragraph" w:styleId="1"><w:name w:val="heading 1"/><w:basedOn w:val="a"/>%s
                         <w:rPr><w:color w:val="C00000"/></w:rPr></w:style>
                       <w:style w:type="paragraph" w:styleId="2"><w:name w:val="heading 2"/><w:basedOn w:val="a"/></w:style>
-                    </w:styles>""".formatted(numbering), Styles.FRAGMENT));
+                    </w:styles>""".formatted(numbering), Styles.ELEMENT_OPTIONS));
             var section = document.getDocument().getBody().addNewSectPr();
             section.addNewPgSz().setW(java.math.BigInteger.valueOf(12240));
             section.getPgSz().setH(java.math.BigInteger.valueOf(15840));
@@ -106,8 +106,8 @@ class TemplateTest {
     @Test
     void dotxTemplateBecomesADocument() throws Exception {
         Path template = template("t.dotx", false);
-        try (OPCPackage pack = OPCPackage.open(template.toFile())) {
-            pack.replaceContentType(DOCUMENT_TYPE, TEMPLATE_TYPE);
+        try (OPCPackage templatePackage = OPCPackage.open(template.toFile())) {
+            templatePackage.replaceContentType(DOCUMENT_TYPE, TEMPLATE_TYPE);
         }
         assertTrue(part(Files.readAllBytes(template), "[Content_Types].xml").contains(TEMPLATE_TYPE));
         byte[] docx = compose(options(template).build(), Section.of("A", "a"));
@@ -130,5 +130,111 @@ class TemplateTest {
         IOException error = assertThrows(IOException.class,
                 () -> new MarkdownDocxComposer(options(text).build()).compose(List.of(Section.of("A", "a"))));
         assertTrue(error.getMessage().contains("not a .docx or .dotx"));
+    }
+
+    private Path templateWithBodyExtras() throws Exception {
+        Path file = template("extras.docx", false);
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(file))) {
+            document.getDocument().getBody().addNewSdt().addNewSdtContent().addNewP().addNewR().addNewT().setStringValue("template control");
+            document.createParagraph().createRun().addPicture(new java.io.ByteArrayInputStream(ImagesAndSafetyTest.image("png", 5, 5)),
+                    org.apache.poi.common.usermodel.PictureType.PNG, "picture", 9525, 9525);
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        return file;
+    }
+
+    @Test
+    void contentControlsAndPicturesOfTheTemplateBodyAreDropped() throws Exception {
+        byte[] docx = compose(options(templateWithBodyExtras()).build(), Section.of("A", "a"));
+        assertFalse(part(docx, "word/document.xml").contains("template control"));
+        assertFalse(part(docx, "word/document.xml").contains("<w:sdt>"));
+        try (XWPFDocument document = TestSupport.open(docx)) {
+            assertEquals(0, document.getAllPictures().size());
+        }
+        assertTrue(part(docx, "word/footer1.xml").contains("template footer"));
+    }
+
+    @Test
+    void macroEnabledFileIsRefused() throws Exception {
+        Path template = template("macro.docx", false);
+        try (OPCPackage templatePackage = OPCPackage.open(template.toFile())) {
+            templatePackage.replaceContentType(DOCUMENT_TYPE, "application/vnd.ms-word.document.macroEnabled.main+xml");
+        }
+        IOException error = assertThrows(IOException.class,
+                () -> new MarkdownDocxComposer(options(template).build()).compose(List.of(Section.of("A", "a"))));
+        assertTrue(error.getMessage().contains("not a .docx or .dotx"));
+    }
+
+    @Test
+    void listNumbersDoNotReuseTheTemplateNumberingIds() throws Exception {
+        Path file = template("numbered.docx", false);
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(file))) {
+            var numbering = document.createNumbering();
+            numbering.addNum(java.math.BigInteger.ONE, java.math.BigInteger.ONE);
+            numbering.addNum(java.math.BigInteger.ONE, java.math.BigInteger.valueOf(5));
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        byte[] docx = compose(options(file).numberHeadings(true).build(), Section.untitled("1. a\n\n- b\n\n3. c\n\n- d"));
+        List<String> ids = java.util.regex.Pattern.compile("<w:num w:numId=\"(\\d+)\"").matcher(part(docx, "word/numbering.xml"))
+                .results().map(match -> match.group(1)).toList();
+        assertEquals(ids.size(), new java.util.HashSet<>(ids).size(), ids.toString());
+        assertTrue(ids.containsAll(List.of("1", "5")));
+    }
+
+    @Test
+    void contentsHasNoNumbersWhenTheTemplateNumbersItsHeadings() throws Exception {
+        byte[] docx = compose(options(template("t.docx", true)).numberHeadings(true).tableOfContents(1).build(), Section.of("A", "a"));
+        assertTrue(paragraphs(docx).stream().anyMatch(line -> line.endsWith(": A") && line.startsWith("TOC")), paragraphs(docx).toString());
+        assertFalse(paragraphs(docx).stream().anyMatch(line -> line.contains("1. A")));
+    }
+
+    @Test
+    void numberingDefinitionsDoNotReuseTheTemplateDefinitionIds() throws Exception {
+        Path file = template("definitions.docx", false);
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(file))) {
+            var numbering = document.createNumbering();
+            for (int id : new int[] {0, 5}) {
+                numbering.addAbstractNum(new org.apache.poi.xwpf.usermodel.XWPFAbstractNum(
+                        org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum.Factory.parse(
+                                "<w:abstractNum xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" w:abstractNumId=\"" + id
+                                        + "\"><w:lvl w:ilvl=\"0\"><w:numFmt w:val=\"upperRoman\"/></w:lvl></w:abstractNum>", Styles.ELEMENT_OPTIONS)));
+            }
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        byte[] docx = compose(options(file).numberHeadings(true).build(), Section.untitled("- a\n\n1. b"));
+        String numbering = part(docx, "word/numbering.xml");
+        List<String> ids = java.util.regex.Pattern.compile("<w:abstractNum w:abstractNumId=\"(\\d+)\"").matcher(numbering)
+                .results().map(match -> match.group(1)).toList();
+        assertEquals(ids.size(), new java.util.HashSet<>(ids).size(), ids.toString());
+        assertTrue(ids.containsAll(List.of("0", "5")));
+        assertEquals(2, TestSupport.count(numbering, "upperRoman"));
+    }
+
+    @Test
+    void styleNamesMatchIgnoringCaseAndTemplatesWithoutStylesWork() throws Exception {
+        Path file = directory.resolve("case.docx");
+        try (XWPFDocument document = new XWPFDocument()) {
+            document.createStyles().setStyles(CTStyles.Factory.parse("""
+                    <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                      <w:style w:type="paragraph" w:styleId="T1"><w:name w:val="Heading 1"/></w:style>
+                    </w:styles>""", Styles.ELEMENT_OPTIONS));
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        assertEquals(List.of("T1: A"), paragraphs(compose(options(file).build(), Section.titled("A"))));
+
+        Path plain = directory.resolve("plain.docx");
+        try (XWPFDocument document = new XWPFDocument(); OutputStream out = Files.newOutputStream(plain)) {
+            document.write(out);
+        }
+        assertEquals(null, part(Files.readAllBytes(plain), "word/styles.xml"));
+        assertEquals(List.of("Heading1: A"), paragraphs(compose(options(plain).build(), Section.titled("A"))));
     }
 }

@@ -88,7 +88,7 @@ public final class ComposeOptions {
             return this;
         }
 
-        /** Default: on. Sets updateFields, which asks Word to recalculate the table of contents when the document opens. */
+        /** Default: on. Sets updateFields: the fields, such as the table of contents, are recalculated when the document opens. */
         public Builder updateFieldsOnOpen(boolean update) {
             this.updateFieldsOnOpen = update;
             return this;
