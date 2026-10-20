@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Every option: title, contents, heading numbers, page breaks, page numbers, a grouping section and images. */
+/** Title, subtitle, contents, heading numbers, page breaks, page numbers, all four kinds of section, and an image. */
 public class FullDemo {
 
     public static void main(String[] args) throws Exception {

@@ -13,7 +13,7 @@ final class Links {
     sealed interface Target permits External, Internal, TextOnly {
     }
 
-    record External(String url) implements Target {
+    record External(String address) implements Target {
     }
 
     record Internal(String anchor) implements Target {
@@ -37,18 +37,16 @@ final class Links {
             try {
                 // '+' is a literal plus in a URL fragment, not an encoded space
                 fragment = URLDecoder.decode(fragment.replace("+", "%2B"), StandardCharsets.UTF_8);
-            } catch (IllegalArgumentException malformedEscape) {
-                // keep the fragment as written
+            } catch (IllegalArgumentException keptAsWritten) {
             }
             return new Internal(fragment);
         }
         // a destination in angle brackets may contain spaces, which a URI may not
-        String url = trimmed.replace(" ", "%20");
+        String address = trimmed.replace(" ", "%20");
         try {
-            String scheme = new URI(url).getScheme();
-            if (scheme != null && ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) return new External(url);
-        } catch (URISyntaxException notAUrl) {
-            // falls through to text
+            String scheme = new URI(address).getScheme();
+            if (scheme != null && ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) return new External(address);
+        } catch (URISyntaxException notAnAddress) {
         }
         return new TextOnly();
     }

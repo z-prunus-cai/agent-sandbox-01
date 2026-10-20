@@ -28,7 +28,7 @@ class CrossFragmentTest {
             assertEquals(List.of("first note", "second note"), notes);
         }
         String xml = part(docx, "word/document.xml");
-        List<String> references = Pattern.compile("<w:footnoteReference w:id=\"(\\d+)\"/>").matcher(xml).results().map(m -> m.group(1)).toList();
+        List<String> references = Pattern.compile("<w:footnoteReference w:id=\"(\\d+)\"/>").matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(3, references.size());
         assertEquals(references.get(0), references.get(1));
         assertFalse(references.get(0).equals(references.get(2)));
@@ -74,7 +74,7 @@ class CrossFragmentTest {
         String setupInA = bookmarkOf(xml, "Setup", 0);
         String setupInB = bookmarkOf(xml, "Setup", 1);
         String usage = bookmarkOf(xml, "Usage", 0);
-        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
+        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(List.of(usage, setupInA, setupInB), anchors);
     }
 
@@ -122,7 +122,6 @@ class CrossFragmentTest {
             List<String> notes = document.getFootnotes().stream()
                     .map(note -> note.getParagraphs().stream().map(TestSupport::runText).reduce("", String::concat).strip())
                     .toList();
-            // the first footnote refers to the second one and to itself
             assertEquals(List.of("see[footnoteRef:2] and again[footnoteRef:1]", "inner"), notes);
         }
         String footnotes = part(docx, "word/footnotes.xml");
@@ -182,7 +181,7 @@ class CrossFragmentTest {
     void anchorLinksArePercentDecodedAndIgnoreAsciiCase() {
         byte[] docx = compose(Section.untitled("# 背景\n\n# Setup\n\n[a](#%E8%83%8C%E6%99%AF) [b](#Setup)"));
         String xml = part(docx, "word/document.xml");
-        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
+        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(List.of(bookmarkOf(xml, "背景", 0), bookmarkOf(xml, "Setup", 0)), anchors);
     }
 }

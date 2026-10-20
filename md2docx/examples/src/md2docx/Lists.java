@@ -79,7 +79,7 @@ final class Lists {
         if (list instanceof OrderedList orderedList) {
             Integer start = orderedList.getMarkerStartNumber();
             CTNumLvl override = numbering.getNum(numberingId).getCTNum().addNewLvlOverride();
-            override.setIlvl(BigInteger.valueOf(Math.min(level, 8)));
+            override.setIlvl(BigInteger.valueOf(Math.min(level, Composition.MAXIMUM_LEVEL - 1)));
             override.addNewStartOverride().setVal(BigInteger.valueOf(start == null ? 1 : Math.max(start, 0)));
         }
         for (Node item = list.getFirstChild(); item != null; item = item.getNext()) {
@@ -104,7 +104,7 @@ final class Lists {
     private static XWPFAbstractNum definition(int id, boolean ordered) throws XmlException {
         StringBuilder xml = new StringBuilder("<w:abstractNum ").append(Styles.WORD_NAMESPACE)
                 .append(" w:abstractNumId=\"").append(id).append("\"><w:multiLevelType w:val=\"hybridMultilevel\"/>");
-        for (int level = 0; level < 9; level++) {
+        for (int level = 0; level < Composition.MAXIMUM_LEVEL; level++) {
             xml.append("<w:lvl w:ilvl=\"").append(level).append("\"><w:start w:val=\"1\"/><w:numFmt w:val=\"")
                .append(ordered ? "decimal" : "bullet").append("\"/><w:lvlText w:val=\"")
                .append(ordered ? "%" + (level + 1) + "." : BULLETS[level % 3]).append("\"/><w:lvlJc w:val=\"left\"/>")

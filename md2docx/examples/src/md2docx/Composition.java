@@ -87,7 +87,6 @@ final class Composition implements AutoCloseable {
         document.close();
     }
 
-    /** A new paragraph in front of {@code element}. */
     static XWPFParagraph insertBefore(XWPFDocument document, IBodyElement element) {
         XmlCursor cursor = element instanceof XWPFParagraph paragraph
                 ? paragraph.getCTP().newCursor()
@@ -117,7 +116,7 @@ final class Composition implements AutoCloseable {
         if (pageBreak && start < document.getBodyElements().size()) pageBreakBefore(document.getBodyElements().get(start));
     }
 
-    /** Starts the element on a new page without adding an empty line in front of it. */
+    /** A paragraph starts a new page itself; a table cannot, so it gets an empty page-breaking paragraph in front. */
     private void pageBreakBefore(IBodyElement element) {
         if (element instanceof XWPFParagraph paragraph) {
             paragraph.setPageBreak(true);

@@ -75,7 +75,7 @@ class DocumentLayoutTest {
         assertEquals(1, count(xml, "w:fldCharType=\"begin\""));
         assertEquals(1, count(xml, "w:fldCharType=\"separate\""));
         assertEquals(1, count(xml, "w:fldCharType=\"end\""));
-        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
+        List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(List.of("_Heading1", "_Heading2", "_Heading3", "_Heading5"), anchors);
         assertTrue(paragraphs(docx).contains("TOCHeading: Contents"));
         assertTrue(part(docx, "word/settings.xml").contains("<w:updateFields w:val=\"on\"/>"));
@@ -127,7 +127,7 @@ class DocumentLayoutTest {
                 Section.titled("D").child(Section.of("E", "e")));
         String xml = part(docx, "word/document.xml");
         List<String> broken = Pattern.compile("<w:pageBreakBefore w:val=\"on\"/></w:pPr><w:bookmarkStart w:name=\"[^\"]+\" w:id=\"\\d+\"/><w:r><w:t>(\\w)</w:t>")
-                .matcher(xml).results().map(m -> m.group(1)).toList();
+                .matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(List.of("B", "D"), broken);
     }
 
@@ -197,9 +197,9 @@ class DocumentLayoutTest {
         ComposeOptions contents = ComposeOptions.builder().tableOfContents(2).build();
         long start = System.nanoTime();
         byte[] docx = compose(contents, Section.of("A", markdown.toString()));
-        long millis = (System.nanoTime() - start) / 1_000_000;
-        // the previous, quadratic version needed 8 s for this input
-        assertTrue(millis < 4_000, millis + " ms");
+        long elapsedMilliseconds = (System.nanoTime() - start) / 1_000_000;
+        // inserting in reading order is quadratic and needs about 8 s here (BRIEF section 5)
+        assertTrue(elapsedMilliseconds < 4_000, elapsedMilliseconds + " ms");
         List<String> result = paragraphs(docx);
         assertEquals("TOC2: H0", result.get(2));
         assertEquals("TOC2: H15999", result.get(16_001));

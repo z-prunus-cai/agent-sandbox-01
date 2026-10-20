@@ -157,7 +157,7 @@ final class Styles {
                 int level = style.ordinal() - Style.CONTENTS_1.ordinal();
                 yield head.formatted("paragraph", "") + "<w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:uiPriority w:val=\"39\"/>"
                         + "<w:pPr><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"" + PageSetup.A4_TEXT_WIDTH + "\"/></w:tabs>"
-                        + "<w:spacing w:after=\"60\"/><w:ind w:left=\"" + (420 * level) + "\"/></w:pPr></w:style>";
+                        + "<w:spacing w:after=\"60\"/><w:ind w:left=\"" + (Lists.INDENT * level) + "\"/></w:pPr></w:style>";
             }
             case LIST_PARAGRAPH -> head.formatted("paragraph", "") + """
                 <w:basedOn w:val="Normal"/><w:uiPriority w:val="34"/><w:qFormat/>

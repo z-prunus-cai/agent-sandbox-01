@@ -20,7 +20,7 @@ import java.util.Map;
 
 /**
  * Markdown footnotes as Word footnotes. A definition belongs to its fragment: two fragments that both use
- * {@code [^1]} get two footnotes. Footnotes are shown numbered in order of appearance, whatever their IDs.
+ * {@code [^1]} get two footnotes.
  */
 final class Footnotes {
 

@@ -45,6 +45,8 @@ final class Fragment {
 
     private static final Pattern LINE_BREAK_TAG = Pattern.compile("(?i)<br\\s*/?>");
     private static final Pattern CARRIAGE_RETURN = Pattern.compile("\r\n?");
+    /** Space above a paragraph that follows a table, in twips; without it the text touches the table border. */
+    private static final int SPACE_AFTER_TABLE = 160;
 
     private record Place(Container container, int listLevel, int quoteDepth) {
         Place inList(int level) { return new Place(container, level, quoteDepth); }
@@ -110,7 +112,7 @@ final class Fragment {
                 List<IBodyElement> elements = composition.document.getBodyElements();
                 boolean afterTable = !elements.isEmpty() && elements.get(elements.size() - 1) instanceof XWPFTable;
                 XWPFParagraph paragraph = composition.document.createParagraph();
-                if (afterTable) paragraph.setSpacingBefore(160);
+                if (afterTable) paragraph.setSpacingBefore(SPACE_AFTER_TABLE);
                 return paragraph;
             }
 
@@ -296,7 +298,7 @@ final class Fragment {
             run = new XWPFHyperlinkRun(link.element, link.element.addNewR(), paragraph);
         } else {
             XWPFHyperlinkRun first = switch (link.target) {
-                case Links.External external -> paragraph.createHyperlinkRun(external.url());
+                case Links.External external -> paragraph.createHyperlinkRun(external.address());
                 case Links.Internal internal -> composition.anchors.link(paragraph, id, internal.anchor());
                 case Links.TextOnly textOnly -> throw new IllegalStateException("text-only links have no hyperlink");
             };

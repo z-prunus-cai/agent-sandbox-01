@@ -24,14 +24,14 @@
 | Markdown | Word | 实现 | 测试 |
 | --- | --- | --- | --- |
 | `**粗体**`、`*斜体*`、`~~删除线~~` | run 的粗体、斜体、删除线属性，可叠加 | `Fragment.renderInline` | `CoreCompositionTest.inlineFormattingBecomesRunProperties` |
-| `` `代码` `` | 字符样式 `VerbatimChar`（等宽字体、底纹）；在链接内时用链接样式 | `Fragment.renderInline` | 同上，以及 `CoreCompositionTest.codeInsideALinkTakesTheLinkStyle` |
+| `` `代码` `` | 字符样式 `VerbatimChar`（等宽字体、底纹）；在链接内时用链接样式 | `Fragment.renderInline` | `CoreCompositionTest.inlineFormattingBecomesRunProperties`、`CoreCompositionTest.codeInsideALinkTakesTheLinkStyle` |
 | `[文字](http://example.org)` 及 https、mailto、ftp | 外部超链接，字符样式 `Hyperlink`；一个 Markdown 链接是一个 `w:hyperlink`，不论其中有几个 run | `Links.target`、`Fragment.run` | `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` |
 | 裸网址 `https://example.org` | 同上（自动链接扩展） | 同上 | 同上 |
 | `[文字](#锚点)` | 指向标题书签的文档内链接；找不到目标时变成普通文字 | `Anchors.link`、`Anchors.resolve` | `CrossFragmentTest.linkFindsAHeadingInAnotherFragmentAndPrefersItsOwnFragment`、`CrossFragmentTest.linkWithoutTargetBecomesPlainText` |
 | 其他链接（相对路径、`javascript:`、`file:`、`data:`） | 只有文字 | `Links.target` | `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` |
-| `![替代文字](路径)` | 嵌入图片，替代文字写入 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性；只有图片的段落居中；读不到、或位于脚注中时输出 `[替代文字]`，没有替代文字时输出 `[image]` | `Images.render`、`ImageResolver` | `ImagesAndSafetyTest` 的各个图片测试 |
-| `[^1]` 脚注引用 | Word 脚注引用（字符样式 `FootnoteReference`，上标）；没有对应定义时原样输出 `[^1]` | `Footnotes.reference` | `CrossFragmentTest.referenceWithoutDefinitionStaysText`、`footnoteReferenceAndTextUseTheFootnoteStyles` |
-| 硬换行（行尾两个空格或 `\`）、`<br>`、`<br/>` | 换行符 `<w:br/>` | `Fragment.renderInline` | `CoreCompositionTest.breakTagsBecomeLineBreaksAndOtherHtmlKeepsOnlyText`、`hardLineBreaksBecomeLineBreaks` |
+| `![替代文字](路径)` | 嵌入图片，替代文字写入 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性；只有图片的段落居中；读不到、或位于脚注中时输出 `[替代文字]`，没有替代文字时输出 `[image]` | `Images.render`、`ImageResolver` | `ImagesAndSafetyTest.relativeImageIsReadFromTheSectionDirectoryAndCenteredWhenAlone`、`unusableImagesShowTheirAlternativeText`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText` |
+| `[^1]` 脚注引用 | Word 脚注引用（字符样式 `FootnoteReference`，上标）；没有对应定义时原样输出 `[^1]` | `Footnotes.reference` | `CrossFragmentTest.referenceWithoutDefinitionStaysText`、`CrossFragmentTest.footnoteReferenceAndTextUseTheFootnoteStyles` |
+| 硬换行（行尾两个空格或 `\`）、`<br>`、`<br/>` | 换行符 `<w:br/>` | `Fragment.renderInline` | `CoreCompositionTest.breakTagsBecomeLineBreaksAndOtherHtmlKeepsOnlyText`、`CoreCompositionTest.hardLineBreaksBecomeLineBreaks` |
 | 其他内联 HTML 标签 | 去掉标签，保留标签之间的文字 | `Fragment.renderInline` | 同上 |
 
 ## 不支持

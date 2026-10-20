@@ -50,19 +50,19 @@ class SchemaValidationTest {
 
         List<String> errors = new ArrayList<>();
         Set<String> parts = new TreeSet<>();
-        validate("all options", new MarkdownDocxComposer(everything).compose(sections), errors, parts);
-        validate("defaults", new MarkdownDocxComposer().compose(sections), errors, parts);
-        validate("empty", new MarkdownDocxComposer(everything).compose(List.of()), errors, parts);
+        int pictures = validate("all options", new MarkdownDocxComposer(everything).compose(sections), errors, parts)
+                + validate("defaults", new MarkdownDocxComposer().compose(sections), errors, parts)
+                + validate("empty", new MarkdownDocxComposer(everything).compose(List.of()), errors, parts);
         assertEquals(List.of(), errors);
         // the demo image is in both the "all options" and the "defaults" document
-        assertEquals(2, pictures[0]);
+        assertEquals(2, pictures);
         assertEquals(Set.of("word/document.xml", "word/footer1.xml", "word/footnotes.xml", "word/numbering.xml",
                 "word/settings.xml", "word/styles.xml"), parts);
     }
 
-    private static final int[] pictures = {0};
-
-    private static void validate(String name, byte[] docx, List<String> errors, Set<String> parts) throws Exception {
+    /** @return the number of pictures in the document part */
+    private static int validate(String name, byte[] docx, List<String> errors, Set<String> parts) throws Exception {
+        int pictures = 0;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(docx))) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
                 String type = schemaFor(entry.getName());
@@ -77,9 +77,10 @@ class SchemaValidationTest {
                     if (error.getMessage().contains("strict wildcard") && error.getMessage().contains("drawingml/2006/picture")) continue;
                     errors.add(name + " " + entry.getName() + ": " + error);
                 }
-                if (entry.getName().equals("word/document.xml")) pictures[0] += validatePictures(name, xml, errors);
+                if (entry.getName().equals("word/document.xml")) pictures += validatePictures(name, xml, errors);
             }
         }
+        return pictures;
     }
 
     private static int validatePictures(String name, XmlObject document, List<String> errors) throws Exception {

@@ -58,12 +58,12 @@ final class Anchors {
         bookmarksByFragment.computeIfAbsent(fragment, key -> new HashMap<>()).put(anchor, bookmark);
         firstBookmarkByAnchor.putIfAbsent(anchor, bookmark);
 
-        CTP xml = paragraph.getCTP();
-        var start = xml.addNewBookmarkStart();
+        CTP paragraphElement = paragraph.getCTP();
+        var start = paragraphElement.addNewBookmarkStart();
         start.setName(bookmark);
         start.setId(BigInteger.valueOf(sequence));
         body.run();
-        xml.addNewBookmarkEnd().setId(BigInteger.valueOf(sequence));
+        paragraphElement.addNewBookmarkEnd().setId(BigInteger.valueOf(sequence));
     }
 
     /** A hyperlink run whose target is filled in by {@link #resolve()} once every heading is known. */

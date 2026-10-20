@@ -88,7 +88,7 @@ public final class ComposeOptions {
             return this;
         }
 
-        /** Default: on. Sets updateFields: the fields, such as the table of contents, are recalculated when the document opens. */
+        /** Default: on. Writes w:updateFields, which asks the reading application to recalculate fields on open (ECMA-376 §17.15.1.90). */
         public Builder updateFieldsOnOpen(boolean update) {
             this.updateFieldsOnOpen = update;
             return this;

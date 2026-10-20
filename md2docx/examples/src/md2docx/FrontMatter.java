@@ -57,8 +57,8 @@ final class FrontMatter {
     }
 
     /**
-     * A real TOC field, whose result is rebuilt with page numbers when fields are updated. Its stored result
-     * holds one linked entry per heading, so readers that do not update fields still show the contents.
+     * A TOC field whose stored result holds one linked entry per heading, without page numbers, so readers that do
+     * not update fields still show the contents.
      */
     private static void tableOfContents(List<Consumer<XWPFParagraph>> paragraphs, ComposeOptions options, Styles styles,
                                         List<Anchors.Heading> headings) {

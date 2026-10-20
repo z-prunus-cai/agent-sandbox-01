@@ -32,7 +32,6 @@ final class HeadingNumbering {
             CTStyle style = styles.definition(Styles.Style.heading(level));
             if (style == null) continue;
             CTPPrGeneral properties = style.isSetPPr() ? style.getPPr() : style.addNewPPr();
-            // a template whose heading styles already carry numbering keeps its own
             if (properties.isSetNumPr()) {
                 templateNumbering = true;
                 continue;

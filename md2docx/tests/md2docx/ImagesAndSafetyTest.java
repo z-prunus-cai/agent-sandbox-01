@@ -153,9 +153,9 @@ class ImagesAndSafetyTest {
                     // the server is closed at the end of the test
                 }
             });
-            String url = "http://127.0.0.1:" + server.getLocalPort() + "/a.png";
-            assertNull(ImageResolver.localFiles().resolve(url, directory));
-            compose(Section.untitled("![x](" + url + ")").baseDirectory(directory));
+            String address = "http://127.0.0.1:" + server.getLocalPort() + "/a.png";
+            assertNull(ImageResolver.localFiles().resolve(address, directory));
+            compose(Section.untitled("![x](" + address + ")").baseDirectory(directory));
             Thread.sleep(200);
         }
         assertFalse(connected.get());
@@ -265,8 +265,8 @@ class ImagesAndSafetyTest {
         String tags = "<div>\n" + "<a".repeat(40_000);
         long start = System.nanoTime();
         compose(Section.untitled(comments), Section.untitled(tags));
-        long millis = (System.nanoTime() - start) / 1_000_000;
-        assertTrue(millis < 3_000, millis + " ms");
+        long elapsedMilliseconds = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(elapsedMilliseconds < 3_000, elapsedMilliseconds + " ms");
     }
 
     @Test

@@ -28,9 +28,13 @@
 | LibreOffice（命令 `soffice`） | 24.2.7.2 | 仅用于渲染检查，运行示例和测试不需要 |
 | pdftotext（poppler-utils） | 24.02.0 | 仅用于渲染检查：从 PDF 取出文字 |
 
-本目录不带构建工程，也不下载依赖。依赖用 Gradle 的写法列出如下，交给你自己的构建工具解析：
+本目录不带构建工程，也不下载依赖。依赖用 Gradle 的写法列出如下，交给你自己的构建工具解析。要得到第 3、6 节需要的 jar 路径，可以把下面的内容存为任意空目录中的 `build.gradle.kts`，在同一目录建一个空的 `settings.gradle.kts`，然后运行 `gradle -q printPaths`（实测 Gradle 8.14.3，需要能访问 Maven Central）：
 
 ```kotlin
+plugins {
+    java
+}
+
 repositories {
     mavenCentral()
 }
@@ -47,16 +51,32 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-console-standalone:6.1.3")
     testImplementation("org.apache.poi:poi-ooxml-full:5.5.1")
 }
+
+tasks.register("printPaths") {
+    val runtime = configurations.runtimeClasspath.get()
+    val test = configurations.testRuntimeClasspath.get()
+    doLast {
+        println("export CLASSPATH=" + runtime.asPath)
+        println("export JUNIT_JAR=" + test.single { it.name == "junit-platform-console-standalone-6.1.3.jar" })
+        println("export POI_FULL_JAR=" + test.single { it.name == "poi-ooxml-full-5.5.1.jar" })
+    }
+}
 ```
 
 这 7 个运行时坐标连同传递依赖一共 20 个 jar（实测解析结果）：`poi-5.5.1`、`poi-ooxml-5.5.1`、`poi-ooxml-lite-5.5.1`、`xmlbeans-5.3.0`、`commons-codec-1.20.0`、`commons-math3-3.6.1`、`SparseBitSet-1.3`、`commons-compress-1.28.0`、`commons-lang3-3.18.0`、`commons-io-2.21.0`、`curvesapi-1.08`、`log4j-api-2.24.3`、`commons-collections4-4.5.0`、7 个 commonmark jar（`commonmark`、5 个 `commonmark-ext-*`，均为 0.30.1），以及 `autolink-0.12.0`。
 
-第 3、6 节的命令都在本目录（`md2docx/`）下执行，并假定已设置三个环境变量：
+`gradle -q printPaths` 输出三行 `export` 命令（路径在 Gradle 的缓存目录中，因机器而异），格式如下：
 
-```bash
-export CLASSPATH=<上面 20 个运行时 jar 的路径，用 : 分隔>
+```
+export CLASSPATH=<20 个运行时 jar 的路径，用 : 分隔>
 export JUNIT_JAR=<junit-platform-console-standalone-6.1.3.jar 的路径>
 export POI_FULL_JAR=<poi-ooxml-full-5.5.1.jar 的路径>
+```
+
+第 3、6 节的命令都在本目录（`md2docx/`）下执行。先在同一个终端中设置这三个变量并确认 JDK 版本：
+
+```bash
+eval "$(cd <放 build.gradle.kts 的目录> && gradle -q printPaths)"
 java -version     # 必须是 25
 ```
 
@@ -68,6 +88,9 @@ java -version     # 必须是 25
 
 ```
 md2docx/
+  BRIEF.md               本文
+  attachments/           markdown-mapping.md：Markdown 元素与 Word 结构的对应
+  .gitignore             忽略示例和检查生成的文件
   examples/
     src/md2docx/         拼接器（包 md2docx），每项功能一个文件，见 3.2
     src/demo/            两个可运行的示例入口
@@ -129,18 +152,58 @@ md2docx/
 不要文档级排版（标题、目录、标题编号、页码、模板）：
 
 1. 删除 `FrontMatter.java`、`Templates.java`、`HeadingNumbering.java`；
-2. `Composition.java`：构造函数中只保留 `document = new XWPFDocument(); PageSetup.applyA4(document);` 和 `styles = Styles.create(document, options);`，删去字段 `headingNumbering` 及其赋值；`compose` 中删去从注释 `the front matter is inserted` 到 `enforceUpdateFields` 的 6 行；
+2. `Composition.java`：删去字段 `headingNumbering` 及其注释；`compose` 中删去从注释 `the front matter is inserted` 到 `enforceUpdateFields` 的 6 行；构造函数改成：
+
+   ```java
+   Composition(ComposeOptions options) throws IOException {
+       this.options = options;
+       document = new XWPFDocument();
+       PageSetup.applyA4(document);
+       try {
+           styles = Styles.create(document, options);
+           XWPFNumbering numbering = document.createNumbering();
+           lists = new Lists(numbering);
+           page = PageSetup.of(document);
+           footnotes = new Footnotes(document, styles);
+           if (options.title != null) document.getProperties().getCoreProperties().setTitle(Texts.xmlSafe(options.title));
+       } catch (XmlException | RuntimeException failure) {
+           document.close();
+           throw failure instanceof XmlException ? new IllegalStateException("invalid built-in definition", failure)
+                   : (RuntimeException) failure;
+       }
+   }
+   ```
+
 3. `Fragment.java`：把 `String number = composition.headingNumbering == null ? null : composition.headingNumbering.next(level);` 改成 `String number = null;`。
 
 ### 3.3 最简示例
 
-`examples/src/demo/MinimalDemo.java` 把两个文件各放在一个标题下，再加一段话：
+`examples/src/demo/MinimalDemo.java` 把两个文件各放在一个标题下，再加一段话。全文：
 
 ```java
-byte[] document = new MarkdownDocxComposer().compose(List.of(
-        Section.of("文档一", Files.readString(input.resolve("first.md"))),
-        Section.of("文档二", Files.readString(input.resolve("second.md"))),
-        Section.of("其他", "这是另一段话。")));
+package demo;
+
+import md2docx.MarkdownDocxComposer;
+import md2docx.Section;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+/** Two Markdown files, each under its own heading, and one more paragraph under a third heading. */
+public class MinimalDemo {
+
+    public static void main(String[] args) throws Exception {
+        Path input = Path.of(args.length > 0 ? args[0] : "examples/markdown/minimal");
+        Path output = Path.of(args.length > 1 ? args[1] : "minimal.docx");
+        byte[] document = new MarkdownDocxComposer().compose(List.of(
+                Section.of("文档一", Files.readString(input.resolve("first.md"))),
+                Section.of("文档二", Files.readString(input.resolve("second.md"))),
+                Section.of("其他", "这是另一段话。")));
+        Files.write(output, document);
+        System.out.println("wrote " + output);
+    }
+}
 ```
 
 `first.md` 以 `# 背景` 开头，`second.md` 以 `# 用法` 开头。运行：
@@ -182,24 +245,47 @@ wrote minimal.docx
 
 ### 3.4 完整示例
 
-`examples/src/demo/FullDemo.java` 打开全部选项：
+`examples/src/demo/FullDemo.java` 打开标题、副标题、目录、标题编号、顶级章节分页和页码，并用到四种 `Section` 构造方式。全文：
 
 ```java
-ComposeOptions.Builder options = ComposeOptions.builder()
-        .title("示例文档")
-        .subtitle("由四个 Markdown 文件拼接")
-        .tableOfContents(3)
-        .numberHeadings(true)
-        .pageBreakBetweenTopLevelSections(true)
-        .pageNumbers(true);
-if (args.length > 2) options.template(Path.of(args[2]));
+package demo;
 
-List<Section> sections = List.of(
-        Section.fromMarkdown(Files.readString(input.resolve("01-overview.md"))),
-        Section.titled("设计")
-                .child(Section.untitled(Files.readString(input.resolve("02-structure.md"))).baseDirectory(input))
-                .child(Section.fromMarkdown(Files.readString(input.resolve("03-interface.md")))),
-        Section.of("附注", Files.readString(input.resolve("04-notes.md"))));
+import md2docx.ComposeOptions;
+import md2docx.MarkdownDocxComposer;
+import md2docx.Section;
+
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+/** Title, subtitle, contents, heading numbers, page breaks, page numbers, all four kinds of section, and an image. */
+public class FullDemo {
+
+    public static void main(String[] args) throws Exception {
+        Path input = Path.of(args.length > 0 ? args[0] : "examples/markdown/full");
+        Path output = Path.of(args.length > 1 ? args[1] : "full.docx");
+        ComposeOptions.Builder options = ComposeOptions.builder()
+                .title("示例文档")
+                .subtitle("由四个 Markdown 文件拼接")
+                .tableOfContents(3)
+                .numberHeadings(true)
+                .pageBreakBetweenTopLevelSections(true)
+                .pageNumbers(true);
+        if (args.length > 2) options.template(Path.of(args[2]));
+
+        List<Section> sections = List.of(
+                Section.fromMarkdown(Files.readString(input.resolve("01-overview.md"))),
+                Section.titled("设计")
+                        .child(Section.untitled(Files.readString(input.resolve("02-structure.md"))).baseDirectory(input))
+                        .child(Section.fromMarkdown(Files.readString(input.resolve("03-interface.md")))),
+                Section.of("附注", Files.readString(input.resolve("04-notes.md"))));
+        try (OutputStream out = Files.newOutputStream(output)) {
+            new MarkdownDocxComposer(options.build()).compose(sections, out);
+        }
+        System.out.println("wrote " + output);
+    }
+}
 ```
 
 ```
@@ -208,7 +294,7 @@ $ java examples/src/demo/FullDemo.java
 wrote full.docx
 ```
 
-第三个参数可以传入一个模板文件：`java examples/src/demo/FullDemo.java examples/markdown/full full.docx 模板.docx`。
+第三个参数可以传入一个模板文件：`java examples/src/demo/FullDemo.java examples/markdown/full full.docx <你的 .docx 或 .dotx 模板的路径>`。
 
 `full.docx` 共 4 页，LibreOffice 渲染后的文字（节选，`pdftotext -layout full.pdf -`）：
 
@@ -291,7 +377,7 @@ wrote full.docx
 | `title(String)`、`subtitle(String)` | 无 | 文档开头的标题、副标题 |
 | `tableOfContents(int)` | 0（没有目录） | 收录 1 到 n 级标题的目录；n 超出 0 到 9 时抛出 `IllegalArgumentException` |
 | `tableOfContentsTitle(String)` | `目录` | 目录上方的标题 |
-| `updateFieldsOnOpen(boolean)` | 开 | 有目录时，让 Word 打开文档时更新域 |
+| `updateFieldsOnOpen(boolean)` | 开 | 有目录时写入 `w:updateFields`，要求阅读软件打开文档时更新域（见 4.10） |
 | `numberHeadings(boolean)` | 关 | 标题自动编号 1.、1.1、1.1.1 |
 | `pageBreakBetweenTopLevelSections(boolean)` | 关 | 第一个顶级章节之后，每个顶级章节另起一页 |
 | `pageBreakAfterFrontMatter(boolean)` | 开 | 有标题、副标题或目录时，正文另起一页 |
@@ -342,7 +428,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 机制：`Footnotes.definitions` 遍历整个片段，把所有定义放进 commonmark 的 `DefinitionMap`，用与解析器相同的规则查找。`Footnotes.reference` 以定义节点本身为键：第一次引用时先创建 Word 脚注、登记它的 ID，再渲染脚注内容；之后的引用（包括脚注内容中对自己或其他脚注的引用）复用登记的 ID。每个片段有自己的定义表，所以两个片段的 `[^1]` 是两个脚注。脚注中的图片输出替代文字（见 4.7）。
 
-不写分隔线脚注：`separator` 和 `continuationSeparator` 是特殊脚注，标准要求每个特殊脚注都列在设置的 `footnotePr` 中，否则不加载，文档也不符合标准（`part1.txt:37797-37800`，§17.11.9）。POI 没有登记它们的公开方法，所以不写；LibreOffice 渲染时照样画出分隔线（3.4 节的输出）。
+不写分隔线脚注：`separator` 和 `continuationSeparator` 是特殊脚注，标准要求每个特殊脚注都列在设置的 `footnotePr` 中，否则不加载，文档也不符合标准（`part1.txt:37797-37800`，§17.11.9）。POI 没有登记它们的公开方法，所以不写。
 
 证据：测试 `CrossFragmentTest` 中的 `sameFootnoteLabelInTwoFragmentsGivesTwoFootnotes`、`referenceWithoutDefinitionStaysText`、`footnoteReferringToAnotherFootnoteOrToItselfReusesTheFootnote`、`footnoteLabelsIgnoreCaseAndDefinitionsMayBeNested`。
 
@@ -374,7 +460,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 证据：`ImagesAndSafetyTest` 的 23 个测试，其中 `localFilesNeverOpensANetworkConnection` 在本机开一个端口，确认解析 `http://127.0.0.1:<端口>/a.png` 时没有任何连接；`symbolicLinkLeavingTheDirectoryIsRefused`、`imagesAboveTheSizeLimitAreNotRead`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`。
 
-不这样做：Markdown 来自用户或其他程序时，`![](../../etc/passwd)` 或 `![](http://内网地址/)` 会让服务端读取任意文件或替人发起内网请求。需要远程图片时，自己实现 `ImageResolver` 并在其中限定允许的地址。
+不这样做：Markdown 不可信时，`![](../../etc/passwd)` 或 `![](http://192.0.2.1/)` 会让程序读取任意文件或发起网络请求。需要远程图片时，自己实现 `ImageResolver` 并在其中限定允许的地址。
 
 ### 4.8 链接只放行四种协议
 
@@ -396,7 +482,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：复杂域由三个 `w:fldChar` 组成：`begin`、`separate`、`end`；`separate` 之前是域指令，之后是域的当前结果（`part1.txt:62544-62547`，§17.16.18；`:68406-68412`）。目录指令 `TOC \o "1-3" \h \z \u`：`\o` 收录 1 到 3 级标题样式的段落，`\h` 让目录项成为超链接，`\z` 在 Web 版式中隐藏制表前导符和页码，`\u` 使用段落的大纲级别（`part1.txt:61738`、`:61772`、`:61782-61786`、`:61806`、`:61809`，§17.16.5.68）。标题样式带 `w:outlineLvl`（`part1.txt:11694-11697`，§17.3.1.20）。
 
-机制：`FrontMatter.tableOfContents` 写入上述指令，并把域结果预先填成每个标题一行、链接到标题书签的目录项（开启标题编号时带上编号）。这样不更新域的阅读软件也能看到目录。设置 `updateFieldsOnOpen(true)` 时写入 `w:updateFields`，表示打开文档时重新计算域结果（`part1.txt:53355-53358`，§17.15.1.90），页码由此补上；POI 的 `XWPFDocument.enforceUpdateFields` 写入这个设置，其 Javadoc 说明 Word 会因此在打开时询问（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFDocument.java:1462-1475`），这个询问没有在 Word 中实测。
+机制：`FrontMatter.tableOfContents` 写入上述指令，并把域结果预先填成每个标题一行、链接到标题书签的目录项（开启标题编号时带上编号）。这样不更新域的阅读软件也能看到目录。设置 `updateFieldsOnOpen(true)` 时写入 `w:updateFields`，表示打开文档时重新计算域结果（`part1.txt:53355-53358`，§17.15.1.90），重新计算后的目录才有页码；Word 是否因此补上页码没有实测；POI 的 `XWPFDocument.enforceUpdateFields` 写入这个设置，其 Javadoc 说明 Word 会因此在打开时询问（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFDocument.java:1462-1475`），这个询问没有在 Word 中实测。
 
 标题、副标题和目录在所有标题都已知后插入到正文前面。POI 的 `insertNewParagraph` 每次都向前遍历新段落之前的所有同级元素（`XWPFDocument.java:859-866`），按阅读顺序逐个插在同一个位置之前，耗时随目录项数平方增长；所以 `FrontMatter.insert` 从最后一段往前插，每次插在正文最前面。文档标题同时写入文档属性的标题（`docProps/core.xml` 的 `dc:title`）。
 
@@ -416,7 +502,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：`w:styleId` 只用于在文档内引用样式（`part1.txt:32166-32167`），`w:name` 是样式的主名称（`part1.txt:31658-31660`，§17.7.4.9）。主文档部件的内容类型有两种：`application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml` 和 `application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml`（`part1.txt:2513-2515`，§11.3.10）；POI 的 `OPCPackage.replaceContentType` 用于把模板改成文档（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/openxml4j/opc/OPCPackage.java:1770-1801`）。
 
-机制：`Templates.open` 只接受上面两种内容类型（启用宏的文件等其他类型抛出 `IOException`），模板类型换成文档类型。正文用 XML 游标删除除最后的节属性 `w:sectPr` 之外的全部内容：POI 的 `removeBodyElement` 只从 XML 中删除段落和表格（`XWPFDocument.java:1124-1141`），会留下内容控件 `w:sdt` 等其他块。之后在包一级删除正文部件中已无人引用的图片、链接、嵌入对象和图表关系及其目标部件。`Styles.fromTemplate` 对每个需要的样式先按名称（不区分大小写）查找，再按默认 ID 查找，都没有时加入内置定义。页面尺寸和边距取模板的最后一节（`PageSetup.of`，带单位的长度如 `2.54cm` 也由 POI 的 `POIXMLUnits.parseLength` 换算），表格和图片按它计算宽度。
+机制：`Templates.open` 只接受上面两种内容类型（启用宏的文件等其他类型抛出 `IOException`），模板类型换成文档类型。正文用 XMLBeans 的 `XmlCursor`（在 XML 树中逐个元素移动、可删除元素的游标）删除除最后的节属性 `w:sectPr` 之外的全部内容：POI 的 `removeBodyElement` 只从 XML 中删除段落和表格（`XWPFDocument.java:1124-1141`），会留下内容控件 `w:sdt` 等其他块。之后在包一级删除正文部件中已无人引用的图片、链接、嵌入对象和图表关系及其目标部件。`Styles.fromTemplate` 对每个需要的样式先按名称（不区分大小写）查找，再按默认 ID 查找，都没有时加入内置定义。页面尺寸和边距取模板的最后一节（`PageSetup.of`，带单位的长度如 `2.54cm` 也由 POI 的 `POIXMLUnits.parseLength` 换算），表格和图片按它计算宽度。
 
 证据：`TemplateTest` 的 14 个测试，其中模板的标题样式 ID 为 `1`、`2`，生成的段落样式也是 `1`、`2`；`contentControlsAndPicturesOfTheTemplateBodyAreDropped`、`macroEnabledFileIsRefused`。
 
@@ -440,28 +526,28 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：POI 的 `poi-ooxml-lite` 只包含 POI 自己的测试用到的 schema 类，完整的 ECMA-376 schema 在 `poi-ooxml-full` 中（`.reference-cache/apache/poi@5.5.1/src/documentation/content/xdocs/help/faq.xml:78-85`）。
 
-机制：`SchemaValidationTest` 用 XMLBeans 按对应的文档类型解析并校验 `document`、`styles`、`numbering`、`footnotes`、`settings`、`footer` 6 个部件，覆盖默认选项、全部选项和空文档三种情况。图片的 `pic:pic` 元素位于 `a:graphicData` 的通配内容中，测试跳过关于它的报错，再把每个 `pic:pic` 单独按图片 schema 校验一次。
+机制：`SchemaValidationTest` 用 XMLBeans 按对应的文档类型解析并校验 `document`、`styles`、`numbering`、`footnotes`、`settings`、`footer` 6 个部件，覆盖默认选项、全部选项和空文档三种情况。图片的 `pic:pic` 元素位于 `a:graphicData` 中，schema 对那里只写“任意元素”（通配内容），XMLBeans 对它报错；测试跳过这条报错，再把每个 `pic:pic` 单独按图片 schema 校验一次。
 
-证据：第 6 节的测试输出；缺少 `poi-ooxml-full` 时的失败见第 5 节。这是 Word 之外能做到的最强检查，但它不能证明 Word 中的显示效果。
+证据：第 6 节的测试输出；缺少 `poi-ooxml-full` 时的失败见第 5 节。它不能证明 Word 中的显示效果。
 
 ## 5. 陷阱
 
-下表中“上一版”指本目录评审前的代码（每项问题都已修正），现象是用它实测的输出。
+下表的现象都是按“做法”一列写代码实测的输出。
 
 | 做法 | 现象（实测） | 解决 |
 | --- | --- | --- |
 | 用 JDK 21 运行 `java examples/src/demo/MinimalDemo.java` | `error: package md2docx does not exist`，退出码 1 | 使用 JDK 22 及以上（本文用 25） |
 | 运行时没有设置 `CLASSPATH` | `error: package org.apache.poi.xwpf.usermodel does not exist`，退出码 2 | 按第 2 节设置 `CLASSPATH` |
-| 测试类路径中没有 `poi-ooxml-full` | `fullSchemasAreOnTheClassPath` 失败；`demoDocumentsAndEveryFeatureValidate` 抛出 `org.apache.xmlbeans.SchemaTypeLoaderException: XML-BEANS compiled schema: Could not locate compiled schema resource org/apache/poi/schemas/ooxml/system/ooxml/ctmultileveltypea223type.xsb (org.apache.poi.schemas.ooxml.system.ooxml.ctmultileveltypea223type) - code 0` | 把 `POI_FULL_JAR` 加入测试类路径（放在 `poi-ooxml-lite` 之前或之后都可以，两种都实测通过） |
+| 测试类路径中没有 `poi-ooxml-full` | `fullSchemasAreOnTheClassPath` 失败；`demoDocumentsAndEveryFeatureValidate` 抛出 `org.apache.xmlbeans.SchemaTypeLoaderException: XML-BEANS compiled schema: Could not locate compiled schema resource org/apache/poi/schemas/ooxml/system/ooxml/ctmultileveltypea223type.xsb (org.apache.poi.schemas.ooxml.system.ooxml.ctmultileveltypea223type) - code 0` | 按第 6 节的命令把 `$POI_FULL_JAR` 放进测试类路径 |
 | 运行时没有 Log4j 实现 | 每次运行打印 `main ERROR Log4j API could not find a logging provider.` | 不影响生成结果；POI 依赖 `log4j-api`，需要日志时再加入一个 Log4j 实现 |
 | 不过滤控制字符，直接 `run.setText("a\u0001b")` | 文档中出现 `a?b` | 见 4.9 |
-| 两个表格之间不留段落 | 用 POI 写两个紧挨的表格，`word/document.xml` 中有 2 个 `<w:tbl>`；LibreOffice 转成 odt 后只有 1 个表格。拼接器的输出（中间有空段落）转换后是 2 个 | 见 4.6 |
-| 在 `HashMap.computeIfAbsent` 的计算函数中渲染脚注（上一版） | 脚注内容引用另一个脚注时抛出 `java.util.ConcurrentModificationException` | 先创建并登记脚注，再渲染内容，见 4.4 |
-| 用 `normalize()` 加 `startsWith` 检查图片路径（上一版） | 目录中指向 `../outside.png` 的符号链接被读出（`read 3 bytes`） | 用 `toRealPath()`，见 4.7 |
-| 用 `ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))` 读图片尺寸（上一版） | 返回 `javax.imageio.stream.FileCacheImageInputStream`：每张图片都写一个临时文件 | 用 `MemoryCacheImageInputStream` |
-| 把 Markdown 链接地址直接交给 `createHyperlinkRun`（上一版） | `[x](http://example.com/&#xFFFE;)` 生成的文件再用 POI 打开时抛出 `org.apache.poi.ooxml.POIXMLException: org.apache.poi.openxml4j.exceptions.InvalidFormatException: Failed to parse relationships`，日志中的原因是 `An invalid XML character (Unicode: 0xfffe) was found in the value of attribute "Target" and element is "Relationship".` | 见 4.8 |
-| 链接的每个 run 各调用一次 `createHyperlinkRun`（上一版） | `[**b** and *i*](https://example.org)` 生成 3 个 `w:hyperlink` | 见 4.5 |
-| 把目录项按阅读顺序逐个插在正文第一个元素之前（上一版） | 8000 个标题：无目录 930 ms，有目录 2702 ms；16000 个标题：无目录 240 ms，有目录 8050 ms。修正后 16000 个标题有目录 523 ms | 见 4.10 |
+| 两个表格之间不留段落 | 用 POI 写两个紧挨的表格，`word/document.xml` 中有 2 个 `<w:tbl>`；用 `soffice --headless --convert-to odt` 转成 ODT（OpenDocument 文本格式，LibreOffice 的原生格式）后，`content.xml` 中只有 1 个 `<table:table>`。拼接器的输出（中间有空段落）转换后是 2 个 | 见 4.6 |
+| 在 `HashMap.computeIfAbsent` 的计算函数中渲染脚注 | 脚注内容引用另一个脚注时抛出 `java.util.ConcurrentModificationException` | 先创建并登记脚注，再渲染内容，见 4.4 |
+| 用 `normalize()` 加 `startsWith` 检查图片路径 | 目录中指向 `../outside.png` 的符号链接被读出（`read 3 bytes`） | 用 `toRealPath()`，见 4.7 |
+| 用 `ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))` 读图片尺寸 | 返回 `javax.imageio.stream.FileCacheImageInputStream`：每张图片都写一个临时文件 | 用 `MemoryCacheImageInputStream` |
+| 把 Markdown 链接地址直接交给 `createHyperlinkRun` | `[x](http://example.com/&#xFFFE;)` 生成的文件再用 POI 打开时抛出 `org.apache.poi.ooxml.POIXMLException: org.apache.poi.openxml4j.exceptions.InvalidFormatException: Failed to parse relationships`，日志中的原因是 `An invalid XML character (Unicode: 0xfffe) was found in the value of attribute "Target" and element is "Relationship".` | 见 4.8 |
+| 链接的每个 run 各调用一次 `createHyperlinkRun` | `[**b** and *i*](https://example.org)` 生成 3 个 `w:hyperlink` | 见 4.5 |
+| 把目录项按阅读顺序逐个插在正文第一个元素之前 | 8000 个标题：无目录 930 ms，有目录 2702 ms；16000 个标题：无目录 240 ms，有目录 8050 ms。改为从最后一段往前插后，16000 个标题有目录 523 ms | 见 4.10 |
 | 用 POI 的 `XWPFNumbering.addNum(BigInteger)` 新建编号实例 | 模板中已有实例 1 和 5 时，新实例的 ID 与模板重复（见 4.3 引用的源码） | `Lists.addInstance` |
 | 断言设置项时写 `<w:updateFields w:val="true"/>` 或 `<w:pageBreakBefore/>` | 断言失败：POI 写的是 `w:val="on"` | 按实际 XML 断言 |
 | 用 `XWPFParagraph.getText()` 检查含脚注引用的段落 | 结果中带有脚注内容，例如 `x[footnoteRef:1] y[footnoteRef:2] [1:  case note]` | 只拼接各 run 的 `text()`（测试中的 `TestSupport.runText`） |
