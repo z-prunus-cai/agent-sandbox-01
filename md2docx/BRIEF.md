@@ -314,7 +314,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 机制：`Composition.render` 给每个片段传入 `levelBase`（有标题的章节为 d，没有标题的为 d − 1）。`Fragment.shallowestHeading` 先遍历一次语法树，找出最浅的标题级别（`fromMarkdown` 取走的标题和脚注中的标题除外），再把每个标题放到 `levelBase + 级别 − 最浅级别 + 1`，结果限制在 1 到 9 之间。
 
-证据：3.3 节和 3.4 节的输出；测试 `CoreCompositionTest` 中以 `fragmentHeadings`、`fromMarkdown`、`titledSection`、`untitledSection`、`headingsDeeperThanNine` 开头的 6 个方法，以及 `CrossFragmentTest.headingInsideAFootnoteDoesNotChangeTheBodyHeadingLevels`。
+证据：3.3 节和 3.4 节的输出（由 `DemoTest` 检查）；测试 `CoreCompositionTest` 中以 `fragmentHeadings`、`fromMarkdown`、`titledSection`、`untitledSection`、`headingsDeeperThanNine` 开头的 6 个方法，以及 `CrossFragmentTest.headingInsideAFootnoteDoesNotChangeTheBodyHeadingLevels`。
 
 不这样做：各片段自带的 `#` 直接成为 1 级标题，片段放在第二层时与上级章节同级，目录和编号都会错。
 
@@ -372,7 +372,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 机制：根目录和文件都用 `toRealPath()` 取真实路径（跟随符号链接），再检查 `startsWith`。只做文字上的 `normalize()` 时，目录中一个指向外部的符号链接就能读出外部文件（第 5 节）。图片格式由文件开头的字节判断（PNG、JPEG、GIF、BMP），尺寸只读图片头，用 `MemoryCacheImageInputStream` 在内存中读。POI 的 `XWPFRun.addPicture` 的宽高单位是 EMU（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFRun.java:1256-1262`）；1 像素 = 9525 EMU，1 磅 = 12700 EMU（`.reference-cache/apache/poi@5.5.1/poi/src/main/java/org/apache/poi/util/Units.java:24-29`）。图片按像素尺寸放置，宽度超过可用宽度、或高度超过正文高度的 90% 时等比缩小；表格中的图片以单元格宽度减去左右边距为限。`addPicture` 把它的“文件名”参数同时写进 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性（`XWPFRun.java:1316`、`:1335`），这两个属性都是供辅助技术使用的替代文字（`part1.txt:151991-151992`，§20.4.2.5），所以传入的是 Markdown 的替代文字。脚注中的图片输出 `[替代文字]`：POI 把图片关系加到正文部件上（`XWPFRun.java:1273-1286`、`:1342`），脚注部件中的图片引用会指向不存在的关系。读不到的图片也输出 `[替代文字]`，没有替代文字时输出 `[image]`。
 
-证据：`ImagesAndSafetyTest` 的 15 个测试，其中 `localFilesNeverOpensANetworkConnection` 在本机开一个端口，确认解析 `http://127.0.0.1:<端口>/a.png` 时没有任何连接；`symbolicLinkLeavingTheDirectoryIsRefused`、`imagesAboveTheSizeLimitAreNotRead`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`。
+证据：`ImagesAndSafetyTest` 的 23 个测试，其中 `localFilesNeverOpensANetworkConnection` 在本机开一个端口，确认解析 `http://127.0.0.1:<端口>/a.png` 时没有任何连接；`symbolicLinkLeavingTheDirectoryIsRefused`、`imagesAboveTheSizeLimitAreNotRead`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`。
 
 不这样做：Markdown 来自用户或其他程序时，`![](../../etc/passwd)` 或 `![](http://内网地址/)` 会让服务端读取任意文件或替人发起内网请求。需要远程图片时，自己实现 `ImageResolver` 并在其中限定允许的地址。
 
@@ -418,7 +418,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 机制：`Templates.open` 只接受上面两种内容类型（启用宏的文件等其他类型抛出 `IOException`），模板类型换成文档类型。正文用 XML 游标删除除最后的节属性 `w:sectPr` 之外的全部内容：POI 的 `removeBodyElement` 只从 XML 中删除段落和表格（`XWPFDocument.java:1124-1141`），会留下内容控件 `w:sdt` 等其他块。之后在包一级删除正文部件中已无人引用的图片、链接、嵌入对象和图表关系及其目标部件。`Styles.fromTemplate` 对每个需要的样式先按名称（不区分大小写）查找，再按默认 ID 查找，都没有时加入内置定义。页面尺寸和边距取模板的最后一节（`PageSetup.of`，带单位的长度如 `2.54cm` 也由 POI 的 `POIXMLUnits.parseLength` 换算），表格和图片按它计算宽度。
 
-证据：`TemplateTest` 的 10 个测试，其中模板的标题样式 ID 为 `1`、`2`，生成的段落样式也是 `1`、`2`；`contentControlsAndPicturesOfTheTemplateBodyAreDropped`、`macroEnabledFileIsRefused`。
+证据：`TemplateTest` 的 14 个测试，其中模板的标题样式 ID 为 `1`、`2`，生成的段落样式也是 `1`、`2`；`contentControlsAndPicturesOfTheTemplateBodyAreDropped`、`macroEnabledFileIsRefused`。
 
 ### 4.13 分页、页码、页面尺寸
 
@@ -479,31 +479,33 @@ java -jar "$JUNIT_JAR" execute -cp "build/test-classes:$POI_FULL_JAR:$CLASSPATH"
 
 `--scan-classpath` 扫描给定目录中的全部测试类，`-cp` 提供其他类路径（`.reference-cache/junit-team/junit-framework@6.1.3/junit-platform-console/src/main/java/org/junit/platform/console/options/TestDiscoveryOptionsMixin.java:58-59`、`:207-208`）。
 
-预期输出（时间戳与耗时每次不同）：
+预期输出（时间戳、耗时和临时目录名每次不同；测试中的两行 `wrote` 来自 `DemoTest` 运行两个示例）：
 
 ```
 $ java examples/src/demo/MinimalDemo.java
-2026-10-20T11:17:25.576105497Z main ERROR Log4j API could not find a logging provider.
+2026-10-20T11:32:49.663868168Z main ERROR Log4j API could not find a logging provider.
 wrote minimal.docx
 $ java examples/src/demo/FullDemo.java
-2026-10-20T11:17:27.879704193Z main ERROR Log4j API could not find a logging provider.
+2026-10-20T11:32:51.862391569Z main ERROR Log4j API could not find a logging provider.
 wrote full.docx
 $ javac -d build/test-classes -cp "$JUNIT_JAR:$POI_FULL_JAR:$CLASSPATH" $(find examples/src tests -name "*.java")
 $ java -jar "$JUNIT_JAR" execute -cp "build/test-classes:$POI_FULL_JAR:$CLASSPATH" --scan-classpath build/test-classes --disable-banner --details=summary
-2026-10-20T11:17:31.154186284Z main ERROR Log4j API could not find a logging provider.
+2026-10-20T11:32:55.361826680Z main ERROR Log4j API could not find a logging provider.
+wrote /tmp/junit-6661047815926436550/full.docx
+wrote /tmp/junit-11666686279828062658/minimal.docx
 
-Test run finished after 2745 ms
-[        10 containers found      ]
+Test run finished after 3876 ms
+[        11 containers found      ]
 [         0 containers skipped    ]
-[        10 containers started    ]
+[        11 containers started    ]
 [         0 containers aborted    ]
-[        10 containers successful ]
+[        11 containers successful ]
 [         0 containers failed     ]
-[        85 tests found           ]
+[       104 tests found           ]
 [         0 tests skipped         ]
-[        85 tests started         ]
+[       104 tests started         ]
 [         0 tests aborted         ]
-[        85 tests successful      ]
+[       104 tests successful      ]
 [         0 tests failed          ]
 ```
 
