@@ -43,14 +43,24 @@ class SchemaValidationTest {
                         .child(Section.fromMarkdown(Files.readString(full.resolve("03-interface.md")))),
                 Section.of("附注", Files.readString(full.resolve("04-notes.md"))),
                 Section.untitled("x\u0000y [js](javascript:alert(1)) <br> ~~s~~ `c` [^n] [gone](#nowhere)\n\n"
-                        + "[^n]: note with **bold**\n\n    | a |\n\n    ## heading in a note\n\n"
+                        + "[^n]: note with **bold**\n\n    | a |\n    | - |\n    | 1 |\n\n    ## heading in a note\n\n"
+                        + "empty[^e] and table[^t]\n\n[^e]:\n\n[^t]:\n    | b |\n    | - |\n    | 2 |\n\n"
                         + "> - [ ] task in a quote\n>   ```\n>   code\n>   ```\n\n| t |\n| - |\n| 1 |"));
         ComposeOptions everything = ComposeOptions.builder().title("T").subtitle("S").tableOfContents(3).numberHeadings(true)
                 .pageBreakBetweenTopLevelSections(true).pageNumbers(true).build();
 
         List<String> errors = new ArrayList<>();
         Set<String> parts = new TreeSet<>();
-        int pictures = validate("all options", new MarkdownDocxComposer(everything).compose(sections), errors, parts)
+        byte[] allOptions = new MarkdownDocxComposer(everything).compose(sections);
+        String footnotes = TestSupport.part(allOptions, "word/footnotes.xml");
+        // every footnote, also the empty one and the one starting with a table, starts with its number mark
+        assertEquals(TestSupport.count(footnotes, "<w:footnote "), TestSupport.count(footnotes, "<w:footnoteRef/>"));
+        java.nio.file.Path template = java.nio.file.Files.createTempFile("template", ".docx");
+        java.nio.file.Files.write(template, allOptions);
+        ComposeOptions withTemplate = ComposeOptions.builder().template(template).numberHeadings(true).pageNumbers(true).tableOfContents(2).build();
+        validate("template", new MarkdownDocxComposer(withTemplate).compose(sections), errors, parts);
+        java.nio.file.Files.delete(template);
+        int pictures = validate("all options", allOptions, errors, parts)
                 + validate("defaults", new MarkdownDocxComposer().compose(sections), errors, parts)
                 + validate("empty", new MarkdownDocxComposer(everything).compose(List.of()), errors, parts);
         assertEquals(List.of(), errors);

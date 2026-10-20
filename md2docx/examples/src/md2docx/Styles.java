@@ -99,7 +99,12 @@ final class Styles {
             String id = findByName(target, style.name);
             if (id == null && target.styleExist(style.defaultId)) id = style.defaultId;
             if (id == null) {
-                target.addStyle(new XWPFStyle(CTStyle.Factory.parse(definitionXml(style, options), ELEMENT_OPTIONS), target));
+                // added styles are based on the template's Normal style, whatever its ID
+                String normal = attribute(result.ids.getOrDefault(Style.NORMAL, Style.NORMAL.defaultId));
+                String xml = definitionXml(style, options)
+                        .replace("<w:basedOn w:val=\"Normal\"/>", "<w:basedOn w:val=\"" + normal + "\"/>")
+                        .replace("<w:next w:val=\"Normal\"/>", "<w:next w:val=\"" + normal + "\"/>");
+                target.addStyle(new XWPFStyle(CTStyle.Factory.parse(xml, ELEMENT_OPTIONS), target));
                 id = style.defaultId;
             }
             result.ids.put(style, id);

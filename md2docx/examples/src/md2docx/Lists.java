@@ -14,6 +14,7 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTNumLvl;
 
 import java.math.BigInteger;
+import java.util.List;
 
 /**
  * Markdown lists as Word list numbering. Each Markdown list gets its own numbering instance, so an ordered list
@@ -40,12 +41,17 @@ final class Lists {
     private final XWPFNumbering numbering;
     private final BigInteger bulletDefinition;
     private final BigInteger decimalDefinition;
+    private long nextInstanceId = 1;
 
     Lists(XWPFNumbering numbering) throws XmlException {
         this.numbering = numbering;
         int next = nextDefinitionId(numbering);
         bulletDefinition = numbering.addAbstractNum(definition(next, false));
         decimalDefinition = numbering.addAbstractNum(definition(next + 1, true));
+        for (XWPFNum existing : numbering.getNums()) {
+            BigInteger id = existing.getCTNum().getNumId();
+            if (id != null) nextInstanceId = Math.max(nextInstanceId, id.longValue() + 1);
+        }
     }
 
     /** Definition IDs above every ID a template already uses. */
@@ -59,26 +65,22 @@ final class Lists {
     }
 
     /**
-     * A numbering instance with an ID above every instance ID a template already uses. POI's
-     * {@code addNum(definition)} numbers instances by count, which repeats a template's ID when its IDs have gaps.
+     * A new numbering instance of {@code definition}, with an ID above every instance ID a template uses. POI's
+     * {@code addNum(definition)} numbers instances by count, which repeats a template's ID when its IDs have gaps;
+     * finding the ID by scanning all instances for every list would make many lists quadratic.
      */
-    static BigInteger addInstance(XWPFNumbering numbering, BigInteger definition) {
-        long next = 1;
-        for (XWPFNum existing : numbering.getNums()) {
-            BigInteger id = existing.getCTNum().getNumId();
-            if (id != null) next = Math.max(next, id.longValue() + 1);
-        }
-        BigInteger id = BigInteger.valueOf(next);
-        numbering.addNum(definition, id);
-        return id;
+    XWPFNum addInstance(BigInteger definition) {
+        numbering.addNum(definition, BigInteger.valueOf(nextInstanceId++));
+        List<XWPFNum> instances = numbering.getNums();
+        return instances.get(instances.size() - 1);
     }
 
     void render(ListBlock list, int level, Output output) {
-        boolean ordered = list instanceof OrderedList;
-        BigInteger numberingId = addInstance(numbering, ordered ? decimalDefinition : bulletDefinition);
+        XWPFNum instance = addInstance(list instanceof OrderedList ? decimalDefinition : bulletDefinition);
+        BigInteger numberingId = instance.getCTNum().getNumId();
         if (list instanceof OrderedList orderedList) {
             Integer start = orderedList.getMarkerStartNumber();
-            CTNumLvl override = numbering.getNum(numberingId).getCTNum().addNewLvlOverride();
+            CTNumLvl override = instance.getCTNum().addNewLvlOverride();
             override.setIlvl(BigInteger.valueOf(Math.min(level, Composition.MAXIMUM_LEVEL - 1)));
             override.addNewStartOverride().setVal(BigInteger.valueOf(start == null ? 1 : Math.max(start, 0)));
         }

@@ -45,11 +45,11 @@ class CrossFragmentTest {
 
     @Test
     void everyOrderedListStartsAtItsOwnFirstNumber() {
-        byte[] docx = compose(Section.of("A", "1. a\n2. b"), Section.of("B", "3. c\n4. d"), Section.of("C", "1. e"));
+        byte[] docx = compose(Section.of("A", "1. a\n2. b"), Section.of("B", "3. c\n4. d"), Section.of("C", "1. e"), Section.of("D", "0. f"));
         String numbering = part(docx, "word/numbering.xml");
         List<String> starts = Pattern.compile("<w:num w:numId=\"(\\d+)\".*?<w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"(\\d+)\"/>")
                 .matcher(numbering).results().map(match -> match.group(1) + ":" + match.group(2)).toList();
-        assertEquals(List.of("1:1", "2:3", "3:1"), starts);
+        assertEquals(List.of("1:1", "2:3", "3:1", "4:0"), starts);
     }
 
     @ParameterizedTest
@@ -60,6 +60,7 @@ class CrossFragmentTest {
             "snake_case-and-dash  | snake_case-and-dash",
             "Ünïcode             | Ünïcode",
             "'  two  spaces'      | --two--spaces",
+            "e\u0301te\u0301          | e\u0301te\u0301",
     })
     void anchorsFollowGitHubRules(String heading, String anchor) {
         assertEquals(anchor, Anchors.anchor(heading));
@@ -183,5 +184,39 @@ class CrossFragmentTest {
         String xml = part(docx, "word/document.xml");
         List<String> anchors = Pattern.compile("<w:hyperlink w:anchor=\"([^\"]+)\"").matcher(xml).results().map(match -> match.group(1)).toList();
         assertEquals(List.of(bookmarkOf(xml, "背景", 0), bookmarkOf(xml, "Setup", 0)), anchors);
+    }
+
+    @Test
+    void linkToAHeadingInSeveralOtherFragmentsGoesToTheFirst() {
+        byte[] docx = compose(Section.untitled("# Dup"), Section.untitled("# Dup"), Section.untitled("[go](#dup)"));
+        String xml = part(docx, "word/document.xml");
+        assertTrue(xml.contains("<w:hyperlink w:anchor=\"" + bookmarkOf(xml, "Dup", 0) + "\""));
+    }
+
+    @Test
+    void longChainOfFootnotesDoesNotOverflowTheStack() throws Exception {
+        StringBuilder markdown = new StringBuilder("start [^0]\n\n");
+        for (int note = 0; note < 3_000; note++) markdown.append("[^").append(note).append("]: next [^").append(note + 1).append("]\n\n");
+        markdown.append("[^3000]: last\n");
+        try (XWPFDocument document = open(compose(Section.untitled(markdown.toString())))) {
+            assertEquals(3_001, document.getFootnotes().size());
+        }
+    }
+
+    @Test
+    void footnoteNumberMarkHasTheFootnoteReferenceStyleAndASpaceAfterIt() {
+        String footnotes = part(compose(Section.untitled("a[^1]\n\n[^1]: note")), "word/footnotes.xml");
+        assertTrue(footnotes.contains("<w:rStyle w:val=\"FootnoteReference\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t>"), footnotes);
+    }
+
+    @Test
+    void footnoteHeadingIsBoldAndFootnoteListIsFootnoteText() throws Exception {
+        byte[] docx = compose(Section.untitled("a[^1]\n\n[^1]: note\n\n    ## heading in a note\n\n    - item\n"));
+        try (XWPFDocument document = open(docx)) {
+            var paragraphs = document.getFootnotes().get(0).getParagraphs();
+            paragraphs.forEach(paragraph -> assertEquals("FootnoteText", paragraph.getStyle()));
+            assertTrue(paragraphs.stream().flatMap(paragraph -> paragraph.getRuns().stream())
+                    .anyMatch(run -> run.text().equals("heading in a note") && run.isBold()));
+        }
     }
 }

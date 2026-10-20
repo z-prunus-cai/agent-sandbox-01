@@ -122,37 +122,41 @@ md2docx/
 | | `Links.java` | 只让 http、https、mailto、ftp 生成超链接 |
 | 文档级排版 | `FrontMatter.java` | 标题、副标题、目录 |
 | | `HeadingNumbering.java` | 标题自动编号 |
-| | `Templates.java` | 打开模板、.dotx 转 .docx、清空正文 |
+| | `Templates.java` | 读取模板，.dotx 转 .docx，去掉正文及只有正文用到的部分 |
 
 文件之间的引用关系（不含注释中的引用，用 `grep -w` 逐个类名检查得到）：
 
 | 文件 | 用到的其他文件 |
 | --- | --- |
-| `MarkdownDocxComposer` | `ComposeOptions`、`Composition`、`Section` |
-| `Composition` | `Anchors`、`ComposeOptions`、`Footnotes`、`Fragment`、`FrontMatter`、`HeadingNumbering`、`Lists`、`PageSetup`、`Section`、`Styles`、`Templates`、`Texts` |
-| `Fragment` | `Composition` 的字段（`anchors`、`document`、`footnotes`、`headingNumbering`、`lists`、`options`、`page`、`styles`）、`Container`、`Footnotes`、`Images`、`Links`、`Lists`、`Styles`、`Tables`、`Texts` |
+| `MarkdownDocxComposer` | `ComposeOptions`、`Composition`、`Section`、`Templates` |
+| `Composition` | `Anchors`、`ComposeOptions`、`Footnotes`、`Fragment`、`FrontMatter`、`HeadingNumbering`、`Lists`、`PageSetup`、`Section`、`Styles`、`Texts` |
+| `Fragment` | `Composition` 的字段（`anchors`、`document`、`footnotes`、`headingNumbering`、`lists`、`options`、`page`、`styles`）和常量 `MAXIMUM_LEVEL`、`Container`、`Footnotes`、`Images`、`Links`、`Lists`、`Styles`、`Tables`、`Texts` |
 | `FrontMatter` | `Anchors`、`ComposeOptions`、`Composition`（`insertBefore`）、`HeadingNumbering`、`Styles`、`Texts` |
 | `HeadingNumbering` | `Composition`（`MAXIMUM_LEVEL`）、`Lists`、`Styles` |
 | `Footnotes` | `Container`、`Styles`、`Texts` |
-| `Styles` | `ComposeOptions`、`PageSetup`、`Texts` |
-| `Lists`、`Links` | `Styles`、`Texts`（`Links` 只用 `Texts`） |
+| `Styles` | `ComposeOptions`、`Lists`（`INDENT`）、`PageSetup`、`Texts` |
+| `Lists` | `Composition`（`MAXIMUM_LEVEL`）、`Styles`、`Texts` |
+| `Links` | `Texts` |
 | `Tables` | `Container`、`Texts` |
 | `Images` | `ImageResolver`、`Texts` |
 | `ComposeOptions` | `ImageResolver` |
 | `Anchors`、`Container`、`ImageResolver`、`PageSetup`、`Section`、`Templates`、`Texts` | 无 |
 
-只实现一部分功能时，从 `Composition` 和 `Fragment` 中删去不需要的功能的调用，再删掉不再被引用的文件。下面两种删法都实测过：删完后 `javac` 编译通过，`MinimalDemo` 正常输出 `wrote m.docx`。
+只实现一部分功能时，从 `MarkdownDocxComposer`、`Composition` 和 `Fragment` 中删去不需要的功能的调用，再删掉不再被引用的文件。下面两种删法都实测过：删完后 `javac` 编译通过，两个示例都输出 `wrote`，并检查了结果中的文字。
 
-不要脚注：
+不要 Word 脚注（脚注内容留在正文中原来的位置，引用处写成 `[标签]`）：
 
 1. 删除 `Footnotes.java`；
-2. `Composition.java`：从 `PARSER` 的扩展列表中去掉 `FootnotesExtension.create()` 及其 import，删去字段 `footnotes` 和构造函数中的 `footnotes = new Footnotes(document, styles);`；
-3. `Fragment.java`：删去字段 `footnoteDefinitions` 及其赋值，删去 `renderInline` 中处理 `FootnoteReference` 的分支。
+2. `Composition.java`：删去字段 `footnotes` 和构造函数中的 `footnotes = new Footnotes(document, styles);`。`PARSER` 保留 `FootnotesExtension`：去掉它，`[^1]: 内容` 会被解析成链接引用定义而被跳过，内容就丢了；
+3. `Fragment.java`：删去字段 `footnoteDefinitions` 及其赋值；`renderBlock` 第一行的条件中删去 `node instanceof FootnoteDefinition ||`，让脚注定义按普通块渲染；`renderInline` 中处理 `FootnoteReference` 的分支改成 `Texts.write(run(paragraph, format), "[" + reference.getLabel() + "]");`。
+
+实测：`FullDemo` 的 `word/document.xml` 中有两条脚注的文字和两个 `[1]`，没有 `word/footnotes.xml`。
 
 不要文档级排版（标题、目录、标题编号、页码、模板）：
 
 1. 删除 `FrontMatter.java`、`Templates.java`、`HeadingNumbering.java`；
-2. `Composition.java`：删去字段 `headingNumbering` 及其注释；`compose` 中删去从注释 `the front matter is inserted` 到 `enforceUpdateFields` 的 6 行；构造函数改成：
+2. `MarkdownDocxComposer.java`：删去字段 `template` 及其注释和两处赋值，`new Composition(options, template)` 改成 `new Composition(options)`；
+3. `Composition.java`：删去字段 `headingNumbering` 及其注释；`compose` 中删去从注释 `the front matter is inserted` 到 `enforceUpdateFields` 的 6 行；构造函数（连同它上面的 Javadoc）改成：
 
    ```java
    Composition(ComposeOptions options) throws IOException {
@@ -165,7 +169,6 @@ md2docx/
            lists = new Lists(numbering);
            page = PageSetup.of(document);
            footnotes = new Footnotes(document, styles);
-           if (options.title != null) document.getProperties().getCoreProperties().setTitle(Texts.xmlSafe(options.title));
        } catch (XmlException | RuntimeException failure) {
            document.close();
            throw failure instanceof XmlException ? new IllegalStateException("invalid built-in definition", failure)
@@ -174,7 +177,10 @@ md2docx/
    }
    ```
 
-3. `Fragment.java`：把 `String number = composition.headingNumbering == null ? null : composition.headingNumbering.next(level);` 改成 `String number = null;`。
+   这时 `java.io.ByteArrayInputStream` 的 import 不再使用，可以删去；
+4. `Fragment.java`：把 `String number = composition.headingNumbering == null ? null : composition.headingNumbering.next(level);` 改成 `String number = null;`。
+
+实测：`FullDemo` 的结果中没有目录、标题编号和文档属性中的标题。`ComposeOptions` 中这些选项仍然存在但不再起作用，`Styles` 中标题、目录等样式定义仍会写入文档；不需要时可以一并删去。
 
 ### 3.3 最简示例
 
@@ -386,7 +392,7 @@ wrote full.docx
 | `imageResolver(ImageResolver)` | `ImageResolver.localFiles()` | 图片读取方式 |
 | `fonts(latin, eastAsian, monospace)` | Calibri、Microsoft YaHei、Consolas | 不用模板时的西文、东亚、等宽字体 |
 
-`MarkdownDocxComposer` 不保存状态，同一个实例可以被多个线程同时调用；`compose(sections, out)` 写完后不关闭 `out`。模板文件不存在时抛出 `NoSuchFileException`，不是 .docx / .dotx 时抛出 `IOException`（消息含 `not a .docx or .dotx`）。
+`MarkdownDocxComposer` 只持有不可变的数据，同一个实例可以被多个线程同时调用；`compose(sections, out)` 写完后不关闭 `out`。选项中有模板时，构造函数 `new MarkdownDocxComposer(options)` 读取并清理模板一次（之后模板文件的改动不再生效），模板文件不存在时抛出 `NoSuchFileException`，不是 .docx / .dotx 时抛出 `IOException`（消息含 `not a .docx or .dotx`）。
 
 Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attachments/markdown-mapping.md)。
 
@@ -416,9 +422,9 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：Word 的列表编号分两层，`abstractNum` 定义格式，`num` 是引用某个定义的实例，段落引用实例（`.reference-cache/ecma-international/ecma-376@5th-part1/part1.txt:34603-34605`，§17.9.1；`:35758`、`:35768-35771`，§17.9.15）。引用同一实例的段落连续编号。实例可以用 `lvlOverride` / `startOverride` 重设某一级的起始值（`part1.txt:35222`，§17.9.8；`:36388-36389`，§17.9.26）。
 
-机制：`Lists` 创建一个项目符号定义和一个数字定义；`Lists.render` 为每个 Markdown 列表新建一个实例。有序列表在该列表所在的级别（最外层为 0，嵌套一层加 1）写一个 `startOverride`，值为 Markdown 中第一个编号（commonmark 的 `OrderedList.getMarkerStartNumber()`，没有时为 null，此时用 1；`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark/src/main/java/org/commonmark/node/OrderedList.java:26-29`）。新定义的 ID 从模板已用的最大定义 ID 加一开始（`Lists.nextDefinitionId`），新实例的 ID 从模板已用的最大实例 ID 加一开始（`Lists.addInstance`）。后者不能用 POI 的 `XWPFNumbering.addNum(BigInteger)`：它把实例数加一当作新 ID（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFNumbering.java:145-153`），模板的实例 ID 不连续时会与已有 ID 重复。
+机制：`Lists` 创建一个项目符号定义和一个数字定义；`Lists.render` 为每个 Markdown 列表新建一个实例。有序列表在该列表所在的级别（最外层为 0，嵌套一层加 1）写一个 `startOverride`，值为 Markdown 中第一个编号（commonmark 的 `OrderedList.getMarkerStartNumber()`，没有时为 null，此时用 1；`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark/src/main/java/org/commonmark/node/OrderedList.java:26-29`）。新定义的 ID 从模板已用的最大定义 ID 加一开始（`Lists.nextDefinitionId`），新实例的 ID 从模板已用的最大实例 ID 加一开始，由 `Lists` 中的计数器依次分配（`Lists.addInstance`，标题编号的实例也从这里取）。不能用 POI 的 `XWPFNumbering.addNum(BigInteger)`：它把实例数加一当作新 ID（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFNumbering.java:145-153`），模板的实例 ID 不连续时会与已有 ID 重复；也不能每建一个列表就扫描全部实例找最大 ID，那样列表多时耗时随列表数平方增长（第 5 节）。
 
-证据：测试 `CrossFragmentTest.everyOrderedListStartsAtItsOwnFirstNumber`、`nestedOrderedListStartsAtItsOwnFirstNumber`、`TemplateTest.listNumbersDoNotReuseTheTemplateNumberingIds`；3.4 节输出中“3. 编号从 3 开始”。
+证据：测试 `CrossFragmentTest.everyOrderedListStartsAtItsOwnFirstNumber`（含从 0 开始的列表）、`nestedOrderedListStartsAtItsOwnFirstNumber`、`TemplateTest.listNumbersDoNotReuseTheTemplateNumberingIds`、`CoreCompositionTest.manyListsTakeLinearTime`；3.4 节输出中“3. 编号从 3 开始”。
 
 不这样做：所有有序列表共用一个实例时，第二个文件的列表接着第一个文件往下编号；只在第 0 级写起始值时，嵌套的 `5.` 列表从 1 开始。
 
@@ -426,11 +432,11 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：commonmark 只有在找到定义时才把 `[^标签]` 解析成脚注引用，否则保留为普通文字（`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark-ext-footnotes/src/main/java/org/commonmark/ext/footnotes/internal/FootnoteLinkProcessor.java:48-53`）。标签不区分大小写并经过规范化（`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark/src/main/java/org/commonmark/node/DefinitionMap.java:9-11`）；定义可以嵌在引用块、列表等容器中，即使没有引用也会被解析（`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark-ext-footnotes/src/main/java/org/commonmark/ext/footnotes/FootnoteDefinition.java:16-18`）。
 
-机制：`Footnotes.definitions` 遍历整个片段，把所有定义放进 commonmark 的 `DefinitionMap`，用与解析器相同的规则查找。`Footnotes.reference` 以定义节点本身为键：第一次引用时先创建 Word 脚注、登记它的 ID，再渲染脚注内容；之后的引用（包括脚注内容中对自己或其他脚注的引用）复用登记的 ID。每个片段有自己的定义表，所以两个片段的 `[^1]` 是两个脚注。脚注中的图片输出替代文字（见 4.7）。
+机制：`Footnotes.definitions` 遍历整个片段，把所有定义放进 commonmark 的 `DefinitionMap`，用与解析器相同的规则查找。`Footnotes.reference` 以定义节点本身为键：第一次引用时先创建 Word 脚注、登记它的 ID，把脚注内容放进待渲染队列；之后的引用（包括脚注内容中对自己或其他脚注的引用）复用登记的 ID。队列只由最外层的 `reference` 调用依次渲染，所以“脚注 1 引用脚注 2、脚注 2 引用脚注 3……”这样的长链不会让调用层层嵌套（在引用处直接渲染时，1000 层就可能栈溢出，见第 5 节）。每个片段有自己的定义表，所以两个片段的 `[^1]` 是两个脚注。脚注中的图片输出替代文字（见 4.7）。
 
 不写分隔线脚注：`separator` 和 `continuationSeparator` 是特殊脚注，标准要求每个特殊脚注都列在设置的 `footnotePr` 中，否则不加载，文档也不符合标准（`part1.txt:37797-37800`，§17.11.9）。POI 没有登记它们的公开方法，所以不写。
 
-证据：测试 `CrossFragmentTest` 中的 `sameFootnoteLabelInTwoFragmentsGivesTwoFootnotes`、`referenceWithoutDefinitionStaysText`、`footnoteReferringToAnotherFootnoteOrToItselfReusesTheFootnote`、`footnoteLabelsIgnoreCaseAndDefinitionsMayBeNested`。
+证据：测试 `CrossFragmentTest` 中的 `sameFootnoteLabelInTwoFragmentsGivesTwoFootnotes`、`referenceWithoutDefinitionStaysText`、`footnoteReferringToAnotherFootnoteOrToItselfReusesTheFootnote`、`footnoteLabelsIgnoreCaseAndDefinitionsMayBeNested`、`longChainOfFootnotesDoesNotOverflowTheStack`（3001 个脚注）、`footnoteNumberMarkHasTheFootnoteReferenceStyleAndASpaceAfterIt`；`TemplateTest.footnoteMarkUsesTheTemplateFootnoteReferenceStyle`。
 
 不这样做：以标签为键时，第二个文件的 `[^1]` 指向第一个文件的脚注内容；只查顶层、按原样比较标签时，`[^Note]` 和引用块中的定义找不到，脚注内容丢失；在 `HashMap.computeIfAbsent` 的计算函数里渲染脚注时，脚注引用另一个脚注就抛出 `ConcurrentModificationException`（第 5 节）。
 
@@ -456,9 +462,9 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：`ImageResolver.localFiles()` 只接受 `data:image/<格式>;base64,<数据>` 形式的数据和 `baseDirectory` 内的普通文件，大小不超过 `ImageResolver.MAXIMUM_BYTES`（20 MB）；带协议的地址（`http:`、`file:` 等）、以 `/` 或 `\` 开头的路径、真实位置在 `baseDirectory` 之外的路径一律返回 null。
 
-机制：根目录和文件都用 `toRealPath()` 取真实路径（跟随符号链接），再检查 `startsWith`。只做文字上的 `normalize()` 时，目录中一个指向外部的符号链接就能读出外部文件（第 5 节）。图片格式由文件开头的字节判断（PNG、JPEG、GIF、BMP），尺寸只读图片头，用 `MemoryCacheImageInputStream` 在内存中读。POI 的 `XWPFRun.addPicture` 的宽高单位是 EMU（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFRun.java:1256-1262`）；1 像素 = 9525 EMU，1 磅 = 12700 EMU（`.reference-cache/apache/poi@5.5.1/poi/src/main/java/org/apache/poi/util/Units.java:24-29`）。图片按像素尺寸放置，宽度超过可用宽度、或高度超过正文高度的 90% 时等比缩小；表格中的图片以单元格宽度减去左右边距为限。`addPicture` 把它的“文件名”参数同时写进 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性（`XWPFRun.java:1316`、`:1335`），这两个属性都是供辅助技术使用的替代文字（`part1.txt:151991-151992`，§20.4.2.5），所以传入的是 Markdown 的替代文字。脚注中的图片输出 `[替代文字]`：POI 把图片关系加到正文部件上（`XWPFRun.java:1273-1286`、`:1342`），脚注部件中的图片引用会指向不存在的关系。读不到的图片也输出 `[替代文字]`，没有替代文字时输出 `[image]`。
+机制：根目录和文件都用 `toRealPath()` 取真实路径（跟随符号链接），再检查 `startsWith`。只做文字上的 `normalize()` 时，目录中一个指向外部的符号链接就能读出外部文件（第 5 节）。文件最多读 `MAXIMUM_BYTES` + 1 个字节，读满即放弃，所以检查大小之后文件变大也不会多读。commonmark 不解码地址中的 `%XX`，按原样找不到文件时再按 UTF-8 解码一次查找（`my%20picture.png` 对应 `my picture.png`），解码后的路径同样要通过上面的检查。图片格式由文件开头的字节判断（PNG、JPEG、GIF、BMP），尺寸只读图片头，用 `MemoryCacheImageInputStream` 在内存中读。POI 的 `XWPFRun.addPicture` 的宽高单位是 EMU（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFRun.java:1256-1262`）；1 像素 = 9525 EMU，1 磅 = 12700 EMU（`.reference-cache/apache/poi@5.5.1/poi/src/main/java/org/apache/poi/util/Units.java:24-29`）。图片按像素尺寸放置，宽度超过可用宽度、或高度超过正文高度的 90% 时等比缩小；表格中的图片以单元格宽度减去左右边距为限。`addPicture` 把它的“文件名”参数同时写进 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性（`XWPFRun.java:1316`、`:1335`），这两个属性都是供辅助技术使用的替代文字（`part1.txt:151991-151992`，§20.4.2.5），所以传入的是 Markdown 的替代文字。脚注中的图片输出 `[替代文字]`：POI 把图片关系加到正文部件上（`XWPFRun.java:1273-1286`、`:1342`），脚注部件中的图片引用会指向不存在的关系。读不到的图片也输出 `[替代文字]`，没有替代文字时输出 `[image]`。
 
-证据：`ImagesAndSafetyTest` 的 23 个测试，其中 `localFilesNeverOpensANetworkConnection` 在本机开一个端口，确认解析 `http://127.0.0.1:<端口>/a.png` 时没有任何连接；`symbolicLinkLeavingTheDirectoryIsRefused`、`imagesAboveTheSizeLimitAreNotRead`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`。
+证据：`ImagesAndSafetyTest` 的 26 个测试，其中 `localFilesNeverOpensANetworkConnection` 在本机开一个端口，确认解析 `http://127.0.0.1:<端口>/a.png` 时没有任何连接；`symbolicLinkLeavingTheDirectoryIsRefused`、`imagesAboveTheSizeLimitAreNotRead`、`percentEncodedImagePathIsFound`、`everySupportedFormatIsEmbeddedWithItsOwnType`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`。
 
 不这样做：Markdown 不可信时，`![](../../etc/passwd)` 或 `![](http://192.0.2.1/)` 会让程序读取任意文件或发起网络请求。需要远程图片时，自己实现 `ImageResolver` 并在其中限定允许的地址。
 
@@ -466,17 +472,17 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：只有 `http`、`https`、`mailto`、`ftp` 生成超链接，其余（`javascript:`、`file:`、`data:`、相对路径）只输出链接文字。外部超链接由 POI 的 `XWPFParagraph.createHyperlinkRun` 写成一个外部关系（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/xwpf/usermodel/XWPFParagraph.java:1536-1544`）。自动链接扩展把裸网址和邮箱变成普通链接节点，`www.` 开头的补上 `http://`，邮箱补上 `mailto:`（`.reference-cache/commonmark/commonmark-java@0.30.1/commonmark-ext-autolink/src/main/java/org/commonmark/ext/autolink/internal/AutolinkPostProcessor.java:97-101`）。
 
-机制：`Links.target` 先检查地址中是否有 XML 不允许的字符：commonmark 在源文本过滤之后才解码 `&#xFFFE;` 这样的字符引用，这样的地址写进关系部件后，POI 再也打不开这个文件（第 5 节）；有就只输出文字。尖括号中的地址可以含空格（`<http://example.com/a b>`），空格换成 `%20` 后再交给 `java.net.URI` 检查协议。
+机制：`Links.target` 先检查地址中是否有 XML 不允许的字符：commonmark 在源文本过滤之后才解码 `&#xFFFE;` 这样的字符引用，这样的地址写进关系部件后，POI 再也打不开这个文件（第 5 节）；有就只输出文字。地址中 RFC 3986 不允许的字符（尖括号地址中的空格、查询串中常见的 `|`、`{`、`}` 等）按 UTF-8 编码成 `%XX`，已有的 `%XX` 保留，然后才交给 `java.net.URI` 检查协议：`java.net.URI` 拒绝这些字符，POI 写外部关系也要求合法的 URI。协议名不区分大小写。
 
-证据：测试 `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` 检查 `word/_rels/document.xml.rels` 中只有 5 个允许的目标；`linkTargetWithACharacterXmlDoesNotAllowStaysText`。
+证据：测试 `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` 检查 `word/_rels/document.xml.rels` 中只有 5 个允许的目标；`linkTargetWithACharacterXmlDoesNotAllowStaysText`、`linkAddressesWithCharactersAUriMayNotContainAreEncoded`。
 
 ### 4.9 去掉 XML 不允许的字符，HTML 块只取文字
 
 规则：XML 1.0 只允许 `#x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]`（`.reference-cache/w3c/xml@fifth-edition/xml.txt:414`）。复制粘贴或程序生成的文本中常有其他控制字符。
 
-机制：Markdown 在解析前经过 `Texts.xmlSafe`，删除不在上述范围内的字符（包括单独的 UTF-16 代理项，即没有配对的 U+D800 到 U+DFFF）；解析后写入 run 的文字再过滤一次（`Texts.write`）。HTML 块由 `Texts.htmlText` 处理：一次扫描去掉注释和标签，再交给 commonmark 解码 `&amp;`、`&#233;` 等字符引用（除 `&`、`#`、`;` 之外的 ASCII 标点先加反斜杠转义，使它们不被当作 Markdown 语法）。
+机制：Markdown 在解析前经过 `Texts.xmlSafe`，删除不在上述范围内的字符（包括单独的 UTF-16 代理项，即没有配对的 U+D800 到 U+DFFF）；解析后写入 run 的文字再过滤一次（`Texts.write`）。HTML 块由 `Texts.htmlLines` 处理，规则接近浏览器显示纯文本的方式：一次扫描去掉注释和标签，每个标签换成一个空格（`<br>` 换成换行）；只有 `<` 后面紧跟字母、`/`、`!` 或 `?` 时才算标签开始，所以 `1 < 2 and 3 > 2` 原样保留；连续的空白（含换行）合并成一个空格；每个字符引用（`&amp;`、`&#233;` 等）单独交给 commonmark 解码。
 
-证据：不过滤时，POI 5.5.1 把 `"a\u0001b"` 写成 `<w:t>a?b</w:t>`（第 5 节）；测试 `ImagesAndSafetyTest.charactersXmlDoesNotAllowAreRemoved`、`htmlBlockCharacterReferencesAreDecoded`、`htmlBlockWithManyUnclosedCommentsAndTagsTakesLinearTime`。
+证据：不过滤时，POI 5.5.1 把 `"a\u0001b"` 写成 `<w:t>a?b</w:t>`（第 5 节）；测试 `ImagesAndSafetyTest.charactersXmlDoesNotAllowAreRemoved`、`htmlBlockCharacterReferencesAreDecoded`、`htmlBlockWithManyUnclosedCommentsAndTagsTakesLinearTime`、`CoreCompositionTest.htmlBlockTextFollowsBrowserWhiteSpaceRules`。
 
 ### 4.10 目录是真正的 Word 域，结果预先填好
 
@@ -502,9 +508,17 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：`w:styleId` 只用于在文档内引用样式（`part1.txt:32166-32167`），`w:name` 是样式的主名称（`part1.txt:31658-31660`，§17.7.4.9）。主文档部件的内容类型有两种：`application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml` 和 `application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml`（`part1.txt:2513-2515`，§11.3.10）；POI 的 `OPCPackage.replaceContentType` 用于把模板改成文档（`.reference-cache/apache/poi@5.5.1/poi-ooxml/src/main/java/org/apache/poi/openxml4j/opc/OPCPackage.java:1770-1801`）。
 
-机制：`Templates.open` 只接受上面两种内容类型（启用宏的文件等其他类型抛出 `IOException`），模板类型换成文档类型。正文用 XMLBeans 的 `XmlCursor`（在 XML 树中逐个元素移动、可删除元素的游标）删除除最后的节属性 `w:sectPr` 之外的全部内容：POI 的 `removeBodyElement` 只从 XML 中删除段落和表格（`XWPFDocument.java:1124-1141`），会留下内容控件 `w:sdt` 等其他块。之后在包一级删除正文部件中已无人引用的图片、链接、嵌入对象和图表关系及其目标部件。`Styles.fromTemplate` 对每个需要的样式先按名称（不区分大小写）查找，再按默认 ID 查找，都没有时加入内置定义。页面尺寸和边距取模板的最后一节（`PageSetup.of`，带单位的长度如 `2.54cm` 也由 POI 的 `POIXMLUnits.parseLength` 换算），表格和图片按它计算宽度。
+机制：`MarkdownDocxComposer` 的构造函数调用 `Templates.withoutBody` 一次，把清理后的模板保存为不可变的字节数组；每次 `compose` 只从这些字节打开文档。清理的步骤：
 
-证据：`TemplateTest` 的 14 个测试，其中模板的标题样式 ID 为 `1`、`2`，生成的段落样式也是 `1`、`2`；`contentControlsAndPicturesOfTheTemplateBodyAreDropped`、`macroEnabledFileIsRefused`。
+1. 只接受上面两种内容类型（启用宏的文件等其他类型抛出 `IOException`），模板类型换成文档类型；
+2. 正文用 XMLBeans 的 `XmlCursor`（在 XML 树中逐个元素移动、可删除元素的游标）删除除最后的节属性 `w:sectPr` 之外的全部内容：POI 的 `removeBodyElement` 只从 XML 中删除段落和表格（`XWPFDocument.java:1124-1141`），会留下内容控件 `w:sdt` 等其他块；
+3. 删除类型为 normal 的脚注和尾注（正文中的脚注），保留分隔线等特殊脚注，因为设置中可能列着它们（见 4.4）；
+4. 在包一级删除正文部件中已无人引用的图片、链接、嵌入对象、图表、批注等关系；
+5. 从包的根开始沿所有关系标记能到达的部件，删除到达不了的部件。只删除“刚才那个关系的目标”是错的：POI 的 `OPCPackage.removePart` 不检查其他关系（`OPCPackage.java:1191-1232`），正文和页眉共用的同一张图片会被删掉，页眉里留下指向不存在部件的关系（第 5 节）；图表内嵌的工作簿等间接部件也只有这样才会一起删掉。
+
+`Styles.fromTemplate` 对每个需要的样式先按名称（不区分大小写）查找，再按默认 ID 查找，都没有时加入内置定义；加入的定义中 `w:basedOn` 和 `w:next` 指向模板中 Normal 样式的实际 ID。页面尺寸和边距取模板的最后一节（`PageSetup.of`，带单位的长度如 `2.54cm` 也由 POI 的 `POIXMLUnits.parseLength` 换算，缺少的边距按默认的 1440 twip 计），表格和图片按它计算宽度。
+
+证据：`TemplateTest` 的 19 个测试，其中模板的标题样式 ID 为 `1`、`2`，生成的段落样式也是 `1`、`2`；`contentControlsAndPicturesOfTheTemplateBodyAreDropped`、`bodyFootnotesCommentsAndLinksGoButAPictureSharedWithTheHeaderStays`、`templateIsReadOnceWhenTheComposerIsCreated`、`stylesAddedToALocalizedTemplateAreBasedOnItsNormalStyle`、`marginsWithUnitsOrMissingAreRead`、`macroEnabledFileIsRefused`；`SchemaValidationTest` 也校验套用模板后的文档。
 
 ### 4.13 分页、页码、页面尺寸
 
@@ -526,7 +540,7 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 
 规则：POI 的 `poi-ooxml-lite` 只包含 POI 自己的测试用到的 schema 类，完整的 ECMA-376 schema 在 `poi-ooxml-full` 中（`.reference-cache/apache/poi@5.5.1/src/documentation/content/xdocs/help/faq.xml:78-85`）。
 
-机制：`SchemaValidationTest` 用 XMLBeans 按对应的文档类型解析并校验 `document`、`styles`、`numbering`、`footnotes`、`settings`、`footer` 6 个部件，覆盖默认选项、全部选项和空文档三种情况。图片的 `pic:pic` 元素位于 `a:graphicData` 中，schema 对那里只写“任意元素”（通配内容），XMLBeans 对它报错；测试跳过这条报错，再把每个 `pic:pic` 单独按图片 schema 校验一次。
+机制：`SchemaValidationTest` 用 XMLBeans 按对应的文档类型解析并校验 `document`、`styles`、`numbering`、`footnotes`、`settings`、`footer` 6 个部件，覆盖默认选项、全部选项、空文档和套用模板四种情况。图片的 `pic:pic` 元素位于 `a:graphicData` 中，schema 对那里只写“任意元素”（通配内容），XMLBeans 对它报错；测试跳过这条报错，再把每个 `pic:pic` 单独按图片 schema 校验一次。
 
 证据：第 6 节的测试输出；缺少 `poi-ooxml-full` 时的失败见第 5 节。它不能证明 Word 中的显示效果。
 
@@ -548,6 +562,11 @@ Markdown 元素对应的 Word 结构见 [attachments/markdown-mapping.md](attach
 | 把 Markdown 链接地址直接交给 `createHyperlinkRun` | `[x](http://example.com/&#xFFFE;)` 生成的文件再用 POI 打开时抛出 `org.apache.poi.ooxml.POIXMLException: org.apache.poi.openxml4j.exceptions.InvalidFormatException: Failed to parse relationships`，日志中的原因是 `An invalid XML character (Unicode: 0xfffe) was found in the value of attribute "Target" and element is "Relationship".` | 见 4.8 |
 | 链接的每个 run 各调用一次 `createHyperlinkRun` | `[**b** and *i*](https://example.org)` 生成 3 个 `w:hyperlink` | 见 4.5 |
 | 把目录项按阅读顺序逐个插在正文第一个元素之前 | 8000 个标题：无目录 930 ms，有目录 2702 ms；16000 个标题：无目录 240 ms，有目录 8050 ms。改为从最后一段往前插后，16000 个标题有目录 523 ms | 见 4.10 |
+| 每建一个列表就扫描全部编号实例找最大 ID | 每个列表后跟一段文字：8000 个有序列表 4248 ms，16000 个 12912 ms；同样数量的两段文字分别为 847 ms、151 ms | 计数器，见 4.3 |
+| 在引用处直接渲染脚注内容 | 4.4 的长链有 1000 个脚注时，两次实测一次成功、一次抛出 `java.lang.StackOverflowError`（同时 JVM 警告 `Potentially dangerous stack overflow in ReservedStackAccess annotated method java.util.concurrent.locks.ReentrantReadWriteLock$Sync.tryAcquireShared`），之后同一进程中的下一次调用不再返回 | 待渲染队列，见 4.4 |
+| 清理模板时用 `OPCPackage.removePart` 删除去掉的关系的目标 | 正文和页眉用同一张图片时，图片部件被删，`word/_rels/header1.xml.rels` 仍指向 `media/image1.png`，POI 重新打开时记录 `ERROR POIXMLDocumentPart Skipped invalid entry /word/media/image1.png` | 删除从根到达不了的部件，见 4.12 |
+| 清理模板时只删正文 | 模板正文的脚注、批注（含作者名）仍在 `word/footnotes.xml`、`word/comments.xml` 中 | 见 4.12 |
+| 把 `<` 到下一个 `>` 都当作 HTML 标签 | `<div>1 < 2 and 3 > 2</div>` 变成 `1  2` | 见 4.9 |
 | 用 POI 的 `XWPFNumbering.addNum(BigInteger)` 新建编号实例 | 模板中已有实例 1 和 5 时，新实例的 ID 与模板重复（见 4.3 引用的源码） | `Lists.addInstance` |
 | 断言设置项时写 `<w:updateFields w:val="true"/>` 或 `<w:pageBreakBefore/>` | 断言失败：POI 写的是 `w:val="on"` | 按实际 XML 断言 |
 | 用 `XWPFParagraph.getText()` 检查含脚注引用的段落 | 结果中带有脚注内容，例如 `x[footnoteRef:1] y[footnoteRef:2] [1:  case note]` | 只拼接各 run 的 `text()`（测试中的 `TestSupport.runText`） |

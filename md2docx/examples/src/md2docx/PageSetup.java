@@ -60,10 +60,11 @@ record PageSetup(int textWidthTwips, int textHeightTwips) {
         }
         if (section != null && section.isSetPgMar()) {
             CTPageMar margins = section.getPgMar();
-            left = twips(POIXMLUnits.parseLength(margins.xgetLeft()));
-            right = twips(POIXMLUnits.parseLength(margins.xgetRight()));
-            top = twips(POIXMLUnits.parseLength(margins.xgetTop()));
-            bottom = twips(POIXMLUnits.parseLength(margins.xgetBottom()));
+            // the schema requires all margins, but a hand-made template may leave some out
+            if (margins.xgetLeft() != null) left = twips(POIXMLUnits.parseLength(margins.xgetLeft()));
+            if (margins.xgetRight() != null) right = twips(POIXMLUnits.parseLength(margins.xgetRight()));
+            if (margins.xgetTop() != null) top = twips(POIXMLUnits.parseLength(margins.xgetTop()));
+            if (margins.xgetBottom() != null) bottom = twips(POIXMLUnits.parseLength(margins.xgetBottom()));
         }
         return new PageSetup(Math.max(width - Math.abs(left) - Math.abs(right), MARGIN),
                 Math.max(height - Math.abs(top) - Math.abs(bottom), MARGIN));

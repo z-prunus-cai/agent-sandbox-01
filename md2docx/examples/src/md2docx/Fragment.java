@@ -43,7 +43,6 @@ import java.util.regex.Pattern;
 /** Renders the body of one section: its Markdown blocks and inline content. Each feature lives in its own class. */
 final class Fragment {
 
-    private static final Pattern LINE_BREAK_TAG = Pattern.compile("(?i)<br\\s*/?>");
     private static final Pattern CARRIAGE_RETURN = Pattern.compile("\r\n?");
     /** Space above a paragraph that follows a table, in twips; without it the text touches the table border. */
     private static final int SPACE_AFTER_TABLE = 160;
@@ -200,8 +199,14 @@ final class Fragment {
                         }
                     });
         } else if (node instanceof HtmlBlock html) {
-            String text = Texts.htmlText(html.getLiteral());
-            if (!text.isEmpty()) Texts.write(paragraph(place).createRun(), text);
+            List<String> lines = Texts.htmlLines(html.getLiteral());
+            if (!lines.isEmpty()) {
+                XWPFRun run = paragraph(place).createRun();
+                for (int line = 0; line < lines.size(); line++) {
+                    if (line > 0) run.addBreak();
+                    run.setText(Texts.xmlSafe(lines.get(line)), line);
+                }
+            }
         } else {
             renderBlocks(node, place);
         }
@@ -275,7 +280,7 @@ final class Fragment {
         } else if (node instanceof HardLineBreak) {
             run(paragraph, format).addBreak();
         } else if (node instanceof HtmlInline html) {
-            if (LINE_BREAK_TAG.matcher(html.getLiteral()).matches()) run(paragraph, format).addBreak();
+            if (Texts.LINE_BREAK_TAG.matcher(html.getLiteral()).matches()) run(paragraph, format).addBreak();
         } else if (node instanceof Image image) {
             // POI adds a picture's relationship to the document part, so a picture inside a footnote would be broken
             boolean embed = paragraph.getPart() == composition.document;

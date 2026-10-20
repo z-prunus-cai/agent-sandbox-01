@@ -14,6 +14,8 @@ import org.commonmark.node.DefinitionMap;
 import org.commonmark.node.Node;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +33,12 @@ final class Footnotes {
 
     private final XWPFDocument document;
     private final Styles styles;
+    private record Pending(FootnoteDefinition definition, FootnoteBody body, Output output) {
+    }
+
     private final Map<FootnoteDefinition, BigInteger> ids = new IdentityHashMap<>();
+    private final Deque<Pending> pending = new ArrayDeque<>();
+    private boolean rendering;
 
     Footnotes(XWPFDocument document, Styles styles) {
         this.document = document;
@@ -57,27 +64,34 @@ final class Footnotes {
 
     /**
      * A reference to the footnote of its definition. The footnote is created and registered before its body is
-     * rendered, so a footnote that refers to itself or to another footnote reuses the existing one.
+     * rendered, so a footnote that refers to itself or to another footnote reuses the existing one. Bodies are
+     * rendered from a queue by the outermost call, so a long chain of footnotes referring to the next one does not
+     * nest calls and cannot overflow the stack.
      */
     void reference(FootnoteReference reference, DefinitionMap<FootnoteDefinition> definitions, XWPFParagraph paragraph,
                    Output output) {
         FootnoteDefinition definition = definitions.get(reference.getLabel());
-        if (definition == null) {
-            Texts.write(paragraph.createRun(), "[^" + reference.getLabel() + "]");
-            return;
-        }
         BigInteger id = ids.get(definition);
         if (id == null) {
             XWPFFootnote footnote = document.createFootnote();
             id = footnote.getId();
             ids.put(definition, id);
-            FootnoteBody body = new FootnoteBody(footnote);
-            output.blocks(definition, body);
-            body.finish();
+            pending.add(new Pending(definition, new FootnoteBody(footnote), output));
         }
         XWPFRun run = paragraph.createRun();
         run.setStyle(styles.id(Styles.Style.FOOTNOTE_REFERENCE));
         run.getCTR().addNewFootnoteReference().setId(id);
+        if (rendering) return;
+        rendering = true;
+        try {
+            while (!pending.isEmpty()) {
+                Pending next = pending.remove();
+                next.output.blocks(next.definition, next.body);
+                next.body.finish();
+            }
+        } finally {
+            rendering = false;
+        }
     }
 
     /** The body of one footnote; it always starts with a paragraph that holds the footnote's own number mark. */

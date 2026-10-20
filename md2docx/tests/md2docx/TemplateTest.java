@@ -254,4 +254,100 @@ class TemplateTest {
         assertEquals(List.of("Heading1: A"), paragraphs(docx));
         assertEquals(1, TestSupport.count(part(docx, "word/styles.xml"), "w:styleId=\"Heading1\""));
     }
+
+    /** A template whose body has a footnote, a comment, a link and the same picture as its header. */
+    private Path templateSharingAPictureWithItsHeader() throws Exception {
+        Path file = directory.resolve("shared.docx");
+        byte[] picture = ImagesAndSafetyTest.image("png", 7, 7);
+        try (XWPFDocument document = new XWPFDocument()) {
+            var header = document.createHeader(HeaderFooterType.DEFAULT);
+            header.createParagraph().createRun().addPicture(new java.io.ByteArrayInputStream(picture),
+                    org.apache.poi.common.usermodel.PictureType.PNG, "logo", 9525, 9525);
+            var body = document.createParagraph();
+            body.createRun().addPicture(new java.io.ByteArrayInputStream(picture), org.apache.poi.common.usermodel.PictureType.PNG, "logo", 9525, 9525);
+            body.createHyperlinkRun("https://template.example/body").setText("link");
+            var footnote = document.createFootnote();
+            footnote.createParagraph().createRun().setText("template footnote");
+            body.createRun().getCTR().addNewFootnoteReference().setId(footnote.getId());
+            var comments = document.createComments();
+            var comment = comments.createComment(java.math.BigInteger.ONE);
+            comment.setAuthor("Template Author");
+            comment.createParagraph().createRun().setText("template comment");
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        return file;
+    }
+
+    @Test
+    void bodyFootnotesCommentsAndLinksGoButAPictureSharedWithTheHeaderStays() throws Exception {
+        Path template = templateSharingAPictureWithItsHeader();
+        try (XWPFDocument original = new XWPFDocument(Files.newInputStream(template))) {
+            assertEquals(1, original.getAllPictures().size(), "the body and the header share one picture part");
+        }
+        byte[] docx = compose(options(template).build(), Section.of("A", "a"));
+        String footnotes = part(docx, "word/footnotes.xml");
+        assertTrue(footnotes == null || !footnotes.contains("template footnote"));
+        assertEquals(null, part(docx, "word/comments.xml"));
+        assertFalse(part(docx, "word/_rels/document.xml.rels").contains("template.example"));
+        try (XWPFDocument document = TestSupport.open(docx)) {
+            assertEquals(1, document.getHeaderList().get(0).getAllPictures().size());
+            assertEquals(1, document.getAllPackagePictures().size());
+        }
+    }
+
+    @Test
+    void templateIsReadOnceWhenTheComposerIsCreated() throws Exception {
+        Path template = template("once.docx", false);
+        MarkdownDocxComposer composer = new MarkdownDocxComposer(options(template).build());
+        Files.delete(template);
+        assertEquals(List.of("1: A"), paragraphs(composer.compose(List.of(Section.titled("A")))));
+    }
+
+    @Test
+    void stylesAddedToALocalizedTemplateAreBasedOnItsNormalStyle() throws Exception {
+        byte[] docx = compose(options(template("localized.docx", false)).build(), Section.untitled("```\nc\n```"));
+        String styles = part(docx, "word/styles.xml");
+        assertFalse(styles.contains("<w:basedOn w:val=\"Normal\"/>"), "no reference to a style ID the template does not have");
+        assertFalse(styles.contains("<w:next w:val=\"Normal\"/>"));
+        assertTrue(TestSupport.styleXml(docx, "SourceCode").contains("<w:basedOn w:val=\"a\"/>"));
+    }
+
+    @Test
+    void footnoteMarkUsesTheTemplateFootnoteReferenceStyle() throws Exception {
+        Path file = directory.resolve("footnote-style.docx");
+        try (XWPFDocument document = new XWPFDocument()) {
+            document.createStyles().setStyles(CTStyles.Factory.parse("""
+                    <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                      <w:style w:type="character" w:styleId="NoteMark"><w:name w:val="footnote reference"/></w:style>
+                    </w:styles>""", Styles.ELEMENT_OPTIONS));
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        byte[] docx = compose(options(file).build(), Section.untitled("a[^1]\n\n[^1]: n"));
+        assertTrue(part(docx, "word/footnotes.xml").contains("<w:rStyle w:val=\"NoteMark\"/></w:rPr><w:footnoteRef/>"));
+        assertTrue(part(docx, "word/document.xml").contains("<w:rStyle w:val=\"NoteMark\"/></w:rPr><w:footnoteReference"));
+    }
+
+    @Test
+    void marginsWithUnitsOrMissingAreRead() throws Exception {
+        Path file = template("units.docx", false);
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(file))) {
+            var margins = document.getDocument().getBody().getSectPr().getPgMar();
+            var left = org.openxmlformats.schemas.officeDocument.x2006.sharedTypes.STTwipsMeasure.Factory.newInstance();
+            left.setStringValue("2.54cm");
+            margins.xsetLeft(left);
+            try (var cursor = margins.newCursor()) {
+                cursor.removeAttribute(new javax.xml.namespace.QName("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "right"));
+            }
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        byte[] docx = compose(options(file).build(), Section.untitled("| a |\n| - |\n| b |"));
+        // 12240 twips Letter width, 1440 twips (2.54 cm) left, missing right margin taken as 1440 twips
+        assertTrue(part(docx, "word/document.xml").contains("<w:tblW w:w=\"" + (12240 - 2 * 1440) + "\""));
+    }
 }

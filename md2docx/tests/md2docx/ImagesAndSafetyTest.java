@@ -54,14 +54,20 @@ class ImagesAndSafetyTest {
     }
 
     @Test
-    void everySupportedFormatIsEmbedded() throws Exception {
-        for (String format : List.of("png", "jpg", "gif", "bmp")) {
-            Files.write(directory.resolve("a." + format), image(format, 10, 10));
-            byte[] docx = compose(Section.untitled("![x](a." + format + ")").baseDirectory(directory));
+    void everySupportedFormatIsEmbeddedWithItsOwnType() throws Exception {
+        var types = java.util.Map.of("png", org.apache.poi.common.usermodel.PictureType.PNG, "jpg", org.apache.poi.common.usermodel.PictureType.JPEG,
+                "gif", org.apache.poi.common.usermodel.PictureType.GIF, "bmp", org.apache.poi.common.usermodel.PictureType.BMP);
+        for (var format : types.entrySet()) {
+            // a misleading file name: the type comes from the bytes
+            Files.write(directory.resolve("a-" + format.getKey() + ".png"), image(format.getKey(), 10, 10));
+            byte[] docx = compose(Section.untitled("![x](a-" + format.getKey() + ".png)").baseDirectory(directory));
             try (XWPFDocument document = open(docx)) {
-                assertEquals(1, document.getAllPictures().size(), format);
+                assertEquals(1, document.getAllPictures().size(), format.getKey());
+                assertEquals(format.getValue(), document.getAllPictures().get(0).getPictureTypeEnum(), format.getKey());
             }
         }
+        Files.write(directory.resolve("a.tiff"), image("tiff", 10, 10));
+        assertEquals(List.of("-: [t]"), paragraphs(compose(Section.untitled("![t](a.tiff)").baseDirectory(directory))));
     }
 
     @Test
@@ -142,15 +148,17 @@ class ImagesAndSafetyTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Timeout(10)
+    @org.junit.jupiter.api.Timeout(value = 10, threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
     void localFilesNeverOpensANetworkConnection() throws Exception {
-        AtomicBoolean connected = new AtomicBoolean();
+        java.util.concurrent.atomic.AtomicInteger connections = new java.util.concurrent.atomic.AtomicInteger();
         try (ServerSocket server = new ServerSocket(0)) {
             Thread.ofVirtual().start(() -> {
-                try (Socket ignored = server.accept()) {
-                    connected.set(true);
-                } catch (IOException closed) {
-                    // the server is closed at the end of the test
+                while (!server.isClosed()) {
+                    try (Socket accepted = server.accept()) {
+                        connections.incrementAndGet();
+                    } catch (IOException closed) {
+                        return;
+                    }
                 }
             });
             String address = "http://127.0.0.1:" + server.getLocalPort() + "/a.png";
@@ -158,7 +166,7 @@ class ImagesAndSafetyTest {
             compose(Section.untitled("![x](" + address + ")").baseDirectory(directory));
             Thread.sleep(200);
         }
-        assertFalse(connected.get());
+        assertEquals(0, connections.get());
     }
 
     @Test
@@ -320,5 +328,29 @@ class ImagesAndSafetyTest {
     void destinationThatLooksLikeASchemeIsRefusedEvenWhenSuchAFileExists() throws Exception {
         Files.write(directory.resolve("x:y.png"), image("png", 5, 5));
         assertNull(ImageResolver.localFiles().resolve("x:y.png", directory));
+    }
+
+    @Test
+    void pathStartingWithABackslashIsRefused() throws Exception {
+        Files.write(directory.resolve("\\a.png"), image("png", 5, 5));
+        assertNull(ImageResolver.localFiles().resolve("\\a.png", directory));
+    }
+
+    @Test
+    void percentEncodedImagePathIsFound() throws Exception {
+        Files.write(directory.resolve("my picture.png"), image("png", 5, 5));
+        try (XWPFDocument document = open(compose(Section.untitled("![a](my%20picture.png)").baseDirectory(directory)))) {
+            assertEquals(1, document.getAllPictures().size());
+        }
+    }
+
+    @Test
+    void linkAddressesWithCharactersAUriMayNotContainAreEncoded() {
+        String relations = part(compose(Section.untitled(
+                "[u](HTTPS://example.org/U) [q](https://example.org/a|b) [p](https://example.org/api/{id}) [e](https://example.org/%41)")),
+                "word/_rels/document.xml.rels");
+        for (String target : List.of("HTTPS://example.org/U", "https://example.org/a%7Cb", "https://example.org/api/%7Bid%7D", "https://example.org/%41")) {
+            assertTrue(relations.contains("Target=\"" + target + "\""), target);
+        }
     }
 }

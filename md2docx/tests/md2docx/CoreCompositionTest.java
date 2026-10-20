@@ -100,6 +100,10 @@ class CoreCompositionTest {
         for (String text : List.of("●", "○", "■", "%1.", "%2.")) {
             assertTrue(numbering.contains("<w:lvlText w:val=\"" + text + "\"/>"), text);
         }
+        String bullets = numbering.substring(0, numbering.indexOf("</w:abstractNum>"));
+        assertTrue(java.util.regex.Pattern.compile("<w:lvl w:ilvl=\"0\">(?:(?!</w:lvl>).)*<w:lvlText w:val=\"●\"/>").matcher(bullets).find());
+        assertTrue(java.util.regex.Pattern.compile("<w:lvl w:ilvl=\"1\">(?:(?!</w:lvl>).)*<w:lvlText w:val=\"○\"/>").matcher(bullets).find());
+        assertTrue(java.util.regex.Pattern.compile("<w:lvl w:ilvl=\"2\">(?:(?!</w:lvl>).)*<w:lvlText w:val=\"■\"/>").matcher(bullets).find());
         try (XWPFDocument document = open(docx)) {
             assertEquals("bullet", paragraphWithText(document, "a").getNumFmt());
             assertEquals("decimal", paragraphWithText(document, "one").getNumFmt());
@@ -151,6 +155,7 @@ class CoreCompositionTest {
             assertTrue(table.getRow(0).isRepeatHeader());
             assertFalse(table.getRow(1).isRepeatHeader());
             assertTrue(table.getRow(1).isCantSplitRow());
+            assertTrue(table.getRow(0).isCantSplitRow());
             assertEquals("CENTER", table.getRow(1).getCell(1).getParagraphs().get(0).getAlignment().name());
             assertEquals("RIGHT", table.getRow(1).getCell(2).getParagraphs().get(0).getAlignment().name());
             assertTrue(table.getRow(0).getCell(0).getParagraphs().get(0).getRuns().get(0).isBold());
@@ -264,5 +269,46 @@ class CoreCompositionTest {
         try (XWPFDocument document = open(compose(Section.untitled("| a |\n| - |\n| 1 |\n\nafter")))) {
             assertEquals(160, paragraphWithText(document, "after").getSpacingBefore());
         }
+    }
+
+    @Test
+    void htmlBlockTextFollowsBrowserWhiteSpaceRules() {
+        assertEquals(List.of("-: x & y z"), paragraphs(compose(Section.untitled("<pre>\nx &amp; y\n\nz\n</pre>"))));
+        assertEquals(List.of("-: cell1 cell2"), paragraphs(compose(Section.untitled("<table><tr><td>cell1</td><td>cell2</td></tr></table>"))));
+        assertEquals(List.of("-: 1 < 2 and 3 > 2"), paragraphs(compose(Section.untitled("<div>1 < 2 and 3 > 2</div>"))));
+        assertEquals(List.of("-: shown"), paragraphs(compose(Section.untitled("<div><!-->shown<!-- hidden --></div>"))));
+        assertEquals(List.of("-: Line one\nLine two"), paragraphs(compose(Section.untitled("<div>Line one<br>Line two</div>"))));
+        assertEquals(List.of("-: x"), paragraphs(compose(Section.untitled("<!-- only a comment -->\n\nx"))));
+    }
+
+    @Test
+    void sourceLineBreakBetweenAWideAndANarrowCharacterIsASpace() {
+        assertEquals(List.of("-: 中文 latin"), paragraphs(compose(Section.untitled("中文\nlatin"))));
+    }
+
+    @Test
+    void manyListsTakeLinearTime() {
+        String lists = "1. a\n\nx\n\n".repeat(4_000);
+        String paragraphs = "y\n\nx\n\n".repeat(4_000);
+        compose(Section.untitled(lists));
+        long start = System.nanoTime();
+        compose(Section.untitled(paragraphs));
+        long withoutLists = System.nanoTime() - start;
+        start = System.nanoTime();
+        compose(Section.untitled(lists));
+        long withLists = System.nanoTime() - start;
+        // scanning all instances for every list made this about 40 times slower
+        assertTrue(withLists < 8 * withoutLists + 300_000_000L, withLists / 1_000_000 + " ms against " + withoutLists / 1_000_000 + " ms");
+    }
+
+    @Test
+    void emptyTopLevelSectionWithPageBreaksDoesNotFail() {
+        ComposeOptions pageBreaks = ComposeOptions.builder().pageBreakBetweenTopLevelSections(true).build();
+        assertEquals(List.of("Heading1: A", "-: a"), paragraphs(compose(pageBreaks, Section.of("A", "a"), Section.untitled(""))));
+    }
+
+    @Test
+    void listItemStartingWithABlockGetsAnEmptyNumberedParagraphFirst() {
+        assertEquals(List.of("ListParagraph: ", "SourceCode: c"), paragraphs(compose(Section.untitled("- ```\n  c\n  ```"))));
     }
 }

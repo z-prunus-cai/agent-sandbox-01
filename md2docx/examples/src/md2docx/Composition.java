@@ -16,6 +16,7 @@ import org.commonmark.node.Heading;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
@@ -44,22 +45,23 @@ final class Composition implements AutoCloseable {
     private int fragmentCount;
     private boolean topLevelSeen;
 
-    Composition(ComposeOptions options) throws IOException {
+    /** @param template the cleaned template package from {@link Templates#withoutBody}, or null */
+    Composition(ComposeOptions options, byte[] template) throws IOException {
         this.options = options;
-        if (options.template != null) {
-            document = Templates.open(options.template);
+        if (template != null) {
+            document = new XWPFDocument(new ByteArrayInputStream(template));
         } else {
             document = new XWPFDocument();
             PageSetup.applyA4(document);
         }
         try {
-            styles = options.template != null ? Styles.fromTemplate(document, options) : Styles.create(document, options);
+            styles = template != null ? Styles.fromTemplate(document, options) : Styles.create(document, options);
             XWPFNumbering numbering = document.createNumbering();
             lists = new Lists(numbering);
-            headingNumbering = options.numberHeadings ? HeadingNumbering.attach(numbering, styles) : null;
+            headingNumbering = options.numberHeadings ? HeadingNumbering.attach(numbering, lists, styles) : null;
             page = PageSetup.of(document);
             footnotes = new Footnotes(document, styles);
-            if (options.title != null) document.getProperties().getCoreProperties().setTitle(Texts.xmlSafe(options.title));
+            if (options.title != null && !options.title.isBlank()) document.getProperties().getCoreProperties().setTitle(Texts.xmlSafe(options.title));
         } catch (XmlException | RuntimeException failure) {
             document.close();
             throw failure instanceof XmlException ? new IllegalStateException("invalid built-in definition", failure)

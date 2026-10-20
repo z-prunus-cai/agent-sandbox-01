@@ -24,9 +24,9 @@ final class HeadingNumbering {
         this.labels = labels;
     }
 
-    static HeadingNumbering attach(XWPFNumbering numbering, Styles styles) throws XmlException {
+    static HeadingNumbering attach(XWPFNumbering numbering, Lists lists, Styles styles) throws XmlException {
         BigInteger definition = numbering.addAbstractNum(definition(Lists.nextDefinitionId(numbering), styles));
-        BigInteger instance = Lists.addInstance(numbering, definition);
+        BigInteger instance = lists.addInstance(definition).getCTNum().getNumId();
         boolean templateNumbering = false;
         for (int level = 1; level <= Composition.MAXIMUM_LEVEL; level++) {
             CTStyle style = styles.definition(Styles.Style.heading(level));

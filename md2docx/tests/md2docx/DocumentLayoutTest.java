@@ -42,7 +42,7 @@ class DocumentLayoutTest {
     void newDocumentIsA4WithInchMarginsAndTheDefaultFonts() {
         byte[] docx = compose(SECTIONS);
         assertTrue(part(docx, "word/document.xml").contains("<w:pgSz w:w=\"11906\" w:h=\"16838\"/>"));
-        assertTrue(part(docx, "word/document.xml").contains("w:top=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:right=\"1440\""));
+        assertTrue(part(docx, "word/document.xml").contains("w:top=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:right=\"1440\" w:header=\"851\" w:footer=\"992\""));
         String styles = part(docx, "word/styles.xml");
         assertTrue(styles.contains("w:ascii=\"Calibri\" w:hAnsi=\"Calibri\" w:eastAsia=\"Microsoft YaHei\""));
         assertTrue(styles.contains("w:ascii=\"Consolas\""));
@@ -195,11 +195,15 @@ class DocumentLayoutTest {
         StringBuilder markdown = new StringBuilder();
         for (int heading = 0; heading < 16_000; heading++) markdown.append("## H").append(heading).append("\n\n");
         ComposeOptions contents = ComposeOptions.builder().tableOfContents(2).build();
+        compose(contents, Section.of("A", "warm-up"));
         long start = System.nanoTime();
+        compose(Section.of("A", markdown.toString()));
+        long withoutContents = System.nanoTime() - start;
+        start = System.nanoTime();
         byte[] docx = compose(contents, Section.of("A", markdown.toString()));
-        long elapsedMilliseconds = (System.nanoTime() - start) / 1_000_000;
-        // inserting in reading order is quadratic and needs about 8 s here (BRIEF section 5)
-        assertTrue(elapsedMilliseconds < 4_000, elapsedMilliseconds + " ms");
+        long withContents = System.nanoTime() - start;
+        // inserting in reading order is quadratic and about 20 times slower here (BRIEF section 5)
+        assertTrue(withContents < 6 * withoutContents + 500_000_000L, withContents / 1_000_000 + " ms against " + withoutContents / 1_000_000 + " ms");
         List<String> result = paragraphs(docx);
         assertEquals("TOC2: H0", result.get(2));
         assertEquals("TOC2: H15999", result.get(16_001));
@@ -210,5 +214,20 @@ class DocumentLayoutTest {
     void bodyStartingWithATableStartsOnANewPageAfterTheFrontMatter() {
         String xml = part(compose(ComposeOptions.builder().title("T").build(), Section.untitled("| a |\n| - |\n| 1 |")), "word/document.xml");
         assertTrue(xml.contains("<w:t>T</w:t></w:r><w:r><w:br w:type=\"page\"/></w:r></w:p><w:tbl>"), xml);
+    }
+
+    @Test
+    void blankTitleIsLeftOut() {
+        byte[] docx = compose(ComposeOptions.builder().title(" ").build(), Section.of("A", "a"));
+        assertEquals(List.of("Heading1: A", "-: a"), paragraphs(docx));
+        assertFalse(part(docx, "docProps/core.xml").contains("<dc:title>"));
+    }
+
+    @Test
+    void fontNamesAreEscaped() {
+        String styles = part(compose(ComposeOptions.builder().fonts("A&B", "C\"D", "E<F").build(), SECTIONS), "word/styles.xml");
+        assertTrue(styles.contains("w:ascii=\"A&amp;B\""));
+        assertTrue(styles.contains("w:eastAsia=\"C&quot;D\""));
+        assertTrue(styles.contains("w:ascii=\"E&lt;F\""));
     }
 }

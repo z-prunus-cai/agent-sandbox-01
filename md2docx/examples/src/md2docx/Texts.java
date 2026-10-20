@@ -9,10 +9,17 @@ import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
 final class Texts {
 
     /** Without extensions; only used to decode character references such as {@code &amp;}. */
     private static final Parser PLAIN_PARSER = Parser.builder().build();
+    static final Pattern LINE_BREAK_TAG = Pattern.compile("(?i)<br\\s*/?>");
+    private static final Pattern WHITE_SPACE = Pattern.compile("[ \\t\\r\\n\\f]+");
+    private static final Pattern CHARACTER_REFERENCE = Pattern.compile("&(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});");
 
     private Texts() {
     }
@@ -39,49 +46,60 @@ final class Texts {
     }
 
     /**
-     * The text of an HTML block: comments and tags removed, character references decoded. One pass over the input,
+     * The lines of text in an HTML block: comments and tags removed, white space collapsed as a browser does,
+     * character references decoded, and a new line only where a {@code <br>} tag stands. One pass over the input,
      * so a block full of unclosed tags or comments does not take quadratic time.
      */
-    static String htmlText(String html) {
-        StringBuilder text = new StringBuilder(html.length());
+    static List<String> htmlLines(String html) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
         int nextTagEnd = -1;
         int index = 0;
         while (index < html.length()) {
             if (html.startsWith("<!--", index)) {
-                int end = html.indexOf("-->", index + 4);
+                // searching from index + 2 also ends the empty comments <!--> and <!--->
+                int end = html.indexOf("-->", index + 2);
                 if (end < 0) break;
                 index = end + 3;
+                line.append(' ');
                 continue;
             }
             char character = html.charAt(index);
-            if (character == '<') {
+            if (character == '<' && index + 1 < html.length() && startsTag(html.charAt(index + 1))) {
                 if (nextTagEnd < index) nextTagEnd = html.indexOf('>', index);
                 if (nextTagEnd < 0) nextTagEnd = html.length();
                 if (nextTagEnd < html.length()) {
+                    if (LINE_BREAK_TAG.matcher(html.substring(index, nextTagEnd + 1)).matches()) {
+                        lines.add(line.toString());
+                        line.setLength(0);
+                    } else {
+                        line.append(' ');
+                    }
                     index = nextTagEnd + 1;
                     continue;
                 }
             }
-            text.append(character);
+            line.append(character);
             index++;
         }
-        return decodeCharacterReferences(text.toString().strip());
+        lines.add(line.toString());
+        List<String> result = new ArrayList<>();
+        for (String text : lines) result.add(decodeCharacterReferences(WHITE_SPACE.matcher(text).replaceAll(" ").strip()));
+        while (!result.isEmpty() && result.getLast().isEmpty()) result.removeLast();
+        while (!result.isEmpty() && result.getFirst().isEmpty()) result.removeFirst();
+        return result;
     }
 
-    /** Lets commonmark decode the references: every other ASCII punctuation character is escaped first. */
+    /** A tag name, a closing tag, a comment or declaration, or a processing instruction; "1 < 2" is text. */
+    private static boolean startsTag(char next) {
+        return Character.isLetter(next) || next == '/' || next == '!' || next == '?';
+    }
+
+    /** Each reference such as {@code &amp;} or {@code &#233;} is decoded on its own by commonmark. */
     private static String decodeCharacterReferences(String text) {
         if (text.indexOf('&') < 0) return text;
-        StringBuilder escaped = new StringBuilder(text.length() * 2);
-        text.lines().map(String::strip).forEach(line -> {
-            for (int index = 0; index < line.length(); index++) {
-                char character = line.charAt(index);
-                boolean punctuation = character < 128 && !Character.isLetterOrDigit(character) && !Character.isWhitespace(character);
-                if (punctuation && character != '&' && character != '#' && character != ';') escaped.append('\\');
-                escaped.append(character);
-            }
-            escaped.append('\n');
-        });
-        return plainText(PLAIN_PARSER.parse(escaped.toString()));
+        return CHARACTER_REFERENCE.matcher(text).replaceAll(match ->
+                java.util.regex.Matcher.quoteReplacement(plainText(PLAIN_PARSER.parse(match.group()))));
     }
 
     static String plainText(Node node) {
