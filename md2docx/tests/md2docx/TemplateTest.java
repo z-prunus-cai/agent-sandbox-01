@@ -237,4 +237,21 @@ class TemplateTest {
         assertEquals(null, part(Files.readAllBytes(plain), "word/styles.xml"));
         assertEquals(List.of("Heading1: A"), paragraphs(compose(options(plain).build(), Section.titled("A"))));
     }
+
+    @Test
+    void styleFoundByItsDefaultIdIsNotAddedAgain() throws Exception {
+        Path file = directory.resolve("ids.docx");
+        try (XWPFDocument document = new XWPFDocument()) {
+            document.createStyles().setStyles(CTStyles.Factory.parse("""
+                    <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                      <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Chapter"/></w:style>
+                    </w:styles>""", Styles.ELEMENT_OPTIONS));
+            try (OutputStream out = Files.newOutputStream(file)) {
+                document.write(out);
+            }
+        }
+        byte[] docx = compose(options(file).build(), Section.titled("A"));
+        assertEquals(List.of("Heading1: A"), paragraphs(docx));
+        assertEquals(1, TestSupport.count(part(docx, "word/styles.xml"), "w:styleId=\"Heading1\""));
+    }
 }

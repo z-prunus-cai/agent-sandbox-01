@@ -106,7 +106,7 @@ class DocumentLayoutTest {
         String numbering = part(docx, "word/numbering.xml");
         assertTrue(numbering.contains("<w:multiLevelType w:val=\"multilevel\"/>"));
         assertTrue(numbering.contains("<w:lvlText w:val=\"%1.%2.%3\"/>"));
-        assertTrue(numbering.contains("<w:lvlText w:val=\"%1.\"/>"));
+        assertTrue(numbering.contains("<w:pStyle w:val=\"Heading1\"/><w:suff w:val=\"space\"/><w:lvlText w:val=\"%1.\"/>"));
         assertTrue(numbering.contains("<w:pStyle w:val=\"Heading2\"/>"));
         assertEquals(List.of("TOC1: 1. One", "TOC2: 1.1 One A", "TOC3: 1.1.1 One A x", "TOC4: 1.1.1.1 deep", "TOC1: 2. Two",
                         "TOC1: 3. Three", "TOC2: 3.1 Three A"),

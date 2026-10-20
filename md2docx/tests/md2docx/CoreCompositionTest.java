@@ -258,4 +258,11 @@ class CoreCompositionTest {
         new MarkdownDocxComposer().compose(List.of(Section.of("A", "a")), out);
         assertFalse(closed[0]);
     }
+
+    @Test
+    void paragraphAfterATableGetsSpaceBefore() throws Exception {
+        try (XWPFDocument document = open(compose(Section.untitled("| a |\n| - |\n| 1 |\n\nafter")))) {
+            assertEquals(160, paragraphWithText(document, "after").getSpacingBefore());
+        }
+    }
 }
