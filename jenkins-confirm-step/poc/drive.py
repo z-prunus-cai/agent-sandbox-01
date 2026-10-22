@@ -1,6 +1,6 @@
-"""Drives the confirmation PoC through the Jenkins REST API. Usage: drive.py <jenkins home> <scenario>...
+"""Drives the confirmation PoC (alice and bob may build the job, viewer may only read) through the Jenkins REST API. Usage: drive.py <jenkins home> <scenario>...
 CONFIRM_REPO names the git repository holding examples/ (default: ./repo next to this script)."""
-import base64, json, os, sqlite3, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, json, os, shutil, sqlite3, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 URL = "http://127.0.0.1:8093"
@@ -9,6 +9,7 @@ TOKENS = dict(line.split() for line in (HOME / "poc-tokens.txt").read_text().spl
 REPO = Path(os.environ.get("CONFIRM_REPO", Path(__file__).parent / "repo")).resolve()
 DB_DIR = Path(__file__).parent / "databases"
 DB_DIR.mkdir(exist_ok=True)
+PROMPT = "复核以下 SQL"
 
 def call(user, method, path, data=None, content_type=None):
     request = urllib.request.Request(URL + path, data=data, method=method)
@@ -41,13 +42,13 @@ def ensure_job():
         # the job only knows its parameters after one run; abort that run at the confirmation
         status, _, headers = call("admin", "POST", "/job/sql-confirm/build")
         number = wait_for_queue(headers["Location"])
-        wait_for(number, "Run this SQL")
-        call("dba", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/abort")
+        wait_for(number, PROMPT)
+        call("alice", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/abort")
         print("parameter registration run:", number, finish(number))
 
-def start(parameters):
+def start(parameters, user="alice"):
     query = urllib.parse.urlencode(parameters)
-    status, body, headers = call("admin", "POST", "/job/sql-confirm/buildWithParameters?" + query)
+    status, body, headers = call(user, "POST", "/job/sql-confirm/buildWithParameters?" + query)
     return wait_for_queue(headers["Location"])
 
 def wait_for_queue(queue):
@@ -90,42 +91,53 @@ def rows(database):
         tables = [row[0] for row in connection.execute("select name from sqlite_master where type='table'")]
         return {table: connection.execute(f"select * from {table}").fetchall() for table in tables}
 
-def show(number, lines=("Run this SQL", "confirmed by", "SQL check", "applied", "Aborted by", "Rejected by", "Timeout", "SQL changed", "FAILED", "Finished:")):
+def show(number, lines=(PROMPT, "Approved by", "SQL confirmed by", "SQL check", "Rejected by", "Timeout", "SQL changed", "FAILED", "Finished:")):
     for line in console(number).splitlines():
         if any(marker in line for marker in lines):
             print("  console:", line.strip()[:200])
 
-def scenario_approve():
-    database = DB_DIR / "approve.sqlite"
+def press(user, number, button):
+    status, _, _ = call(user, "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/" + ("proceedEmpty" if button == "confirm" else "abort"))
+    print(f"{user} presses {button}: HTTP", status)
+    return status
+
+def scenario_self():
+    """alice starts the build and confirms it herself; viewer cannot press either button."""
+    database = DB_DIR / "self.sqlite"
     database.unlink(missing_ok=True)
     number = start({"SQL_TABLE": "items", "SQL_VALUE": "first", "DATABASE": str(database)})
-    print(f"build #{number} started; waiting for the confirmation prompt:", wait_for(number, "Run this SQL"))
+    print(f"build #{number} started by alice; waiting for the confirmation prompt:", wait_for(number, PROMPT))
     time.sleep(3)
     print("busy executors while waiting:", busy_executors())
     print("database before confirming:", rows(database))
-    status, body, _ = call("dev", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/proceedEmpty")
-    print("dev presses Run: HTTP", status)
-    time.sleep(2)
-    print("build still waiting after dev:", build(number)["building"], "| database:", rows(database))
-    status, body, _ = call("dev", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/abort")
-    print("dev presses Abort: HTTP", status)
-    time.sleep(2)
-    print("build still waiting after dev:", build(number)["building"], "| database:", rows(database))
-    status, body, _ = call("dba", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/proceedEmpty")
-    print("dba presses Run: HTTP", status)
+    for button in ("confirm", "abort"):
+        press("viewer", number, button)
+        time.sleep(2)
+        print("build still waiting:", build(number)["building"], "| database:", rows(database))
+    press("alice", number, "confirm")
     print("result:", finish(number))
     show(number)
     print("database after:", rows(database))
-    artifacts = [artifact["relativePath"] for artifact in build(number)["artifacts"]]
-    print("archived artifacts:", artifacts)
+    print("archived artifacts:", [artifact["relativePath"] for artifact in build(number)["artifacts"]])
+
+def scenario_other():
+    """alice starts the build, bob confirms it."""
+    database = DB_DIR / "other.sqlite"
+    database.unlink(missing_ok=True)
+    number = start({"SQL_VALUE": "confirmed by someone else", "DATABASE": str(database)})
+    print(f"build #{number} started by alice; waiting:", wait_for(number, PROMPT))
+    press("bob", number, "confirm")
+    print("result:", finish(number))
+    show(number)
+    print("database after:", rows(database))
 
 def scenario_abort():
+    """alice starts the build, bob aborts it."""
     database = DB_DIR / "abort.sqlite"
     database.unlink(missing_ok=True)
     number = start({"SQL_VALUE": "second", "DATABASE": str(database)})
-    print(f"build #{number} waiting:", wait_for(number, "Run this SQL"))
-    status, _, _ = call("dba", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/abort")
-    print("dba presses Abort: HTTP", status)
+    print(f"build #{number} waiting:", wait_for(number, PROMPT))
+    press("bob", number, "abort")
     print("result:", finish(number))
     show(number)
     print("apply playbook ran:", "apply-sql.yml" in console(number), "| database:", rows(database))
@@ -134,7 +146,7 @@ def scenario_timeout():
     database = DB_DIR / "timeout.sqlite"
     database.unlink(missing_ok=True)
     number = start({"SQL_VALUE": "third", "DATABASE": str(database), "CONFIRM_MINUTES": "1"})
-    print(f"build #{number} waiting:", wait_for(number, "Run this SQL"))
+    print(f"build #{number} waiting:", wait_for(number, PROMPT))
     started = time.time()
     print("result:", finish(number, 200), f"after {time.time() - started:.0f} s of waiting")
     show(number)
@@ -144,25 +156,24 @@ def scenario_invalid():
     database = DB_DIR / "invalid.sqlite"
     number = start({"SQL_VALUE": "it's", "DATABASE": str(database)})
     print(f"build #{number} result:", finish(number))
-    show(number)
-    print("reached confirmation:", "Run this SQL" in console(number))
+    show(number, ("SQL check", "Finished:"))
+    print("reached confirmation:", PROMPT in console(number))
 
 def scenario_injected():
     database = DB_DIR / "injected.sqlite"
     database.unlink(missing_ok=True)
     number = start({"SQL_VALUE": "x'); DROP TABLE items; --", "DATABASE": str(database)})
-    print(f"build #{number} waiting:", wait_for(number, "Run this SQL"))
+    print(f"build #{number} waiting:", wait_for(number, PROMPT))
     text = console(number)
-    start_index = text.index("Run this SQL")
-    print("prompt shows:\n" + "\n".join("    " + line for line in text[start_index:].splitlines()[:8]))
-    call("dba", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/abort")
-    print("result after dba aborts:", finish(number))
+    print("prompt shows:\n" + "\n".join("    " + line for line in text[text.index(PROMPT):].splitlines()[:8]))
+    press("alice", number, "abort")
+    print("result:", finish(number))
 
 def scenario_restart():
     database = DB_DIR / "restart.sqlite"
     database.unlink(missing_ok=True)
     number = start({"SQL_VALUE": "after restart", "DATABASE": str(database)})
-    print(f"build #{number} waiting:", wait_for(number, "Run this SQL"))
+    print(f"build #{number} waiting:", wait_for(number, PROMPT))
     status, _, _ = call("admin", "POST", "/restart")
     print("admin restarts Jenkins: HTTP", status)
     time.sleep(10)
@@ -181,11 +192,34 @@ def scenario_restart():
             pass
         time.sleep(2)
     print("after restart, build still waiting:", build(number)["building"], "| console says resumed:", "Resuming build" in console(number))
-    status, _, _ = call("dba", "POST", f"/job/sql-confirm/{number}/input/ConfirmSql/proceedEmpty")
-    print("dba presses Run: HTTP", status)
+    press("alice", number, "confirm")
     print("result:", finish(number))
-    show(number, ("Run this SQL", "Resuming build", "confirmed by", "Finished:"))
+    show(number, (PROMPT, "Resuming build", "SQL confirmed by", "Finished:"))
     print("database after:", rows(database))
+
+def scenario_tamper():
+    """Without Jenkins: plan, edit the SQL afterwards, then apply with the planned checksum."""
+    work = Path(tempfile.mkdtemp())
+    shutil.copytree(REPO / "ansible", work / "ansible")
+    database = DB_DIR / "tamper.sqlite"
+    database.unlink(missing_ok=True)
+    (work / "plan.json").write_text(json.dumps({"sql_table": "items", "sql_value": "first"}))
+    def playbook(name, variables):
+        return subprocess.run(["ansible-playbook", "ansible/" + name, "-i", "ansible/inventory.yml", "-e", "@" + variables],
+                              cwd=work, capture_output=True, text=True)
+    print("plan exit code:", playbook("plan-sql.yml", "plan.json").returncode)
+    planned = (work / "plan" / "change.sql.sha256").read_text().strip()
+    sql = work / "plan" / "change.sql"
+    sql.write_text(sql.read_text().replace("first", "changed"))
+    (work / "apply.json").write_text(json.dumps({"confirmed_sha256": planned, "database": str(database)}))
+    result = playbook("apply-sql.yml", "apply.json")
+    print("apply exit code:", result.returncode)
+    for line in (result.stdout + result.stderr).splitlines():
+        if "SQL changed after confirmation" in line:
+            print("  output:", line.strip()[:200])
+            break
+    print("database:", rows(database))
+    shutil.rmtree(work)
 
 ensure_job()
 for name in sys.argv[2:]:

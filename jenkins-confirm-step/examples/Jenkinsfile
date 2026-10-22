@@ -30,9 +30,10 @@ pipeline {
             steps {
                 timeout(time: params.CONFIRM_MINUTES as int, unit: 'MINUTES') {
                     script {
-                        def approver = input id: 'ConfirmSql', message: "Run this SQL (sha256 ${planned})?\n\n${sql}",
-                                ok: 'Run', submitter: 'dba', submitterParameter: 'approver'
-                        echo "confirmed by ${approver}"
+                        // No submitter: anyone allowed to build this job can confirm or abort
+                        def confirmedBy = input id: 'ConfirmSql', message: "复核以下 SQL（sha256 ${planned}），确认无误后执行：\n\n${sql}",
+                                ok: '执行', cancel: '中止', submitterParameter: 'confirmedBy'
+                        echo "SQL confirmed by ${confirmedBy}"
                     }
                 }
             }
