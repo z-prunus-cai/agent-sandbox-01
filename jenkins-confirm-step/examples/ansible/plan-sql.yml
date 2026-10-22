@@ -1,0 +1,33 @@
+- name: Render and check the SQL, without touching the database
+  hosts: localhost
+  gather_facts: false
+  vars:
+    plan_dir: "{{ playbook_dir }}/../plan"
+  tasks:
+    - name: Plan directory
+      ansible.builtin.file:
+        path: "{{ plan_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Render the SQL
+      ansible.builtin.template:
+        src: change.sql.j2
+        dest: "{{ plan_dir }}/change.sql"
+        mode: "0644"
+
+    - name: Check the SQL on an empty in-memory database
+      ansible.builtin.command: "python3 {{ playbook_dir }}/scripts/check_sql.py {{ plan_dir }}/change.sql"
+      changed_when: false
+
+    - name: Checksum of the SQL that will be shown for confirmation
+      ansible.builtin.stat:
+        path: "{{ plan_dir }}/change.sql"
+        checksum_algorithm: sha256
+      register: planned
+
+    - name: Write the checksum
+      ansible.builtin.copy:
+        content: "{{ planned.stat.checksum }}\n"
+        dest: "{{ plan_dir }}/change.sql.sha256"
+        mode: "0644"

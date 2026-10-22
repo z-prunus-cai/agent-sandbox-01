@@ -1,0 +1,23 @@
+- name: Run the confirmed SQL
+  hosts: localhost
+  gather_facts: false
+  vars:
+    plan_dir: "{{ playbook_dir }}/../plan"
+  tasks:
+    - name: Checksum of the SQL about to run
+      ansible.builtin.stat:
+        path: "{{ plan_dir }}/change.sql"
+        checksum_algorithm: sha256
+      register: about_to_run
+
+    - name: Refuse SQL that differs from the confirmed SQL
+      ansible.builtin.assert:
+        that:
+          - about_to_run.stat.exists
+          - about_to_run.stat.checksum == confirmed_sha256
+        fail_msg: "SQL changed after confirmation: confirmed {{ confirmed_sha256 }}, found {{ about_to_run.stat.checksum | default('no file') }}"
+        quiet: true
+
+    - name: Run the SQL
+      ansible.builtin.command: "python3 {{ playbook_dir }}/scripts/apply_sql.py {{ database }} {{ plan_dir }}/change.sql"
+      changed_when: true

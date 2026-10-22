@@ -1,0 +1,53 @@
+def planned
+def sql
+
+pipeline {
+    agent none
+    options { skipDefaultCheckout() }
+    parameters {
+        string(name: 'SQL_TABLE', defaultValue: 'items')
+        string(name: 'SQL_VALUE', defaultValue: 'first')
+        string(name: 'DATABASE', defaultValue: '')
+        string(name: 'CONFIRM_MINUTES', defaultValue: '30')
+    }
+    stages {
+        stage('Plan') {
+            agent any
+            steps {
+                checkout scm
+                // extraVars becomes -e key=value, which Ansible cannot split when a value contains a quote
+                writeJSON file: 'plan-vars.json', json: [sql_table: params.SQL_TABLE, sql_value: params.SQL_VALUE]
+                ansiblePlaybook playbook: 'ansible/plan-sql.yml', inventory: 'ansible/inventory.yml', extras: '-e @plan-vars.json'
+                archiveArtifacts artifacts: 'plan/change.sql'
+                script {
+                    sql = readFile('plan/change.sql')
+                    planned = readFile('plan/change.sql.sha256').trim()
+                }
+                stash name: 'plan', includes: 'plan/**,ansible/**'
+            }
+        }
+        stage('Confirm') {
+            steps {
+                timeout(time: params.CONFIRM_MINUTES as int, unit: 'MINUTES') {
+                    script {
+                        def approver = input id: 'ConfirmSql', message: "Run this SQL (sha256 ${planned})?\n\n${sql}",
+                                ok: 'Run', submitter: 'dba', submitterParameter: 'approver'
+                        echo "confirmed by ${approver}"
+                    }
+                }
+            }
+        }
+        stage('Apply') {
+            agent any
+            options { skipDefaultCheckout() }
+            steps {
+                dir('apply') {
+                    deleteDir()
+                    unstash 'plan'
+                    writeJSON file: 'apply-vars.json', json: [confirmed_sha256: planned, database: params.DATABASE]
+                    ansiblePlaybook playbook: 'ansible/apply-sql.yml', inventory: 'ansible/inventory.yml', extras: '-e @apply-vars.json'
+                }
+            }
+        }
+    }
+}

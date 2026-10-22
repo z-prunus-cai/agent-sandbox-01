@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS {{ sql_table }} (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+);
+INSERT INTO {{ sql_table }} (name) VALUES ('{{ sql_value }}');
