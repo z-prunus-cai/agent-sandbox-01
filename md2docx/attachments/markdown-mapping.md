@@ -16,8 +16,8 @@
 | 分割线 `---` | 带下边框的空段落 | `Fragment.renderBlock` | 同上 |
 | GFM 表格 | 表格样式 `MarkdownTable`（边框来自样式，不设直接边框），宽度等于正文宽度，固定布局；表头行加粗、底色 `E8EEF7`、跨页重复；所有行不跨页拆分；列对齐转成段落对齐 | `Tables.render` | `CoreCompositionTest.tableKeepsAlignmentRepeatsTheHeaderAndDoesNotSplitRows` |
 | 表格列宽 | 每列按表头计 4 到 16 个字符，按最长的正文单元格计至多 40 个字符，取较大者；中日韩宽字符计 2 | `Tables.columnWidths` | `CoreCompositionTest.columnWidthsFollowContentWithWideCharactersCountingDouble` |
-| HTML 块 | 去掉注释和标签、解码 `&amp;` 等字符引用后的文字，作为普通段落 | `Texts.htmlText` | `CoreCompositionTest.breakTagsBecomeLineBreaksAndOtherHtmlKeepsOnlyText` |
-| 脚注定义 `[^1]: 内容` | Word 脚注，在第一次被引用的位置创建；定义可以嵌在引用块、列表中，标签不区分大小写 | `Footnotes` | `CrossFragmentTest.sameFootnoteLabelInTwoFragmentsGivesTwoFootnotes` |
+| HTML 块 | 去掉注释和标签后的文字，作为普通段落：连续空白合并成一个空格，`<br>` 处换行，每个 `&amp;` 等字符引用单独解码；`<` 后面不是字母、`/`、`!`、`?` 时按文字保留（如 `1 < 2`） | `Texts.htmlLines` | `CoreCompositionTest.htmlBlockTextFollowsBrowserWhiteSpaceRules`、`ImagesAndSafetyTest.htmlBlockCharacterReferencesAreDecoded` |
+| 脚注定义 `[^1]: 内容` | Word 脚注，在第一次被引用的位置创建；定义可以嵌在引用块、列表中，标签不区分大小写；脚注里再引用其他脚注或自己时，指向已有的脚注，不会重复创建 | `Footnotes` | `CrossFragmentTest.sameFootnoteLabelInTwoFragmentsGivesTwoFootnotes`、`CrossFragmentTest.footnoteLabelsIgnoreCaseAndDefinitionsMayBeNested`、`CrossFragmentTest.footnoteReferringToAnotherFootnoteOrToItselfReusesTheFootnote` |
 
 ## 行内元素
 
@@ -25,11 +25,11 @@
 | --- | --- | --- | --- |
 | `**粗体**`、`*斜体*`、`~~删除线~~` | run 的粗体、斜体、删除线属性，可叠加 | `Fragment.renderInline` | `CoreCompositionTest.inlineFormattingBecomesRunProperties` |
 | `` `代码` `` | 字符样式 `VerbatimChar`（等宽字体、底纹）；在链接内时用链接样式 | `Fragment.renderInline` | `CoreCompositionTest.inlineFormattingBecomesRunProperties`、`CoreCompositionTest.codeInsideALinkTakesTheLinkStyle` |
-| `[文字](http://example.org)` 及 https、mailto、ftp | 外部超链接，字符样式 `Hyperlink`；一个 Markdown 链接是一个 `w:hyperlink`，不论其中有几个 run | `Links.target`、`Fragment.run` | `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` |
+| `[文字](http://example.org)` 及 https、mailto、ftp | 外部超链接，字符样式 `Hyperlink`；一个 Markdown 链接是一个 `w:hyperlink`，不论其中有几个 run；地址中 URI 不允许的字符（空格、`|`、`{` 等）按 UTF-8 编成 `%XX`，已有的 `%XX` 不变 | `Links.target`、`Links.percentEncode`、`Fragment.run` | `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks`、`CrossFragmentTest.oneMarkdownLinkIsOneWordHyperlink`、`ImagesAndSafetyTest.linkAddressesWithCharactersAUriMayNotContainAreEncoded` |
 | 裸网址 `https://example.org` | 同上（自动链接扩展） | 同上 | 同上 |
 | `[文字](#锚点)` | 指向标题书签的文档内链接；找不到目标时变成普通文字 | `Anchors.link`、`Anchors.resolve` | `CrossFragmentTest.linkFindsAHeadingInAnotherFragmentAndPrefersItsOwnFragment`、`CrossFragmentTest.linkWithoutTargetBecomesPlainText` |
 | 其他链接（相对路径、`javascript:`、`file:`、`data:`） | 只有文字 | `Links.target` | `ImagesAndSafetyTest.onlyWebAndMailLinksBecomeHyperlinks` |
-| `![替代文字](路径)` | 嵌入图片，替代文字写入 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性；只有图片的段落居中；读不到、或位于脚注中时输出 `[替代文字]`，没有替代文字时输出 `[image]` | `Images.render`、`ImageResolver` | `ImagesAndSafetyTest.relativeImageIsReadFromTheSectionDirectoryAndCenteredWhenAlone`、`unusableImagesShowTheirAlternativeText`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText` |
+| `![替代文字](路径)` | 嵌入图片，替代文字写入 `wp:docPr` 和 `pic:cNvPr` 的 `descr` 属性；路径按原样找不到时，把其中的 `%XX` 解码后再找；只有图片的段落居中；读不到、或位于脚注中时输出 `[替代文字]`，没有替代文字时输出 `[image]` | `Images.render`、`ImageResolver` | `ImagesAndSafetyTest.relativeImageIsReadFromTheSectionDirectoryAndCenteredWhenAlone`、`unusableImagesShowTheirAlternativeText`、`alternativeTextIsWrittenToBothPictureDescriptions`、`imageInsideAFootnoteBecomesItsAlternativeText`、`percentEncodedImagePathIsFound` |
 | `[^1]` 脚注引用 | Word 脚注引用（字符样式 `FootnoteReference`，上标）；没有对应定义时原样输出 `[^1]` | `Footnotes.reference` | `CrossFragmentTest.referenceWithoutDefinitionStaysText`、`CrossFragmentTest.footnoteReferenceAndTextUseTheFootnoteStyles` |
 | 硬换行（行尾两个空格或 `\`）、`<br>`、`<br/>` | 换行符 `<w:br/>` | `Fragment.renderInline` | `CoreCompositionTest.breakTagsBecomeLineBreaksAndOtherHtmlKeepsOnlyText`、`CoreCompositionTest.hardLineBreaksBecomeLineBreaks` |
 | 其他内联 HTML 标签 | 去掉标签，保留标签之间的文字 | `Fragment.renderInline` | 同上 |
