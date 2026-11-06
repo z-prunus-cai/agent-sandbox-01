@@ -1,0 +1,21 @@
+# The engine runs a reviewed task twice: task_review_mode is generate, then execute after confirmation.
+# Only the file at task_review_file passes from one run to the next, and the engine refuses to execute
+# a file whose checksum differs from the reviewed one.
+- name: Write the changes to review
+  ansible.builtin.copy:
+    dest: "{{ task_review_file }}"
+    content: "{% for item in task_d_items.split(',') %}change {{ item | trim }}\n{% endfor %}"
+    mode: "0644"
+  when: task_review_mode == 'generate'
+
+- name: Read the reviewed changes
+  ansible.builtin.slurp:
+    src: "{{ task_review_file }}"
+  register: task_d_reviewed
+  when: task_review_mode == 'execute'
+
+- name: Apply each reviewed change
+  ansible.builtin.debug:
+    msg: "applied {{ item }}"
+  loop: "{{ (task_d_reviewed.content | b64decode).splitlines() }}"
+  when: task_review_mode == 'execute'

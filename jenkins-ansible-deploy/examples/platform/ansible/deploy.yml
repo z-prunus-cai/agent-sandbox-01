@@ -1,0 +1,6 @@
+# Jenkins narrows the hosts to the selected groups with --limit
+- name: Deploy
+  hosts: deploy_targets
+  gather_facts: false
+  roles:
+    - deploy

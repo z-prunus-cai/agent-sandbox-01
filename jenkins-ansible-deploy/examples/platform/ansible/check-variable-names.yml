@@ -1,0 +1,14 @@
+# Task parameters arrive as extra vars, which override every inventory variable of the same name.
+# Jenkins passes the names of all task parameters as task_parameter_names before any task runs.
+- name: Check task parameter names against inventory variables
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Refuse a parameter name that an inventory variable already uses
+      vars:
+        inventory_names: "{{ groups['all'] | map('extract', hostvars) | map('dict2items') | flatten | map(attribute='key') | unique }}"
+        clashes: "{{ task_parameter_names | intersect(inventory_names) | sort }}"
+      ansible.builtin.assert:
+        that: clashes | length == 0
+        fail_msg: "task parameters also defined in the inventory: {{ clashes }}"
+        quiet: true

@@ -1,0 +1,10 @@
+# run-task.yml gets task_role and task_hosts from Jenkins at run time; the syntax check needs a value for each
+extra_vars:
+  task_role: task_a
+  task_hosts: localhost
+# business/tasks holds roles: without these, every file under a directory named tasks counts as a task list
+kinds:
+  - arg_specs: "**/business/tasks/*/meta/argument_specs.yml"
+  - yaml: "**/business/tasks/*/meta/task.yml"
+  - vars: "**/business/tasks/*/defaults/*.yml"
+  - tasks: "**/business/tasks/*/tasks/*.yml"

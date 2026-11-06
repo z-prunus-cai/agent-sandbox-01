@@ -1,9 +1,13 @@
 import ipaddress
 import json
+import os
+import subprocess
 
 import yaml
 
-from conftest import ANSIBLE_DIR, recap, run_ansible
+from conftest import EXAMPLES, VAULT_PASSWORD_FILE, recap, run_ansible
+
+INVENTORY = EXAMPLES / 'business' / 'inventory'
 
 
 def host_vars(host):
@@ -36,7 +40,7 @@ def test_host_vars_override_group_vars_for_that_host_only():
 
 
 def test_secret_is_stored_in_vault_file_and_referenced_by_name():
-    vault_file = ANSIBLE_DIR / 'inventory' / 'group_vars' / 'all' / 'vault.yml'
+    vault_file = INVENTORY / 'group_vars' / 'all' / 'vault.yml'
     variables = host_vars('api-01')
 
     assert vault_file.read_text().startswith('$ANSIBLE_VAULT;1.1;AES256')
@@ -46,7 +50,7 @@ def test_secret_is_stored_in_vault_file_and_referenced_by_name():
 
 def test_deploy_target_groups_in_hosts_yml_match_ansible_inventory():
     # the engine reads hosts.yml with readYaml instead of calling ansible-inventory
-    hosts_yml = yaml.safe_load((ANSIBLE_DIR / 'inventory' / 'hosts.yml').read_text())
+    hosts_yml = yaml.safe_load((INVENTORY / 'hosts.yml').read_text())
     from_file = list(hosts_yml['all']['children']['deploy_targets']['children'])
     result = run_ansible(['ansible-inventory', '--list'])
 
@@ -74,12 +78,12 @@ def test_check_inventory_passes_for_every_deploy_target():
         'web-01': 0, 'web-02': 0, 'api-01': 0, 'worker-01': 0, 'worker-02': 0}
 
 
-def test_check_inventory_reports_every_broken_host_in_one_run(ansible_copy):
-    group_vars = ansible_copy / 'inventory' / 'group_vars'
+def test_check_inventory_reports_every_broken_host_in_one_run(examples_copy):
+    group_vars = examples_copy / 'business' / 'inventory' / 'group_vars'
     (group_vars / 'web.yml').write_text((group_vars / 'web.yml').read_text().replace('app_port: 8080', 'app_port: eighty'))
     (group_vars / 'api.yml').write_text((group_vars / 'api.yml').read_text().replace('app_version: "1.8.0"\n', ''))
 
-    result = run_ansible(['ansible-playbook', 'check-inventory.yml'], project=ansible_copy)
+    result = run_ansible(['ansible-playbook', 'check-inventory.yml'], root=examples_copy)
 
     assert result.returncode == 2
     assert "argument 'app_port' is of type str and we were unable to convert to int" in result.stdout
@@ -89,6 +93,11 @@ def test_check_inventory_reports_every_broken_host_in_one_run(ansible_copy):
 
 
 def test_ansible_lint_passes_with_production_profile():
-    result = run_ansible(['ansible-lint', '--offline', '--profile', 'production'])
+    # ansible-lint reads .ansible-lint from the directory it runs in: the root of the examples
+    env = {key: value for key, value in os.environ.items() if not key.startswith('ANSIBLE_')}
+    env.update(ANSIBLE_CONFIG=str(EXAMPLES / 'platform' / 'ansible' / 'ansible.cfg'), ANSIBLE_NOCOLOR='1',
+               ANSIBLE_VAULT_PASSWORD_FILE=str(VAULT_PASSWORD_FILE))
+    result = subprocess.run(['ansible-lint', '--offline', '--profile', 'production'], cwd=EXAMPLES, env=env,
+                            capture_output=True, text=True, timeout=300)
 
     assert result.returncode == 0, result.stdout + result.stderr

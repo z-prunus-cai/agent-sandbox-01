@@ -1,0 +1,8 @@
+argument_specs:
+  main:
+    short_description: 示例任务 D：先生成变更清单供复核，确认后按清单执行
+    options:
+      task_d_items:
+        type: str
+        required: true
+        description: 变更项，用逗号分隔

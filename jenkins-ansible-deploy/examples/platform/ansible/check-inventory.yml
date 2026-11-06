@@ -1,0 +1,10 @@
+# Validates every deploy target's inventory variables against the deploy role's argument spec, without connecting
+- name: Check inventory
+  hosts: deploy_targets
+  gather_facts: false
+  vars:
+    deploy_spec: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../business/deploy/meta/argument_specs.yml') | from_yaml }}"
+  tasks:
+    - name: Validate host variables against the deploy argument spec
+      ansible.builtin.validate_argument_spec:
+        argument_spec: "{{ deploy_spec.argument_specs.main.options }}"

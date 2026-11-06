@@ -1,0 +1,6 @@
+# Non-secret variables shared by every host
+app_base_dir: /opt/apps
+app_run_user: app
+# Secrets live only in vault.yml; refer to them through vault_-prefixed names so a search finds every use.
+# The example vault.yml is encrypted with a published example password: replace both password and content
+app_api_token: "{{ vault_app_api_token }}"

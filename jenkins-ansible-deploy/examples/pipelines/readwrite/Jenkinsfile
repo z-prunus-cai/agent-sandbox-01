@@ -1,0 +1,10 @@
+// The read-write job: every task and the deployment. Needs the plugins listed in BRIEF.md.
+// The engine is loaded from the commit this file came from, so one build never mixes two revisions.
+String commit
+node {
+    commit = checkout(scm).GIT_COMMIT
+}
+library(identifier: "deploy-engine@${commit}",
+        retriever: modernSCM(scm: [$class: 'GitSCMSource', remote: scm.userRemoteConfigs[0].url], libraryPath: 'platform/jenkins/'))
+deployPipeline(commit: commit, mode: 'read-write', form: 'active-choices',
+               vaultCredentialsId: 'ansible-vault-password', sshCredentialsId: 'deploy-ssh-key')

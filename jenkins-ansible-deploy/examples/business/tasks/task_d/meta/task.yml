@@ -1,0 +1,9 @@
+description: 执行前需要复核的示例任务
+phases: [pre, post]
+access: write
+run_on: controller
+policy: abort
+timeout_minutes: 5
+order: 60
+review:
+  timeout_minutes: 30

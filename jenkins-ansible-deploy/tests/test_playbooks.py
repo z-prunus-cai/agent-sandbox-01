@@ -1,11 +1,11 @@
 import pytest
 
-from conftest import CATALOG, recap, run_ansible
+from conftest import recap, run_ansible, task_metadata
 
 
 def run_task(tmp_path, role, params, limit=None, vault=True):
     """Run run-task.yml the way the Jenkins engine does."""
-    hosts = 'deploy_targets' if CATALOG[role]['run_on'] == 'targets' else 'localhost'
+    hosts = 'deploy_targets' if task_metadata(role)['run_on'] == 'targets' else 'localhost'
     command = ['ansible-playbook', 'run-task.yml'] + (['--limit', limit] if limit else [])
     return run_ansible(command, extra_vars={'task_role': role, 'task_hosts': hosts, **params}, tmp_path=tmp_path, vault=vault)
 
@@ -15,20 +15,20 @@ def test_deploy_runs_only_on_the_limited_groups_with_each_hosts_own_variables():
 
     assert result.returncode == 0, result.stdout
     assert set(recap(result.stdout)) == {'web-01', 'web-02', 'api-01'}
-    assert 'TASK [app_deploy : Show the deployment that would run]' in result.stdout
+    assert 'TASK [deploy : Show the deployment that would run]' in result.stdout
     assert 'deploy web 2.3.1 to web-02 (192.0.2.12) dir=/opt/apps/web port=8080 max_connections=200 user=app' in result.stdout
     assert 'deploy api 1.8.0 to api-01 (192.0.2.13) dir=/opt/apps/api port=9000 max_connections=300 user=app' in result.stdout
 
 
-def test_deploy_validates_host_variables_before_doing_anything(ansible_copy):
-    web = ansible_copy / 'inventory' / 'group_vars' / 'web.yml'
+def test_deploy_validates_host_variables_before_doing_anything(examples_copy):
+    web = examples_copy / 'business' / 'inventory' / 'group_vars' / 'web.yml'
     web.write_text(web.read_text().replace('app_port: 8080', 'app_port: eighty'))
 
-    result = run_ansible(['ansible-playbook', 'deploy.yml', '--limit', 'web'], project=ansible_copy)
+    result = run_ansible(['ansible-playbook', 'deploy.yml', '--limit', 'web'], root=examples_copy)
 
     assert result.returncode == 2
     assert "argument 'app_port' is of type str and we were unable to convert to int" in result.stdout
-    assert 'TASK [app_deploy : Show the deployment that would run]' not in result.stdout
+    assert 'TASK [deploy : Show the deployment that would run]' not in result.stdout
 
 
 def test_task_on_targets_runs_only_on_the_limited_group(tmp_path):
@@ -46,8 +46,8 @@ def test_controller_task_runs_on_localhost_without_limit(tmp_path):
 
     assert result.returncode == 0, result.stdout
     assert set(recap(result.stdout)) == {'localhost'}
-    assert 'inventory/hosts.yml: ' in result.stdout
-    assert all(f'TASK [task_b : {name}]' in result.stdout for name in ('Check the path stays inside the Ansible directory', 'Read file status'))
+    assert 'business/inventory/hosts.yml: ' in result.stdout
+    assert all(f'TASK [task_b : {name}]' in result.stdout for name in ('Check the path stays inside the template directory', 'Read file status'))
 
 
 def test_every_run_needs_the_vault_password_even_on_localhost(tmp_path):
@@ -67,10 +67,10 @@ def test_every_run_needs_the_vault_password_even_on_localhost(tmp_path):
     pytest.param('task_a', {'task_a_message': 'x', 'task_a_repeat': 9}, 'web',
                  'task_a_repeat must be between 1 and 5, got 9', 'task_a : Print the message', id='out-of-range'),
     pytest.param('task_b', {'task_b_path': ''}, None,
-                 "task_b_path must be a non-empty path relative to the Ansible directory", 'task_b : Read file status',
+                 "task_b_path must be a non-empty path relative to the template directory", 'task_b : Read file status',
                  id='empty-path'),
     pytest.param('task_b', {'task_b_path': '../../etc/hostname'}, None,
-                 "task_b_path must be a non-empty path relative to the Ansible directory without '..'", 'task_b : Read file status',
+                 "task_b_path must be a non-empty path relative to the template directory without '..'", 'task_b : Read file status',
                  id='path-outside-directory'),
     pytest.param('task_c', {'task_c_mode': 'destroy'}, 'web', 'value of task_c_mode must be one of: plan, apply, got: destroy',
                  'task_c : Run in the selected mode', id='not-in-choices'),
@@ -85,17 +85,17 @@ def test_task_fails_with_a_clear_message_and_stops(tmp_path, role, params, limit
     assert f'TASK [{skipped_task}' not in result.stdout
 
 
-def test_controller_task_rejects_a_symbolic_link_that_leaves_the_ansible_directory(tmp_path, ansible_copy):
+def test_controller_task_rejects_a_symbolic_link_that_leaves_the_template_directory(tmp_path, examples_copy):
     outside = tmp_path / 'outside'
     outside.mkdir()
-    (outside / 'secret.txt').write_text('outside the Ansible directory')
-    (ansible_copy / 'link').symlink_to(outside)
+    (outside / 'secret.txt').write_text('outside the template directory')
+    (examples_copy / 'link').symlink_to(outside)
 
-    result = run_ansible(['ansible-playbook', 'run-task.yml'], project=ansible_copy, tmp_path=tmp_path,
+    result = run_ansible(['ansible-playbook', 'run-task.yml'], root=examples_copy, tmp_path=tmp_path,
                          extra_vars={'task_role': 'task_b', 'task_hosts': 'localhost', 'task_b_path': 'link/secret.txt'})
 
     assert result.returncode == 2
-    assert "task_b_path must be a non-empty path relative to the Ansible directory" in result.stdout
+    assert "task_b_path must be a non-empty path relative to the template directory" in result.stdout
     assert 'TASK [task_b : Read file status]' not in result.stdout
 
 
@@ -145,3 +145,40 @@ def test_bool_parameter_switches_the_verbose_output_on(tmp_path):
 
     assert result.returncode == 0, result.stdout
     assert '"msg": "api-01: app=api version=1.8.0"' in result.stdout
+
+
+def test_reviewed_task_writes_the_review_file_and_changes_nothing_when_generating(tmp_path):
+    review_file = tmp_path / 'review.txt'
+
+    result = run_task(tmp_path, 'task_d', {'task_d_items': 'a, b', 'task_review_mode': 'generate', 'task_review_file': str(review_file)})
+
+    assert result.returncode == 0, result.stdout
+    assert review_file.read_text() == 'change a\nchange b\n'
+    assert 'applied' not in result.stdout
+
+
+def test_reviewed_task_executes_the_review_file_not_its_parameters(tmp_path):
+    review_file = tmp_path / 'review.txt'
+    review_file.write_text('change reviewed\n')
+
+    result = run_task(tmp_path, 'task_d', {'task_d_items': 'other', 'task_review_mode': 'execute', 'task_review_file': str(review_file)})
+
+    assert result.returncode == 0, result.stdout
+    assert '"msg": "applied change reviewed"' in result.stdout
+    assert 'other' not in result.stdout.split('PLAY RECAP')[0].split('Read the reviewed changes')[1]
+
+
+def test_variable_name_check_passes_for_names_the_inventory_does_not_use(tmp_path):
+    result = run_ansible(['ansible-playbook', 'check-variable-names.yml'], tmp_path=tmp_path,
+                         extra_vars={'task_parameter_names': ['task_a_message', 'task_b_path']})
+
+    assert result.returncode == 0, result.stdout
+    assert recap(result.stdout)['localhost']['failed'] == 0
+
+
+def test_variable_name_check_reports_names_the_inventory_already_uses(tmp_path):
+    result = run_ansible(['ansible-playbook', 'check-variable-names.yml'], tmp_path=tmp_path,
+                         extra_vars={'task_parameter_names': ['task_a_message', 'app_port', 'vault_app_api_token']})
+
+    assert result.returncode == 2
+    assert "task parameters also defined in the inventory: ['app_port', 'vault_app_api_token']" in result.stdout

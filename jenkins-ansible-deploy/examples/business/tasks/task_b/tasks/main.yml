@@ -1,0 +1,30 @@
+- name: Check the path stays inside the template directory
+  vars:
+    task_b_root: "{{ playbook_dir }}/../.."
+  ansible.builtin.assert:
+    that:
+      - task_b_path | length > 0
+      - not task_b_path.startswith('/')
+      - "'..' not in task_b_path.split('/')"
+      # a symbolic link inside the path must not lead out of the directory either
+      - ((task_b_root ~ '/' ~ task_b_path) | realpath).startswith((task_b_root | realpath) ~ '/')
+    fail_msg: "task_b_path must be a non-empty path relative to the template directory without '..', got '{{ task_b_path }}'"
+    quiet: true
+
+- name: Read file status
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../{{ task_b_path }}"
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  register: task_b_file
+
+- name: Check the file exists and is large enough
+  ansible.builtin.assert:
+    that:
+      - task_b_file.stat.exists
+      - task_b_file.stat.isreg
+      - task_b_file.stat.size >= task_b_min_bytes
+    fail_msg: "{{ task_b_path }} is missing, not a regular file, or smaller than {{ task_b_min_bytes }} bytes"
+    # success_msg is rendered even when the assertion fails, and a missing file has no size
+    success_msg: "{{ task_b_path }}: {{ task_b_file.stat.size | default(0) }} bytes"

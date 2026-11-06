@@ -1,0 +1,10 @@
+# Runs one task (one role under business/tasks). Jenkins passes, with -e @file, the task's own parameters and:
+#   task_role, task_hosts                     always
+#   task_review_mode, task_review_file        only for a task that asks for a review before it runs
+- name: "Task {{ task_role }}"
+  hosts: "{{ task_hosts }}"
+  gather_facts: false
+  tasks:
+    - name: "Run {{ task_role }}"
+      ansible.builtin.include_role:
+        name: "{{ task_role }}"
