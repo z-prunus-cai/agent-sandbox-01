@@ -30,7 +30,27 @@ def task_metadata(name):
     return yaml.safe_load((TASKS / name / 'meta' / 'task.yml').read_text())
 
 
+def run_location_hosts():
+    """run_on label -> hosts pattern, read from the engine's RunLocation.groovy: TARGETS('targets', 'deploy_targets')."""
+    source = (ENGINE_SOURCE / 'RunLocation.groovy').read_text()
+    return dict(re.findall(r"^\s+[A-Z_]+\('([^']+)', '([^']+)'\)", source, re.MULTILINE))
+
+
 TASK_NAMES = sorted(path.name for path in TASKS.iterdir() if (path / 'meta' / 'task.yml').exists())
+
+
+def phase_tasks(phase, menu=None, access=None):
+    """Tasks of a phase, optionally only one menu or access, in the order the engine lists them: by order number."""
+    tasks = [task for task in TASK_NAMES if phase in task_metadata(task)['phases']
+             and menu in (None, task_metadata(task)['menu']) and access in (None, task_metadata(task)['access'])]
+    return sorted(tasks, key=lambda task: task_metadata(task)['order'])
+
+
+def task_label(task):
+    """A task's checkbox label on the Active Choices page."""
+    return f"{task} - {task_metadata(task)['description']}"
+
+
 CREDENTIALS = dict(re.findall(r"(vaultCredentialsId|sshCredentialsId): '([^']+)'", (EXAMPLES / READ_WRITE).read_text()))
 
 
@@ -48,6 +68,13 @@ def run_ansible(command, root=EXAMPLES, vault=True, extra_vars=None, tmp_path=No
     if vault:
         env['ANSIBLE_VAULT_PASSWORD_FILE'] = str(VAULT_PASSWORD_FILE)
     return subprocess.run(args, cwd=playbooks, env=env, capture_output=True, text=True, timeout=300)
+
+
+def run_task(tmp_path, role, params, limit=None, vault=True):
+    """Run run-task.yml the way the Jenkins engine does."""
+    hosts = run_location_hosts()[task_metadata(role)['run_on']]
+    command = ['ansible-playbook', 'run-task.yml'] + (['--limit', limit] if limit else [])
+    return run_ansible(command, extra_vars={'task_role': role, 'task_hosts': hosts, **params}, tmp_path=tmp_path, vault=vault)
 
 
 def recap(stdout):

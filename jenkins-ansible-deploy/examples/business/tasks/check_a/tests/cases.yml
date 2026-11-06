@@ -1,0 +1,22 @@
+# Cases of check_a run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: compares-each-hosts-own-inventory-value
+  params: {check_a_min_connections: 150}
+  limit: web
+  rc: 2
+  recap_failed: {web-01: 1, web-02: 0}
+  output: ['web-01: app_max_connections=100 < 150']
+
+- name: passes-when-every-host-meets-the-minimum
+  params: {check_a_min_connections: 1}
+  limit: api
+  rc: 0
+  output:
+    - 'TASK [check_a : Compare with the host'
+    - 'api-01: app_max_connections=300'
+
+- name: missing-required
+  params: {}
+  limit: web
+  rc: 2
+  output: ['missing required arguments: check_a_min_connections']
+  absent: ['TASK [check_a : Compare']

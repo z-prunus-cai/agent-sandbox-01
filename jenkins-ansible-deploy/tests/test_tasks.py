@@ -6,7 +6,7 @@ import pytest
 import yaml
 from ansible.vars.reserved import get_reserved_names, is_reserved_name
 
-from conftest import ENGINE_SOURCE, PLAYBOOKS, TASKS, TASK_NAMES, limit, run_ansible, task_metadata
+from conftest import ENGINE_SOURCE, PLAYBOOKS, TASKS, TASK_NAMES, limit, run_ansible, run_location_hosts, task_metadata
 
 TEMPLATE = re.compile(r'\{[{%#]')
 # magic variables not starting with ansible_, from docs/docsite/rst/reference_appendices/special_variables.rst of ansible/ansible-documentation@b16dcb8
@@ -144,5 +144,4 @@ def test_engine_variables_are_the_ones_the_platform_playbooks_read():
     assert engine == ['task_role', 'task_hosts', 'task_review_mode', 'task_review_file', 'task_parameter_names']
     assert '{{ task_role }}' in run_task and '{{ task_hosts }}' in run_task
     assert 'task_parameter_names' in (PLAYBOOKS / 'check-variable-names.yml').read_text()
-    assert [host for host in re.findall(r"^\s+[A-Z_]+\('[^']+', '([^']+)'\)", (ENGINE_SOURCE / 'RunLocation.groovy').read_text(), re.MULTILINE)] \
-        == ['deploy_targets', 'localhost']
+    assert list(run_location_hosts().values()) == ['deploy_targets', 'localhost']

@@ -1,0 +1,23 @@
+# Cases of task_c run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: role-defaults-apply-when-no-value-is-passed
+  params: {}
+  limit: api
+  rc: 0
+  output:
+    - '"msg": "api-01: task_c mode=plan label="'
+    - 'TASK [task_c : Run in the selected mode]'
+  # task_c_verbose defaults to false
+  absent: ['app=api']
+
+- name: bool-parameter-switches-the-verbose-output-on
+  params: {task_c_verbose: true}
+  limit: api
+  rc: 0
+  output: ['"msg": "api-01: app=api version=1.8.0"']
+
+- name: not-in-choices
+  params: {task_c_mode: destroy}
+  limit: web
+  rc: 2
+  output: ['value of task_c_mode must be one of: plan, apply, got: destroy']
+  absent: ['TASK [task_c : Run in the selected mode]']

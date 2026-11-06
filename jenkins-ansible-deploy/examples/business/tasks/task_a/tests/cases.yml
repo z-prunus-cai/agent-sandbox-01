@@ -1,0 +1,32 @@
+# Cases of task_a run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: runs-only-on-the-limited-group
+  params: {task_a_message: hello, task_a_repeat: 2}
+  limit: api
+  rc: 0
+  recap_hosts: [api-01]
+  output:
+    - '"msg": "api-01: hello (2/2)"'
+    # the task names that the failure cases below expect to be skipped
+    - 'TASK [task_a : Check task_a_repeat range]'
+    - 'TASK [task_a : Print the message]'
+
+- name: missing-required
+  params: {}
+  limit: web
+  rc: 2
+  output: ['missing required arguments: task_a_message']
+  absent: ['TASK [task_a : Check task_a_repeat range]']
+
+- name: wrong-type
+  params: {task_a_message: x, task_a_repeat: two}
+  limit: web
+  rc: 2
+  output: ["argument 'task_a_repeat' is of type str and we were unable to convert to int"]
+  absent: ['TASK [task_a : Check task_a_repeat range]']
+
+- name: out-of-range
+  params: {task_a_message: x, task_a_repeat: 9}
+  limit: web
+  rc: 2
+  output: ['task_a_repeat must be between 1 and 5, got 9']
+  absent: ['TASK [task_a : Print the message]']

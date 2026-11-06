@@ -1,0 +1,27 @@
+# Cases of task_b run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: runs-on-localhost-without-limit
+  params: {}
+  rc: 0
+  recap_hosts: [localhost]
+  output:
+    - 'business/inventory/hosts.yml: '
+    - 'TASK [task_b : Check the path stays inside the template directory]'
+    - 'TASK [task_b : Read file status]'
+
+- name: empty-path
+  params: {task_b_path: ''}
+  rc: 2
+  output: ['task_b_path must be a non-empty path relative to the template directory']
+  absent: ['TASK [task_b : Read file status]']
+
+- name: path-outside-directory
+  params: {task_b_path: ../../etc/hostname}
+  rc: 2
+  output: ["task_b_path must be a non-empty path relative to the template directory without '..'"]
+  absent: ['TASK [task_b : Read file status]']
+
+- name: missing-file
+  params: {task_b_path: no-such-file.yml}
+  rc: 2
+  recap_failed: {localhost: 1}
+  output: ['no-such-file.yml is missing, not a regular file, or smaller than 1 bytes']

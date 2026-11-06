@@ -1,13 +1,6 @@
-import pytest
-
-from conftest import recap, run_ansible, task_metadata
-
-
-def run_task(tmp_path, role, params, limit=None, vault=True):
-    """Run run-task.yml the way the Jenkins engine does."""
-    hosts = 'deploy_targets' if task_metadata(role)['run_on'] == 'targets' else 'localhost'
-    command = ['ansible-playbook', 'run-task.yml'] + (['--limit', limit] if limit else [])
-    return run_ansible(command, extra_vars={'task_role': role, 'task_hosts': hosts, **params}, tmp_path=tmp_path, vault=vault)
+"""The platform playbooks: deploy.yml, check-variable-names.yml and what every run of run-task.yml needs.
+The cases of each task are in business/tasks/<task>/tests/cases.yml (tests/test_task_cases.py)."""
+from conftest import TASK_NAMES, recap, run_ansible, run_location_hosts, run_task, task_metadata
 
 
 def test_deploy_runs_only_on_the_limited_groups_with_each_hosts_own_variables():
@@ -31,60 +24,18 @@ def test_deploy_validates_host_variables_before_doing_anything(examples_copy):
     assert 'TASK [deploy : Show the deployment that would run]' not in result.stdout
 
 
-def test_task_on_targets_runs_only_on_the_limited_group(tmp_path):
-    result = run_task(tmp_path, 'task_a', {'task_a_message': 'hello', 'task_a_repeat': 2}, limit='api')
-
-    assert result.returncode == 0, result.stdout
-    assert set(recap(result.stdout)) == {'api-01'}
-    assert '"msg": "api-01: hello (2/2)"' in result.stdout
-    # the task names that the failure cases below expect to be skipped
-    assert all(f'TASK [task_a : {name}]' in result.stdout for name in ('Check task_a_repeat range', 'Print the message'))
-
-
-def test_controller_task_runs_on_localhost_without_limit(tmp_path):
-    result = run_task(tmp_path, 'task_b', {})
-
-    assert result.returncode == 0, result.stdout
-    assert set(recap(result.stdout)) == {'localhost'}
-    assert 'business/inventory/hosts.yml: ' in result.stdout
-    assert all(f'TASK [task_b : {name}]' in result.stdout for name in ('Check the path stays inside the template directory', 'Read file status'))
-
-
 def test_every_run_needs_the_vault_password_even_on_localhost(tmp_path):
-    result = run_task(tmp_path, 'task_b', {}, vault=False)
+    # any task the engine runs on the Jenkins node will do: the vault comes with the inventory, not the task
+    task = next(task for task in TASK_NAMES if task_metadata(task)['run_on'] == 'controller')
+
+    result = run_task(tmp_path, task, {}, vault=False)
 
     assert result.returncode != 0
     assert 'no vault secrets' in result.stdout + result.stderr
     assert 'PLAY RECAP' not in result.stdout
 
 
-@pytest.mark.parametrize('role, params, limit, message, skipped_task', [
-    pytest.param('task_a', {}, 'web', 'missing required arguments: task_a_message',
-                 'task_a : Check task_a_repeat range', id='missing-required'),
-    pytest.param('task_a', {'task_a_message': 'x', 'task_a_repeat': 'two'}, 'web',
-                 "argument 'task_a_repeat' is of type str and we were unable to convert to int",
-                 'task_a : Check task_a_repeat range', id='wrong-type'),
-    pytest.param('task_a', {'task_a_message': 'x', 'task_a_repeat': 9}, 'web',
-                 'task_a_repeat must be between 1 and 5, got 9', 'task_a : Print the message', id='out-of-range'),
-    pytest.param('task_b', {'task_b_path': ''}, None,
-                 "task_b_path must be a non-empty path relative to the template directory", 'task_b : Read file status',
-                 id='empty-path'),
-    pytest.param('task_b', {'task_b_path': '../../etc/hostname'}, None,
-                 "task_b_path must be a non-empty path relative to the template directory without '..'", 'task_b : Read file status',
-                 id='path-outside-directory'),
-    pytest.param('task_c', {'task_c_mode': 'destroy'}, 'web', 'value of task_c_mode must be one of: plan, apply, got: destroy',
-                 'task_c : Run in the selected mode', id='not-in-choices'),
-    pytest.param('check_a', {}, 'web', 'missing required arguments: check_a_min_connections',
-                 'check_a : Compare', id='check-missing-required'),
-])
-def test_task_fails_with_a_clear_message_and_stops(tmp_path, role, params, limit, message, skipped_task):
-    result = run_task(tmp_path, role, params, limit=limit)
-
-    assert result.returncode == 2
-    assert message in result.stdout
-    assert f'TASK [{skipped_task}' not in result.stdout
-
-
+# Stays here, not in task_b's cases.yml: it needs a symbolic link in a copy of the examples
 def test_controller_task_rejects_a_symbolic_link_that_leaves_the_template_directory(tmp_path, examples_copy):
     outside = tmp_path / 'outside'
     outside.mkdir()
@@ -92,80 +43,12 @@ def test_controller_task_rejects_a_symbolic_link_that_leaves_the_template_direct
     (examples_copy / 'link').symlink_to(outside)
 
     result = run_ansible(['ansible-playbook', 'run-task.yml'], root=examples_copy, tmp_path=tmp_path,
-                         extra_vars={'task_role': 'task_b', 'task_hosts': 'localhost', 'task_b_path': 'link/secret.txt'})
+                         extra_vars={'task_role': 'task_b', 'task_hosts': run_location_hosts()['controller'],
+                                     'task_b_path': 'link/secret.txt'})
 
     assert result.returncode == 2
     assert "task_b_path must be a non-empty path relative to the template directory" in result.stdout
     assert 'TASK [task_b : Read file status]' not in result.stdout
-
-
-def test_controller_task_fails_when_the_file_is_missing(tmp_path):
-    result = run_task(tmp_path, 'task_b', {'task_b_path': 'no-such-file.yml'})
-
-    assert result.returncode == 2
-    assert 'no-such-file.yml is missing, not a regular file, or smaller than 1 bytes' in result.stdout
-    assert recap(result.stdout)['localhost']['failed'] == 1
-
-
-def test_check_compares_each_hosts_own_inventory_value(tmp_path):
-    result = run_task(tmp_path, 'check_a', {'check_a_min_connections': 150}, limit='web')
-
-    assert result.returncode == 2
-    assert {host: counters['failed'] for host, counters in recap(result.stdout).items()} == {'web-01': 1, 'web-02': 0}
-    assert 'web-01: app_max_connections=100 < 150' in result.stdout
-
-
-def test_task_without_parameters_runs(tmp_path):
-    result = run_task(tmp_path, 'check_c', {}, limit='worker')
-
-    assert result.returncode == 0, result.stdout
-    assert set(recap(result.stdout)) == {'worker-01', 'worker-02'}
-    assert '"msg": "worker-02: check_c passed"' in result.stdout
-
-
-def test_role_defaults_apply_when_jenkins_passes_no_value(tmp_path):
-    result = run_task(tmp_path, 'task_c', {}, limit='api')
-
-    assert result.returncode == 0, result.stdout
-    assert '"msg": "api-01: task_c mode=plan label="' in result.stdout
-    assert 'TASK [task_c : Run in the selected mode]' in result.stdout
-    assert 'app=api' not in result.stdout  # task_c_verbose defaults to false
-
-
-def test_check_passes_when_every_host_meets_the_minimum(tmp_path):
-    result = run_task(tmp_path, 'check_a', {'check_a_min_connections': 1}, limit='api')
-
-    assert result.returncode == 0, result.stdout
-    assert 'TASK [check_a : Compare with the host' in result.stdout
-    assert 'api-01: app_max_connections=300' in result.stdout
-
-
-def test_bool_parameter_switches_the_verbose_output_on(tmp_path):
-    result = run_task(tmp_path, 'task_c', {'task_c_verbose': True}, limit='api')
-
-    assert result.returncode == 0, result.stdout
-    assert '"msg": "api-01: app=api version=1.8.0"' in result.stdout
-
-
-def test_reviewed_task_writes_the_review_file_and_changes_nothing_when_generating(tmp_path):
-    review_file = tmp_path / 'review.txt'
-
-    result = run_task(tmp_path, 'task_d', {'task_d_items': 'a, b', 'task_review_mode': 'generate', 'task_review_file': str(review_file)})
-
-    assert result.returncode == 0, result.stdout
-    assert review_file.read_text() == 'change a\nchange b\n'
-    assert 'applied' not in result.stdout
-
-
-def test_reviewed_task_executes_the_review_file_not_its_parameters(tmp_path):
-    review_file = tmp_path / 'review.txt'
-    review_file.write_text('change reviewed\n')
-
-    result = run_task(tmp_path, 'task_d', {'task_d_items': 'other', 'task_review_mode': 'execute', 'task_review_file': str(review_file)})
-
-    assert result.returncode == 0, result.stdout
-    assert '"msg": "applied change reviewed"' in result.stdout
-    assert 'other' not in result.stdout.split('PLAY RECAP')[0].split('Read the reviewed changes')[1]
 
 
 def test_variable_name_check_passes_for_names_the_inventory_does_not_use(tmp_path):

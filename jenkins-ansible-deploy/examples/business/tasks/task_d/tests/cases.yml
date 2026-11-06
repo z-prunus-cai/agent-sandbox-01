@@ -1,0 +1,16 @@
+# Cases of task_d run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: generate-writes-the-review-file-and-changes-nothing
+  params: {task_d_items: 'a, b'}
+  review_mode: generate
+  rc: 0
+  review_file_after: "change a\nchange b\n"
+  absent: [applied]
+
+- name: execute-runs-the-review-file-not-its-parameters
+  params: {task_d_items: other}
+  review_mode: execute
+  review_file: "change reviewed\n"
+  rc: 0
+  output: ['"msg": "applied change reviewed"']
+  absent: [change other]
+  review_file_after: "change reviewed\n"

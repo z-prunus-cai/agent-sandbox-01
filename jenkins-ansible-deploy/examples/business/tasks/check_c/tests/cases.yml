@@ -1,0 +1,7 @@
+# Cases of check_c run through run-task.yml as the engine runs it; the schema is in tests/test_task_cases.py
+- name: runs-without-parameters
+  params: {}
+  limit: worker
+  rc: 0
+  recap_hosts: [worker-01, worker-02]
+  output: ['"msg": "worker-02: check_c passed"']

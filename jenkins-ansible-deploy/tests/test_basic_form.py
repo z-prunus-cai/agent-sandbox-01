@@ -1,7 +1,7 @@
 """Integration tests against a real Jenkins: the basic form, which asks for task options with input after the build starts."""
 import pytest
 
-from conftest import BASIC, playbook_runs, run
+from conftest import BASIC, phase_tasks, playbook_runs, run
 
 pytestmark = pytest.mark.jenkins
 
@@ -11,8 +11,8 @@ def test_first_build_registers_a_checkbox_per_group_and_task(jenkins, new_job):
 
     assert jenkins.parameter_names(job) == [
         'TARGET_web', 'TARGET_api', 'TARGET_worker', 'SKIP_DEPLOY',
-        'PRE_task_a', 'PRE_task_b', 'PRE_task_c', 'PRE_check_c', 'PRE_task_d',
-        'POST_task_c', 'POST_check_c', 'POST_check_a', 'POST_task_d', 'EDIT_TASK_OPTIONS', 'DEPLOY_PLAN']
+        *[f'PRE_{task}' for task in phase_tasks('pre')], *[f'POST_{task}' for task in phase_tasks('post')],
+        'EDIT_TASK_OPTIONS', 'DEPLOY_PLAN']
 
 
 def test_form_shows_only_selected_tasks_and_its_values_are_used(jenkins, new_job):
@@ -133,3 +133,19 @@ def test_deploy_plan_skips_the_form(jenkins, new_job):
     assert 'Input requested' not in console
     assert playbook_runs(console) == ['run-task.yml']
     assert '(pre: task_b)' in console and '(pre: task_a)' not in console
+
+
+def test_waiting_options_form_survives_a_jenkins_restart(jenkins, new_job):
+    job = new_job(BASIC)
+    number = jenkins.start_build(job, {'TARGET_web': 'true', 'SKIP_DEPLOY': 'true', 'PRE_task_c': 'true'})
+    jenkins.wait_for_input(job, number)
+
+    jenkins.restart()
+    [pending] = jenkins.wait_for_input(job, number)
+    jenkins.submit_input(job, number, pending['id'], {'pre.task_c.policy': 'abort', 'pre.task_c.task_c_mode': 'apply',
+                                                      'pre.task_c.task_c_verbose': False, 'pre.task_c.task_c_label': 'after restart'})
+
+    assert jenkins.wait_for_build(job, number) == 'SUCCESS'
+    console = jenkins.console(job, number)
+    assert 'Resuming build' in console and 'Scripts not permitted' not in console
+    assert '"msg": "web-01: task_c mode=apply label=after restart"' in console

@@ -5,7 +5,7 @@ import re
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from conftest import ENGINE_SOURCE, READ_WRITE
+from conftest import ENGINE_SOURCE, READ_WRITE, phase_tasks, task_label
 
 pytestmark = pytest.mark.jenkins
 
@@ -56,10 +56,8 @@ def test_lists_show_inventory_groups_and_only_main_tasks_until_more_is_shown(par
 
     expect(page.locator('#ecp_choice-target-groups label')).to_have_text(
         ['web (web-01, web-02)', 'api (api-01)', 'worker (worker-01, worker-02)'])
-    expect(page.locator('#ecp_choice-pre-tasks label')).to_have_text([
-        'task_a - Example task that runs on the chosen host groups', 'task_b - Example task that checks a file on the Jenkins node', 'task_c - Example task with a choice and a boolean parameter'])
-    expect(page.locator('#ecp_choice-post-tasks label')).to_have_text([
-        'task_c - Example task with a choice and a boolean parameter', 'check_a - Example check that compares host variables after deployment'])
+    expect(page.locator('#ecp_choice-pre-tasks label')).to_have_text([task_label(task) for task in phase_tasks('pre', 'main')])
+    expect(page.locator('#ecp_choice-post-tasks label')).to_have_text([task_label(task) for task in phase_tasks('post', 'main')])
     expect(page.locator('#ecp_choice-pre-more-tasks')).to_have_count(1)
     expect(page.locator('#ecp_choice-post-more-tasks')).to_have_count(1)
     expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_count(0)
@@ -70,8 +68,7 @@ def test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_sele
     _, page = parameter_page
 
     show_more(page, 'PRE')
-    expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_text([
-        'check_c - Example check that runs after task_c', 'task_d - Example task that is reviewed before it runs'])
+    expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_text([task_label(task) for task in phase_tasks('pre', 'more')])
     tick(page, 'ecp_choice-pre-more-tasks', 'task_d')
     expect(field(page, 'task_d.task_d_items')).to_be_visible()
     show_more(page, 'PRE')
@@ -87,7 +84,9 @@ def test_filter_box_narrows_a_task_list(parameter_page):
     # the plugin filters on keyup, which fill() does not send
     page.locator('#ecp_choice-pre-tasks').locator('xpath=..').locator('input.uno_choice_filter').press_sequentially('task_b')
 
-    expect(page.locator('#ecp_choice-pre-tasks label:visible')).to_have_text(['task_b - Example task that checks a file on the Jenkins node'])
+    # the filter matches anywhere in the label, so another task naming task_b in its description also stays
+    expect(page.locator('#ecp_choice-pre-tasks label:visible')).to_have_text(
+        [task_label(task) for task in phase_tasks('pre', 'main') if 'task_b' in task_label(task)])
 
 
 def test_order_field_is_prefilled_with_the_catalog_order(parameter_page):
