@@ -9,12 +9,36 @@ class TaskResult implements Serializable {
     String id
     String name
     String phase
-    FailurePolicy policy
     Map<String, Object> params
-    TaskOutcome outcome
     int seconds
     String message
     String reviewer
+
+    // Finite values are kept as labels: after a Jenkins restart the build state is read back under a sandbox that
+    // refuses the static call each Groovy enum makes when its class loads, so no enum may be part of that state
+    private String policyLabel
+
+    @NonCPS
+    FailurePolicy getPolicy() {
+        return Labels.of(FailurePolicy.values() as List, policyLabel)
+    }
+
+    @NonCPS
+    void setPolicy(FailurePolicy value) {
+        policyLabel = value?.label
+    }
+
+    private String outcomeLabel
+
+    @NonCPS
+    TaskOutcome getOutcome() {
+        return Labels.of(TaskOutcome.values() as List, outcomeLabel)
+    }
+
+    @NonCPS
+    void setOutcome(TaskOutcome value) {
+        outcomeLabel = value?.label
+    }
 
     @NonCPS
     static TaskResult of(PlannedTask planned) {

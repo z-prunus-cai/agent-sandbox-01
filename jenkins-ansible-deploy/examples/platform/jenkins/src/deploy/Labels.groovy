@@ -13,4 +13,13 @@ class Labels {
         }
         return found
     }
+
+    /** The constant a label kept in pipeline state stands for; null stays null. */
+    @NonCPS
+    static <T> T of(List<T> constants, String label) {
+        if (label == null) return null
+        T found = constants.find { it.label == label }
+        if (found == null) throw new IllegalStateException(label)
+        return found
+    }
 }

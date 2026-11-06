@@ -49,7 +49,7 @@ def padded_plan(text, length):
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: 1.0}}]}',
                  'pre[0]: parameter task_a_message must be a string (quote it in YAML)', id='yaml-decimal-for-string'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "{{ lookup(\'pipe\', \'id\') }}"}}]}',
-                 'pre[0]: parameter task_a_message must not contain template syntax ({{, {%, {#)', id='template-expression'),
+                 'pre[0]: parameter task_a_message must not contain template syntax ({{, {%, {# or a leading #jinja2:)', id='template-expression'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "{% if true %}x{% endif %}"}}]}',
                  'pre[0]: parameter task_a_message must not contain template syntax', id='template-statement'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a {# c #} b"}}]}',

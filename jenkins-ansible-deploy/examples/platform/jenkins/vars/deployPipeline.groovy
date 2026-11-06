@@ -12,10 +12,12 @@ import deploy.RequestKind
 import deploy.TaskRunner
 
 /** The pipeline of one job; config: commit, mode (AccessMode label), form (ParameterForm label), vaultCredentialsId, sshCredentialsId. */
+// No enum is held in a variable that lives while tasks run: Jenkins reads the build state back after a restart under a
+// sandbox that refuses the static call each Groovy enum makes when its class loads (see deploy.PlannedTask)
 def call(Map config) {
     List<String> errors = []
-    AccessMode mode = Labels.find(AccessMode.values() as List, config.mode, 'mode', errors)
-    ParameterForm form = Labels.find(ParameterForm.values() as List, config.form, 'form', errors)
+    Labels.find(AccessMode.values() as List, config.mode, 'mode', errors)
+    Labels.find(ParameterForm.values() as List, config.form, 'form', errors)
     if (errors) error "[deploy] Jenkinsfile settings: ${errors.join('; ')}"
     // properties() fills params with the defaults it registers, so the request is read before it runs
     Map requested = [:] + params
@@ -30,7 +32,7 @@ def call(Map config) {
             catalog = readCatalog(errors)
             if (errors) error '[deploy] task catalog or inventory:\n  - ' + errors.join('\n  - ')
             // a change to the tasks or groups shows on the parameter page from the next build on
-            page = new ParameterPage(this, catalog, mode, form)
+            page = new ParameterPage(this, catalog, accessMode(config), Labels.of(ParameterForm.values() as List, config.form))
             properties([disableConcurrentBuilds(), parameters(page.definitions())])
             // after properties(), so a wrong credential still leaves the parameter page registered
             runner.checkCredentials()
@@ -39,8 +41,7 @@ def call(Map config) {
             stash name: TaskRunner.SOURCE_STASH
         }
     }
-    RequestKind kind = RequestKind.of(requested)
-    if (kind == RequestKind.UNREGISTERED) {
+    if (RequestKind.of(requested) == RequestKind.UNREGISTERED) {
         currentBuild.result = 'NOT_BUILT'
         currentBuild.description = 'Parameters registered; run again with Build with Parameters'
         echo "[deploy] ${currentBuild.description}"
@@ -48,25 +49,30 @@ def call(Map config) {
     }
     Plan plan = null
     stage('Plan') {
+        RequestKind kind = RequestKind.of(requested)
         echo "[deploy] reading the plan from the ${kind.label}"
         Map raw = kind == RequestKind.PLAN_TEXT ? readPlan(requested[Limits.PLAN_PARAMETER].toString(), errors) : page.draft(requested, errors)
-        if (raw != null) plan = PlanParser.parse(raw, catalog, mode, errors)
+        if (raw != null) plan = PlanParser.parse(raw, catalog, accessMode(config), errors)
         if (errors) error '[deploy] the plan has problems:\n  - ' + errors.join('\n  - ')
         echo plan.describe()
     }
     try {
-        runner.runPhase(plan, Phase.PRE)
+        runner.runTasks(plan, plan.tasksIn(Phase.PRE))
         if (plan.deploy) {
             stage('Deploy') {
                 runner.deploy(plan.targets)
             }
         }
-        runner.runPhase(plan, Phase.POST)
+        runner.runTasks(plan, plan.tasksIn(Phase.POST))
     } finally {
         stage('Report') {
             runner.report()
         }
     }
+}
+
+private AccessMode accessMode(Map config) {
+    return Labels.of(AccessMode.values() as List, config.mode)
 }
 
 private Catalog readCatalog(List<String> errors) {

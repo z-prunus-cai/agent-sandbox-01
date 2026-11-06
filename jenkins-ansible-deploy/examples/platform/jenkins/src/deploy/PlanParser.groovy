@@ -20,11 +20,11 @@ class PlanParser {
         List unknownGroups = targets.findAll { !catalog.groups.containsKey(it) } as List
         if (unknownGroups) errors << "unknown groups ${unknownGroups}, expected ${catalog.groups.keySet()}".toString()
         if (raw.skip_deploy != null && !(raw.skip_deploy instanceof Boolean)) errors << 'skip_deploy must be true or false'
-        Map<Phase, List<PlannedTask>> tasks = [:]
+        Map<String, List<PlannedTask>> tasks = [:]
         int entries = 0
         Phase.values().each { Phase phase ->
             Object items = raw[phase.label] == null ? [] : raw[phase.label]
-            tasks[phase] = []
+            tasks[phase.label] = []
             if (!(items instanceof List)) {
                 errors << "${phase.label} must be a list".toString()
                 return
@@ -37,7 +37,7 @@ class PlanParser {
                 // ids need to be unique within a phase only: stage names, file names and the report all carry the phase
                 if (planned.id in ids) errors << "${phase.label}[${index}]: id '${planned.id}' is used twice; give repeated tasks their own id".toString()
                 ids << planned.id
-                tasks[phase] << planned
+                tasks[phase.label] << planned
             }
         }
         if (entries > Limits.MAX_PLAN_ENTRIES) errors << "the plan has ${entries} tasks, at most ${Limits.MAX_PLAN_ENTRIES} are allowed".toString()

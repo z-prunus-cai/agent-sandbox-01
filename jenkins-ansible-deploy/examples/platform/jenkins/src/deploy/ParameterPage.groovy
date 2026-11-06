@@ -11,19 +11,30 @@ class ParameterPage implements Serializable {
 
     private final def script
     private final Catalog catalog
-    private final AccessMode mode
-    private final ParameterForm form
+    // labels, not enums: no enum may be part of the build state (see PlannedTask)
+    private final String modeLabel
+    private final String formLabel
 
     ParameterPage(def script, Catalog catalog, AccessMode mode, ParameterForm form) {
         this.script = script
         this.catalog = catalog
-        this.mode = mode
-        this.form = form
+        this.modeLabel = mode.label
+        this.formLabel = form.label
+    }
+
+    @NonCPS
+    private AccessMode mode() {
+        return Labels.of(AccessMode.values() as List, modeLabel)
+    }
+
+    @NonCPS
+    private ParameterForm form() {
+        return Labels.of(ParameterForm.values() as List, formLabel)
     }
 
     List definitions() {
         List result = []
-        switch (form) {
+        switch (form()) {
             case ParameterForm.ACTIVE_CHOICES:
                 result << script.activeChoice(name: TARGETS_PARAMETER, randomName: 'choice-target-groups', choiceType: 'PT_CHECKBOX',
                         filterable: false, filterLength: 1, description: "Deploy targets: groups under ${RunLocation.TARGETS.hosts} in the inventory",
@@ -36,15 +47,15 @@ class ParameterPage implements Serializable {
                 }
                 break
             default:
-                throw new IllegalStateException(form.name())
+                throw new IllegalStateException(form().name())
         }
-        if (mode.deploys()) {
+        if (mode().deploys()) {
             result << script.booleanParam(name: SKIP_DEPLOY_PARAMETER, defaultValue: false,
                     description: 'Skip the deployment and run only the selected tasks')
         }
         for (Phase phase in Phase.values()) {
-            List<TaskDefinition> tasks = catalog.tasksFor(phase, mode)
-            switch (form) {
+            List<TaskDefinition> tasks = catalog.tasksFor(phase, mode())
+            switch (form()) {
                 case ParameterForm.ACTIVE_CHOICES:
                     List<TaskDefinition> more = tasks.findAll { it.menu == TaskMenu.MORE }
                     List<String> lists = [phase.tasksParameter]
@@ -73,10 +84,10 @@ class ParameterPage implements Serializable {
                     }
                     break
                 default:
-                    throw new IllegalStateException(form.name())
+                    throw new IllegalStateException(form().name())
             }
         }
-        if (form == ParameterForm.BASIC) {
+        if (form() == ParameterForm.BASIC) {
             result << script.booleanParam(name: EDIT_OPTIONS_PARAMETER, defaultValue: true,
                     description: 'Ask for the failure policy and parameters of the selected tasks after the build starts; unticked, every task uses its defaults')
         }
@@ -87,7 +98,7 @@ class ParameterPage implements Serializable {
 
     /** Reads the form into a DEPLOY_PLAN-shaped draft. The basic form asks for task options with input, holding no executor. */
     Map draft(Map requested, List<String> errors) {
-        switch (form) {
+        switch (form()) {
             case ParameterForm.ACTIVE_CHOICES:
                 Map<Phase, Map> chosen = [:]
                 for (Phase phase in Phase.values()) {
@@ -104,7 +115,7 @@ class ParameterPage implements Serializable {
             case ParameterForm.BASIC:
                 return basicDraft(requested, errors)
         }
-        throw new IllegalStateException(form.name())
+        throw new IllegalStateException(form().name())
     }
 
     private Map basicDraft(Map requested, List<String> errors) {
@@ -112,7 +123,7 @@ class ParameterPage implements Serializable {
         Map<Phase, Map> chosen = [:]
         List fields = []
         for (Phase phase in Phase.values()) {
-            List<String> names = catalog.tasksFor(phase, mode).findAll { requested[phase.basicParameterPrefix + it.name] == true }.collect { it.name }
+            List<String> names = catalog.tasksFor(phase, mode()).findAll { requested[phase.basicParameterPrefix + it.name] == true }.collect { it.name }
             chosen[phase] = [names: names, values: [:]]
             if (requested[EDIT_OPTIONS_PARAMETER]) {
                 for (String name in names) fields.addAll(inputFields(phase, catalog.task(name)))
@@ -162,7 +173,7 @@ class ParameterPage implements Serializable {
     }
 
     private boolean skipDeploy(Map requested) {
-        return mode.deploys() && requested[SKIP_DEPLOY_PARAMETER] == true
+        return mode().deploys() && requested[SKIP_DEPLOY_PARAMETER] == true
     }
 
     // Active Choices scripts run in the Groovy sandbox, so they need no approval

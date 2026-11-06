@@ -14,8 +14,9 @@ class TaskRunner implements Serializable {
         this.credentials = credentials
     }
 
-    void runPhase(Plan plan, Phase phase) {
-        for (PlannedTask planned in plan.tasks[phase]) {
+    // takes the tasks, not the phase: an argument stays in the build state while a review waits, and an enum may not
+    void runTasks(Plan plan, List<PlannedTask> tasks) {
+        for (PlannedTask planned in tasks) {
             script.stage(planned.stageName()) {
                 run(planned, plan.targets)
             }
@@ -57,7 +58,7 @@ class TaskRunner implements Serializable {
             restoreSource()
             // writeFile creates the directory the role writes its review file into
             script.writeFile(file: "${RUN_DIRECTORY}/review/.directory", text: '')
-            if (attempt(planned, targets, result, [step: ReviewStep.GENERATE, file: reviewFile])) {
+            if (attempt(planned, targets, result, [step: ReviewStep.GENERATE.label, file: reviewFile])) {
                 if (!script.fileExists(reviewFile)) {
                     result.outcome = TaskOutcome.ERROR
                     result.message = "wrote no review file at ${EngineVariable.REVIEW_FILE.label}".toString()
@@ -88,7 +89,7 @@ class TaskRunner implements Serializable {
             script.unstash(stashName)
             // the review file must be the one shown for confirmation, whatever happened to the workspace meanwhile
             script.verifySha256(file: reviewFile, hash: hash)
-            attempt(planned, targets, result, [step: ReviewStep.EXECUTE, file: reviewFile])
+            attempt(planned, targets, result, [step: ReviewStep.EXECUTE.label, file: reviewFile])
         }
     }
 
@@ -96,7 +97,7 @@ class TaskRunner implements Serializable {
     private boolean attempt(PlannedTask planned, List<String> targets, TaskResult result, Map review) {
         Map variables = planned.params + [(EngineVariable.TASK_ROLE.label): planned.task.name, (EngineVariable.TASK_HOSTS.label): planned.task.runOn.hosts]
         if (review != null) {
-            variables[EngineVariable.REVIEW_MODE.label] = review.step.label
+            variables[EngineVariable.REVIEW_MODE.label] = review.step
             variables[EngineVariable.REVIEW_FILE.label] = "${script.env.WORKSPACE}/${review.file}".toString()
         }
         String variablesFile = "${RUN_DIRECTORY}/${planned.phase.label}-${planned.id}.json"
