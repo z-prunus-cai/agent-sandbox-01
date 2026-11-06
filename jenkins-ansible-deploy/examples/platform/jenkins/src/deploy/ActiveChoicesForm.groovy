@@ -3,7 +3,7 @@ package deploy
 import com.cloudbees.groovy.cps.NonCPS
 
 // Active Choices scripts run when the page opens, without the workspace, so data goes in as literals. The plugin turns
-// full-width punctuation and @ = + " into entities, which a checkbox label shows as written: labels use half-width punctuation.
+// non-ASCII characters and @ = + " into entities, which a checkbox label shows literally: Catalog keeps labels ASCII.
 class ActiveChoicesForm {
     private static final Map<String, String> JSON_ESCAPES = ['"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t']
 

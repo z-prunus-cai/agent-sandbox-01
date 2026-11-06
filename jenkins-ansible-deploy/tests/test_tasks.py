@@ -9,7 +9,7 @@ from ansible.vars.reserved import get_reserved_names, is_reserved_name
 from conftest import ENGINE_SOURCE, PLAYBOOKS, TASKS, TASK_NAMES, limit, run_ansible, task_metadata
 
 TEMPLATE = re.compile(r'\{[{%#]')
-# magic variables not starting with ansible_, from the ansible-core 2.21 docs reference_appendices/special_variables.rst
+# magic variables not starting with ansible_, from docs/docsite/rst/reference_appendices/special_variables.rst of ansible/ansible-documentation@b16dcb8
 MAGIC_VARIABLES = {'group_names', 'groups', 'hostvars', 'inventory_dir', 'inventory_file', 'inventory_hostname',
                    'inventory_hostname_short', 'omit', 'play_hosts', 'playbook_dir', 'role_name', 'role_names', 'role_path'}
 

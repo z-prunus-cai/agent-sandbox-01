@@ -31,7 +31,7 @@ The Jenkinsfile is loaded from SCM and runs in the Groovy sandbox. It **needs no
 
 Directory `jenkins-ansible-deploy/`. Every file of the deliverable (documents, code, comments, task metadata, tests) and the build log are in English and ASCII only.
 
-`examples/` is a template that can be copied as a whole to the root of a repository. All paths in it are relative to `examples/`:
+`examples/` is a template that can be copied as a whole to the root of a repository. Paths in the table are relative to `examples/`, except the last two rows, which are relative to `jenkins-ansible-deploy/`:
 
 | Path | Content | Owner |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ Directory `jenkins-ansible-deploy/`. Every file of the deliverable (documents, c
 | A write task or the deployment appears in `DEPLOY_PLAN` | Plan validation fails, no playbook runs | Allowed |
 | Credentials | From Jenkins credentials, referenced by ID in the Jenkinsfile | Same as the read-only job |
 
-The credential mechanism of both jobs is the same as today. The read-only guarantee of the read-only job comes from the engine's plan validation. To keep someone from changing the mode in the read-only Jenkinsfile, configure in Jenkins a credential ID with fewer permissions for the read-only job; no code change is needed.
+Both jobs get credentials the same way: from Jenkins credentials referenced by ID. The read-only guarantee of the read-only job comes from the engine's plan validation. To keep someone from changing the mode in the read-only Jenkinsfile, configure in Jenkins a credential ID with fewer permissions for the read-only job; no code change is needed.
 
 Both parameter page forms (the Active Choices form and the plugin-free form) are provided by the engine, and the Jenkinsfile picks one of them. Both example Jenkinsfiles use the Active Choices form.
 
@@ -161,7 +161,7 @@ There is only one example inventory (no separate environments). It contains seve
 
 - Unspecified: the names and number of host groups. The example assumes 3 host groups with 1-2 hosts each.
 - Unspecified: where the version number of the deployment comes from. The example assumes the version is kept as a host group variable in the inventory and changes with git commits.
-- Unspecified: how the Jenkins node connects to the target hosts. The example assumes an SSH private key kept in Jenkins credentials and passed in through the `credentialsId` of `ansiblePlaybook`; experiments use a local `local` connection instead.
+- Unspecified: how the Jenkins node connects to the target hosts. The example assumes an SSH private key kept in Jenkins credentials and passed in through the `credentialsId` of `ansiblePlaybook`; experiments use the `local` connection instead.
 - Unspecified: whether tasks still run when the deployment is skipped. The example assumes they still run (see 4.5).
 - Unspecified: whether the read-only job uses different credentials from the read-write job. The example assumes both jobs reference the same credential ID.
 - Unspecified: the timeout of the review wait. The example assumes 30 minutes, changeable in the task metadata, with the same upper limit as the task timeout.
