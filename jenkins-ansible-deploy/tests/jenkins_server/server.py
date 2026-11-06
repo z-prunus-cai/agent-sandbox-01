@@ -23,6 +23,8 @@ PLUGIN_MANAGER = ('https://github.com/jenkinsci/plugin-installation-manager-tool
                   'jenkins-plugin-manager-2.15.0.jar',
                   'a86853ec2e2933f37a4b471ba65099b61e03c87a80c2ef8fe2315eb135672d43')
 START_SECONDS = 300
+# executors of the built-in node; tests that take them away give back this number
+EXECUTORS = 2
 
 CREDENTIALS_SCRIPT = '''
 import com.cloudbees.plugins.credentials.CredentialsScope
@@ -31,6 +33,7 @@ import com.cloudbees.plugins.credentials.domains.Domain
 import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
 import hudson.util.Secret
+
 def store = SystemCredentialsProvider.getInstance().getStore()
 def existing = SystemCredentialsProvider.getInstance().getCredentials()*.id
 if (!(VAULT_ID in existing)) {
@@ -100,6 +103,8 @@ def start(port, credentials, vault_password):
                        f'def SSH_ID = {groovy_string(credentials["sshCredentialsId"])}\n'
                        f'def VAULT_PASSWORD = {groovy_string(vault_password)}\ndef PRIVATE_KEY = {groovy_string(key)}\n'
                        + CREDENTIALS_SCRIPT)
+    # set on every start: the home is reused, and a test killed while it had taken the executors away saved 0
+    jenkins.run_script(f'Jenkins.get().setNumExecutors({EXECUTORS})')
     return process, jenkins
 
 

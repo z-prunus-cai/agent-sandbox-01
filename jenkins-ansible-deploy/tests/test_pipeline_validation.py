@@ -57,13 +57,13 @@ def padded_plan(text, length):
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "#jinja2:variable_start_string:\'[[\'\\n[[ 1 ]]"}}]}',
                  'pre[0]: parameter task_a_message must not contain template syntax ({{, {%, {# or a leading #jinja2:)', id='template-override-header'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\x1bb"}}]}',
-                 'pre[0]: parameter task_a_message must not contain control or format characters', id='control-character'),
+                 'pre[0]: parameter task_a_message must not contain control, format or line-separator characters', id='control-character'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\u2028b"}}]}',
-                 'pre[0]: parameter task_a_message must not contain control or format characters', id='line-separator'),
+                 'pre[0]: parameter task_a_message must not contain control, format or line-separator characters', id='line-separator'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, 1: y}}]}',
                  'pre[0]: task task_a takes no parameters [1]', id='parameter-name-not-a-string'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\u202Eb"}}]}',
-                 'pre[0]: parameter task_a_message must not contain control or format characters', id='format-character'),
+                 'pre[0]: parameter task_a_message must not contain control, format or line-separator characters', id='format-character'),
     pytest.param('{skip_deploy: true, pre: [check_c]}', 'no group selected', id='no-group-for-a-task-on-targets'),
     pytest.param('{targets: [web], pre: [check_c, check_c]}', "pre[1]: id 'check_c' is used twice", id='duplicate-id'),
     pytest.param('{targets: [web], pre: [{name: check_c, id: "a b"}]}', "pre[0]: id 'a b' may hold only letters, digits, _ and -", id='bad-id'),
@@ -111,12 +111,19 @@ def test_values_at_their_limit_are_accepted(jenkins, shared_job, deploy_plan):
     assert 'the plan has problems' not in console
 
 
-def test_problems_print_control_characters_as_escapes_so_they_cannot_fake_a_line(jenkins, shared_job):
-    result, console, _ = run(jenkins, shared_job, plan('{targets: [web], pre: [{name: task_a, policy: "x\\n[deploy] forged"}]}'))
+@pytest.mark.parametrize('character, escaped', [
+    pytest.param('\\n', '\\u000a', id='newline'),
+    pytest.param('\\x1b', '\\u001b', id='escape'),
+    pytest.param('\\u202E', '\\u202e', id='right-to-left-override'),
+    pytest.param('\\u2028', '\\u2028', id='line-separator'),
+    pytest.param('\\U000E0001', '\\udb40\\udc01', id='above-u-ffff'),
+])
+def test_problems_print_unsafe_characters_as_escapes_so_they_cannot_fake_a_line(jenkins, shared_job, character, escaped):
+    result, console, _ = run(jenkins, shared_job, plan('{targets: [web], pre: [{name: task_a, policy: "x' + character + '[deploy] forged"}]}'))
 
     assert result == 'FAILURE'
-    assert "pre[0]: policy 'x\\u000a[deploy] forged' is not one of [abort, warn]" in console
-    assert '\n[deploy] forged' not in console
+    assert f"pre[0]: policy 'x{escaped}[deploy] forged' is not one of [abort, warn]" in console
+    assert '\n[deploy] forged' not in console and '\u202e' not in console and '\u2028' not in console
 
 
 def test_invalid_plan_lists_all_problems_at_once(jenkins, shared_job):
@@ -154,11 +161,34 @@ def test_invalid_form_values_fail_before_any_task_runs(jenkins, shared_job, opti
     assert playbook_runs(console) == []
 
 
-def test_form_value_longer_than_the_plan_limit_fails_before_any_task_runs(jenkins, shared_job):
-    result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web,' * (MAX_PLAN // 4 + 1), 'PRE_TASKS': 'check_c'})
+@pytest.mark.parametrize('name', ['TARGET_GROUPS', 'PRE_TASKS', 'PRE_MORE_TASKS', 'PRE_TASK_OPTIONS',
+                                  'POST_TASKS', 'POST_MORE_TASKS', 'POST_TASK_OPTIONS'])
+def test_form_value_longer_than_the_plan_limit_fails_before_any_task_runs(jenkins, shared_job, name):
+    result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', name: 'a,' * (MAX_PLAN // 2 + 1)})
 
     assert result == 'FAILURE'
-    assert f'TARGET_GROUPS is longer than {MAX_PLAN} characters' in console
+    problems = console[console.index('[deploy] the plan has problems:'):].split('Finished:')[0]
+    assert [line for line in problems.splitlines() if line.startswith('  - ')] == [f'  - {name} is longer than {MAX_PLAN} characters']
+    assert playbook_runs(console) == []
+
+
+def test_plan_entries_are_counted_before_any_entry_is_read(jenkins, shared_job):
+    entries = ['no_such_task'] + [f'{{name: check_c, id: c{index}}}' for index in range(MAX_ENTRIES)]
+    result, console, _ = run(jenkins, shared_job, plan('{targets: [web], skip_deploy: true, post: [' + ', '.join(entries) + ']}'))
+
+    assert result == 'FAILURE'
+    assert f'the plan has {MAX_ENTRIES + 1} tasks, at most {MAX_ENTRIES} are allowed' in console
+    assert 'unknown task' not in console
+    assert playbook_runs(console) == []
+
+
+def test_too_many_tasks_ticked_on_the_form_fail_before_any_task_is_read(jenkins, shared_job):
+    result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true',
+                                                   'PRE_TASKS': ','.join(['no_such_task'] * (MAX_ENTRIES + 1))})
+
+    assert result == 'FAILURE'
+    assert f'pre: {MAX_ENTRIES + 1} tasks selected, at most {MAX_ENTRIES} are allowed' in console
+    assert 'unknown task' not in console
     assert playbook_runs(console) == []
 
 

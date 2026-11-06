@@ -19,6 +19,12 @@ def labels(enum_file):
     return re.findall(r"^\s+[A-Z_]+\('([^']+)'", (ENGINE_SOURCE / enum_file).read_text(), re.MULTILINE)
 
 
+def catalog_keys(name):
+    """A key list of the engine's Catalog.groovy: NAME = ['a', 'b', ...], so the tests accept what the engine accepts."""
+    source = (ENGINE_SOURCE / 'Catalog.groovy').read_text()
+    return re.findall(r"'([^']+)'", re.search(rf'\b{name} = \[([^\]]*)\]', source).group(1))
+
+
 def reserved_in_engine():
     text = (ENGINE_SOURCE / 'AnsibleNames.groovy').read_text()
     return re.findall(r"'([a-z_]+)'", text[text.index('RESERVED'):])
@@ -55,7 +61,8 @@ def test_every_task_directory_has_metadata_and_a_role():
 def test_metadata_uses_only_engine_values(task):
     meta = task_metadata(task)
 
-    assert set(meta) <= {'description', 'phases', 'access', 'menu', 'run_on', 'policy', 'timeout_minutes', 'order', 'review'}
+    assert catalog_keys('TASK_KEYS')
+    assert set(meta) <= set(catalog_keys('TASK_KEYS'))
     assert meta['phases'] and set(meta['phases']) <= set(labels('Phase.groovy'))
     assert meta['access'] in labels('TaskAccess.groovy')
     assert meta['menu'] in labels('TaskMenu.groovy')
@@ -72,6 +79,14 @@ def test_order_numbers_are_unique():
 
     assert orders
     assert len(set(orders)) == len(orders)
+
+
+@pytest.mark.parametrize('task', TASK_NAMES)
+def test_options_use_only_engine_keys(task):
+    allowed = set(catalog_keys('OPTION_KEYS'))
+
+    assert allowed
+    assert {name: sorted(set(option) - allowed) for name, option in options(task).items() if set(option) - allowed} == {}
 
 
 @pytest.mark.parametrize('task', TASK_NAMES)

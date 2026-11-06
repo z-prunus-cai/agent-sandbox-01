@@ -6,6 +6,7 @@ import time
 import pytest
 
 from conftest import READ_WRITE, plan, playbook_runs, run
+from jenkins_server import server
 
 pytestmark = pytest.mark.jenkins
 
@@ -72,11 +73,9 @@ def test_aborted_review_runs_nothing_and_aborts_the_build(jenkins, waiting):
 @pytest.fixture
 def no_executors(jenkins):
     """Take every executor away for one test; yields a function that gives them back, which teardown calls anyway."""
-    executors = jenkins.run_script('print(Jenkins.get().numExecutors)').strip()
-
     def restore():
-        jenkins.run_script(f'Jenkins.get().setNumExecutors({executors})')
-        assert jenkins.run_script('print(Jenkins.get().numExecutors)').strip() == executors
+        jenkins.run_script(f'Jenkins.get().setNumExecutors({server.EXECUTORS})')
+        assert jenkins.run_script('print(Jenkins.get().numExecutors)').strip() == str(server.EXECUTORS)
 
     try:
         jenkins.run_script('Jenkins.get().setNumExecutors(0)')
@@ -246,3 +245,27 @@ def test_confirmed_run_uses_the_files_the_build_validated_even_if_the_branch_mov
 
     assert result == 'SUCCESS', console
     assert '"msg": "applied change a"' in console and 'newer' not in console
+
+
+def test_review_prompt_shows_hidden_characters_as_escapes(jenkins, new_job, repository):
+    # U+202E would show the rest of the line reversed: the reviewer must see the file's characters, not their effect
+    head = repository.commit({
+        'business/tasks/task_f/meta/task.yml': 'description: writes a hidden character to review\nphases: [pre]\naccess: write\nmenu: more\n'
+                                               'run_on: controller\npolicy: abort\ntimeout_minutes: 5\norder: 80\n'
+                                               'review: {timeout_minutes: 5}\n',
+        'business/tasks/task_f/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n    options: {}\n',
+        'business/tasks/task_f/tasks/main.yml': '- name: Write the changes to review\n  ansible.builtin.copy:\n'
+                                                '    dest: "{{ task_review_file }}"\n    content: "change abc\\u202Exyz\\n"\n    mode: "0644"\n'
+                                                '  when: task_review_mode == \'generate\'\n',
+    }, 'add task_f')
+    try:
+        job = new_job(READ_WRITE)
+        number = jenkins.start_build(job, plan('{skip_deploy: true, pre: [task_f]}'))
+        [pending] = jenkins.wait_for_input(job, number)
+        jenkins.abort_input(job, number, pending['id'])
+        jenkins.wait_for_build(job, number)
+    finally:
+        repository.reset(head)
+
+    assert pending['message'].endswith('\n\nchange abc\\u202exyz\n')
+    assert '\u202e' not in pending['message']

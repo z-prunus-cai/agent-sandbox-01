@@ -1,5 +1,7 @@
 package deploy
 
+import com.cloudbees.groovy.cps.NonCPS
+
 /** Runs tasks and the deployment on an executor each, and the review between, without one. Uses pipeline steps through script. */
 class TaskRunner implements Serializable {
     public static final String SOURCE_STASH = 'deploy-source'
@@ -76,7 +78,7 @@ class TaskRunner implements Serializable {
         try {
             script.timeout(time: planned.task.reviewTimeoutMinutes, unit: 'MINUTES') {
                 result.reviewer = script.input(id: "Review-${planned.phase.label}-${planned.id}",
-                        message: "Run ${planned.id} as reviewed below? (sha256 ${hash})\n\n${content}", ok: 'Run', submitterParameter: 'reviewer')
+                        message: "Run ${planned.id} as reviewed below? (sha256 ${hash})\n\n${TaskRunner.shown(content, reviewFile)}", ok: 'Run', submitterParameter: 'reviewer')
             }
         } catch (InterruptedException e) {
             result.outcome = TaskOutcome.ABORTED
@@ -210,6 +212,14 @@ class TaskRunner implements Serializable {
     private void restoreSource() {
         script.deleteDir()
         script.unstash(SOURCE_STASH)
+    }
+
+    /** The review file as the prompt shows it: unsafe characters escaped, so it reads as its bytes, and long files cut. */
+    @NonCPS
+    static String shown(String content, String reviewFile) {
+        String text = Values.printable(content, true)
+        if (text.length() <= Limits.MAX_REVIEW_CHARACTERS) return text
+        return text.substring(0, Limits.MAX_REVIEW_CHARACTERS) + "\n... (cut at ${Limits.MAX_REVIEW_CHARACTERS} characters; the archived ${reviewFile} holds all of it)"
     }
 
     static void finish(TaskResult result, long started, TaskOutcome outcome, String message) {

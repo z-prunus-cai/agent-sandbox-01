@@ -48,7 +48,7 @@ def call(Map config) {
     }
     Plan plan = null
     stage('Plan') {
-        // no RequestKind variable: page.draft may wait in input, and an enum may not be part of the build state then
+        // no RequestKind variable: this method stays on the stack while a review waits in input, and no enum may be in the build state then
         echo "[deploy] reading the plan from the ${RequestKind.of(requested).label}"
         Map raw = RequestKind.of(requested) == RequestKind.PLAN_TEXT ? readPlan(requested[ParameterPage.PLAN_PARAMETER].toString(), errors) : page.draft(requested, errors)
         if (raw != null) plan = PlanParser.parse(raw, catalog, accessMode(config), errors)
@@ -89,10 +89,7 @@ private Catalog readCatalog(List<String> errors) {
 
 private Map readPlan(String text, List<String> errors) {
     echo "[deploy] using ${ParameterPage.PLAN_PARAMETER}; every other parameter is ignored"
-    if (text.length() > Limits.MAX_PLAN_CHARACTERS) {
-        errors << "${ParameterPage.PLAN_PARAMETER} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
-        return null
-    }
+    if (!Limits.bounded(ParameterPage.PLAN_PARAMETER, text, errors)) return null
     Object raw
     try {
         raw = readYaml(text: text)

@@ -115,6 +115,7 @@ def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(par
     tick(page, 'ecp_choice-pre-tasks', 'task_c')
 
     expect(field(page, 'task_c.policy').locator('option')).to_have_text(['abort', 'warn'])
+    expect(page.get_by_text('abort: stop the pipeline; warn: mark the build unstable and continue')).to_have_count(1)
     expect(field(page, 'task_c.policy')).to_have_value('abort')
     expect(field(page, 'task_c.task_c_mode').locator('option')).to_have_text(['plan', 'apply'])
     expect(field(page, 'task_c.task_c_mode')).to_have_value('plan')

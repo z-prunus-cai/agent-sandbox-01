@@ -65,20 +65,17 @@ class ParameterPage implements Serializable {
     Map draft(Map requested, List<String> errors) {
         Map<Phase, Map> chosen = [:]
         for (Phase phase in Phase.values()) {
-            chosen[phase] = [names : Selection.splitList(ParameterPage.bounded(requested, phase.tasksParameter, errors)) +
-                                     Selection.splitList(ParameterPage.bounded(requested, phase.moreTasksParameter, errors)),
-                             values: ActiveChoicesForm.parseOptions(ParameterPage.bounded(requested, phase.optionsParameter, errors), errors)]
+            List<String> names = Selection.splitList(Limits.bounded(phase.tasksParameter, requested[phase.tasksParameter], errors)) +
+                    Selection.splitList(Limits.bounded(phase.moreTasksParameter, requested[phase.moreTasksParameter], errors))
+            // counted before any task is read, like DEPLOY_PLAN
+            if (names.size() > Limits.MAX_PLAN_ENTRIES) {
+                errors << "${phase.label}: ${names.size()} tasks selected, at most ${Limits.MAX_PLAN_ENTRIES} are allowed".toString()
+                names = []
+            }
+            chosen[phase] = [names : names,
+                             values: ActiveChoicesForm.parseOptions(Limits.bounded(phase.optionsParameter, requested[phase.optionsParameter], errors), errors)]
         }
-        return Selection.draft(catalog, Selection.splitList(ParameterPage.bounded(requested, TARGETS_PARAMETER, errors)), skipDeploy(requested), chosen, errors)
-    }
-
-    /** A form value, bounded like DEPLOY_PLAN before it is split; an oversized value is reported and read as empty. */
-    @NonCPS
-    static String bounded(Map requested, String name, List<String> errors) {
-        String value = requested[name] == null ? '' : requested[name].toString()
-        if (value.length() <= Limits.MAX_PLAN_CHARACTERS) return value
-        errors << "${name} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
-        return ''
+        return Selection.draft(catalog, Selection.splitList(Limits.bounded(TARGETS_PARAMETER, requested[TARGETS_PARAMETER], errors)), skipDeploy(requested), chosen, errors)
     }
 
     @NonCPS

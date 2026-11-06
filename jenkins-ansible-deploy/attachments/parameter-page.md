@@ -84,7 +84,7 @@ OUT: <input type="text" name="value" placeholder="required" class="jenkins-input
     <tr><td style="{label}">On failure</td><td style="{value}">
       <input type="hidden" name="value" value="@@task_c.policy">
       <select name="value" style="{select}"><option value="abort" selected="selected">abort</option><option value="warn">warn</option></select>
-      <div style="{hint}">abort: stop the pipeline; warn: mark unstable and continue</div></td></tr>
+      <div style="{hint}">abort: stop the pipeline; warn: mark the build unstable and continue</div></td></tr>
     <tr><td style="{label}">task_c_mode</td><td style="{value}">
       <input type="hidden" name="value" value="@@task_c.task_c_mode">
       <select name="value" style="{select}"><option value="plan" selected="selected">plan</option><option value="apply">apply</option></select>

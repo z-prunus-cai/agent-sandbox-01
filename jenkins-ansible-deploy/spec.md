@@ -119,7 +119,7 @@ post:
 - Undeclared parameter name, empty required parameter, integer that is not an integer, enum value not in choices;
 - Parameter value contains Jinja template syntax (`{{`, `{%`, `{#`);
 - `DEPLOY_PLAN` has a wrong structure (not a mapping, unknown field, wrong type);
-- Input over a limit: the length of `DEPLOY_PLAN`, the number of task entries in the plan, the length of string parameters, the length of `id`. All limits are defined in one place;
+- Input over a limit: the length of `DEPLOY_PLAN` and of each parameter page value, the number of task entries in the plan, the length of string parameters, the length of `id`. All limits are defined in one place;
 - A task parameter name is the same as an inventory variable, an Ansible reserved variable or an engine variable (checked at run time by reading the inventory with the vault password).
 
 ### 4.7 Output

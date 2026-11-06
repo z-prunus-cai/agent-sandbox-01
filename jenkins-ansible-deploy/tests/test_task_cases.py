@@ -3,23 +3,26 @@
 Every case runs the task once through platform/ansible/run-task.yml, the way the engine does: the parameters
 as a JSON file with -e @file, task_role, task_hosts from run_on (RunLocation.groovy), the example vault password.
 
-cases.yml is a list of cases. Keys of a case (any other key fails the case):
+cases.yml is a list of cases; a YAML error or a repeated key in a mapping fails test_every_task_has_cases[<task>].
+A cases.yml counts only in a task directory with meta/task.yml. Keys of a case (any other key fails the case):
 
   name               required; text, unique in the file; the test id is <task>/<name>
   params             map of task parameters, passed as given (wrong types on purpose are fine); default {}.
-                     Only parameters the task declares in meta/argument_specs.yml, as the engine accepts no others
+                     Names are texts, and only parameters the task declares in meta/argument_specs.yml, as the
+                     engine accepts no others
   limit              host pattern for --limit, as the engine passes the selected host groups; default none
   rc                 required; the exit code of ansible-playbook (0 passed, 2 a task failed)
   recap_hosts        list: exactly the hosts in PLAY RECAP
   recap_failed       map host -> number: exactly the hosts in PLAY RECAP and the failed counter of each
-  output             list of texts that must each appear in stdout
-  absent             list of texts that must not appear in stdout (for example 'TASK [<task> : <name>' of a
-                     task that must not run)
+  output             non-empty list of texts that must each appear in stdout
+  absent             non-empty list of texts that must not appear in stdout (for example 'TASK [<task> : <name>'
+                     of a task that must not run)
   review_mode        generate or execute; required for a task with review in meta/task.yml, refused for others.
                      The engine variables task_review_mode and task_review_file are set from it
   review_file        text written to the review file before the run; default: no file
   review_file_after  text the review file must hold after the run
 
+A case needs at least one of output, absent, recap_hosts, recap_failed and review_file_after: rc alone checks too little.
 The keys are not called hosts: ansible-lint reads a list whose first item has hosts as a playbook.
 """
 import pytest
@@ -32,12 +35,48 @@ REVIEW_MODES = ('generate', 'execute')
 TEXT_LISTS = ('output', 'absent')
 TEXTS = ('limit', 'review_mode', 'review_file', 'review_file_after')
 KEYS = {'name', 'params', 'limit', 'rc', 'recap_hosts', 'recap_failed', *TEXT_LISTS, *TEXTS}
+ASSERTIONS = ('output', 'absent', 'recap_hosts', 'recap_failed', 'review_file_after')
+
+
+class UniqueKeyLoader(yaml.SafeLoader):
+    """A SafeLoader that refuses a repeated mapping key, which plain YAML loading silently resolves to the last value."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            if key_node.tag == 'tag:yaml.org,2002:merge':
+                continue
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                repeated = key in seen
+            except TypeError:
+                # an unhashable key: the base class reports it
+                continue
+            if repeated:
+                raise yaml.constructor.ConstructorError('while constructing a mapping', node.start_mark,
+                                                        f'found duplicate key {key!r}', key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def cases_path(task):
+    return f'business/tasks/{task}/{CASES_FILE}'
+
+
+def read_cases(task):
+    """The parsed cases.yml, None when it is missing or invalid; and the YAML error or None."""
+    path = TASKS / task / CASES_FILE
+    if not path.exists():
+        return None, None
+    try:
+        return yaml.load(path.read_text(), Loader=UniqueKeyLoader), None
+    except yaml.YAMLError as error:
+        return None, error
 
 
 def load_cases(task):
-    """The parsed cases.yml of a task, or None when the file is missing."""
-    path = TASKS / task / CASES_FILE
-    return yaml.safe_load(path.read_text()) if path.exists() else None
+    """The parsed cases.yml of a task, or None when the file is missing or is not valid YAML."""
+    return read_cases(task)[0]
 
 
 def declared_options(task):
@@ -53,7 +92,7 @@ def problems(task, case):
     """Everything wrong with one case, so a broken cases.yml says what to fix instead of failing obscurely."""
     if not isinstance(case, dict):
         return [f'a case must be a mapping, got {case!r}']
-    found = [f'unknown keys {sorted(set(case) - KEYS)}, expected some of {sorted(KEYS)}'] if set(case) - KEYS else []
+    found = [f'unknown keys {sorted(set(case) - KEYS, key=str)}, expected some of {sorted(KEYS)}'] if set(case) - KEYS else []
     if not isinstance(case.get('name'), str) or not case['name']:
         found.append('name must be a non-empty text')
     # bool is an int in Python; rc: true is a mistake
@@ -62,10 +101,15 @@ def problems(task, case):
     params = case.get('params', {})
     if not isinstance(params, dict):
         found.append('params must be a mapping')
+    elif not all(isinstance(name, str) for name in params):
+        found.append(f'param names must be texts, got {[name for name in params if not isinstance(name, str)]}')
     elif set(params) - declared_options(task):
         found.append(f'params {sorted(set(params) - declared_options(task))} are not declared in meta/argument_specs.yml')
     found += [f'{key} must be a text' for key in TEXTS if key in case and not isinstance(case[key], str)]
     found += [f'{key} must be a list of texts' for key in (*TEXT_LISTS, 'recap_hosts') if key in case and not is_text_list(case[key])]
+    found += [f'{key} must not be empty' for key in TEXT_LISTS if case.get(key) == []]
+    if not set(ASSERTIONS) & set(case):
+        found.append(f'the case checks only rc: add at least one of {list(ASSERTIONS)}')
     failed = case.get('recap_failed', {})
     if not (isinstance(failed, dict) and all(type(count) is int for count in failed.values())):
         found.append('recap_failed must map each host to an integer')
@@ -93,13 +137,22 @@ def collected_cases():
 
 @pytest.mark.parametrize('task', TASK_NAMES)
 def test_every_task_has_cases(task):
-    cases = load_cases(task)
+    cases, error = read_cases(task)
+    assert error is None, f'{cases_path(task)}: not valid YAML: {error}'
     names = [case.get('name') for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
     names = [name for name in names if isinstance(name, str)]
 
     assert cases is not None, f'business/tasks/{task}/{CASES_FILE} is missing'
     assert isinstance(cases, list) and cases, f'business/tasks/{task}/{CASES_FILE} must be a non-empty list of cases'
     assert sorted({name for name in names if names.count(name) > 1}) == [], 'case names repeat'
+
+
+def test_every_cases_file_belongs_to_a_task():
+    # a cases.yml beside no meta/task.yml is never collected, so its cases would silently not run
+    tasks = sorted(path.parent.parent.name for path in TASKS.glob(f'*/{CASES_FILE}'))
+
+    assert tasks
+    assert [task for task in tasks if task not in TASK_NAMES] == [], 'cases.yml in a directory without meta/task.yml'
 
 
 @pytest.mark.parametrize('task, case', collected_cases())

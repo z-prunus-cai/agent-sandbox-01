@@ -7,6 +7,8 @@ class Values {
 
     // Ansible reads a string that starts with this header as a template with the delimiters the header names
     public static final String JINJA_OVERRIDE = '#jinja2:'
+    // control, format, surrogate and line-separator characters: they can fake a console line or hide what text says
+    public static final String UNSAFE_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/
 
     // Ansible renders Jinja in extra vars, so a template would run code on the Jenkins node; control and format characters
     // could forge log lines. Types are taken as YAML read them, so Ansible receives exactly what was checked
@@ -29,7 +31,9 @@ class Values {
                 if (text.contains('{{') || text.contains('{%') || text.contains('{#') || text.startsWith(JINJA_OVERRIDE)) {
                     errors << "${where} must not contain template syntax ({{, {%, {# or a leading ${JINJA_OVERRIDE})".toString()
                 }
-                if (text.find(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}&&[^\t]]/) != null) errors << "${where} must not contain control or format characters".toString()
+                if (text.replace('\t', '').find(UNSAFE_CHARACTERS) != null) {
+                    errors << "${where} must not contain control, format or line-separator characters".toString()
+                }
                 if (text.length() > Limits.MAX_STRING_PARAMETER_CHARACTERS) {
                     errors << "${where} is longer than ${Limits.MAX_STRING_PARAMETER_CHARACTERS} characters".toString()
                 }
@@ -38,10 +42,24 @@ class Values {
         throw new IllegalStateException(String.valueOf(parameter.type))
     }
 
-    /** A problem list as printed: values in it were not all accepted, so control, format and line-break characters print as backslash-u escapes. */
+    /** A problem list as printed: values in it were not all accepted, so unsafe characters print as backslash-u escapes. */
     @NonCPS
     static String problems(List<String> errors, String separator) {
-        return errors.collect { String.valueOf(it).replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/) { String c -> String.format('\\u%04x', c.codePointAt(0)) } }.join(separator)
+        return errors.collect { Values.printable(String.valueOf(it), false) }.join(separator)
+    }
+
+    /** Text with every unsafe character as backslash-u escapes, keeping line breaks and tabs if asked to. */
+    @NonCPS
+    static String printable(String text, boolean keepLines) {
+        return text.replaceAll(UNSAFE_CHARACTERS) { String c -> keepLines && (c == '\n' || c == '\t') ? c : Values.escape(c.codePointAt(0)) }
+    }
+
+    // a code point above U+FFFF is written as its two UTF-16 halves, so every escape has exactly four digits
+    @NonCPS
+    static String escape(int codePoint) {
+        if (codePoint <= 0xFFFF) return String.format('\\u%04x', codePoint)
+        int offset = codePoint - 0x10000
+        return String.format('\\u%04x\\u%04x', 0xD800 + (offset >> 10), 0xDC00 + (offset & 0x3FF))
     }
 
     /** Form fields are text: an empty integer or boolean means "use the default"; an integer that does not parse stays text for check. */

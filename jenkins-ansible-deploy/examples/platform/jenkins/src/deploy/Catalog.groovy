@@ -129,13 +129,26 @@ class Catalog implements Serializable {
             errors << "business/inventory/hosts.yml has no all.children.${targets}.children".toString()
             return [:]
         }
-        Map<String, List<String>> groups = children.collectEntries { String group, Object body ->
-            [(group): ((body instanceof Map ? body.hosts : null) ?: [:]).keySet() as List]
+        Map<String, List<String>> groups = [:]
+        children.each { Object group, Object body ->
+            Object hosts = body instanceof Map ? body.hosts : null
+            // a group name goes to --limit and into a comma-separated list, so it is an identifier
+            if (!(group instanceof String) || !(group ==~ /[A-Za-z_][A-Za-z0-9_]*/)) {
+                errors << "business/inventory/hosts.yml: group name '${group}' may hold only letters, digits and _, not starting with a digit".toString()
+            } else if (hosts != null && !(hosts instanceof Map)) {
+                errors << "business/inventory/hosts.yml: hosts of group ${group} must be a mapping".toString()
+            } else {
+                groups[group] = hosts ? hosts.keySet().collect { it.toString() } : []
+            }
         }
         groups.findAll { group, hosts -> !hosts }.each { group, hosts ->
             errors << "business/inventory/hosts.yml: group ${group} has no hosts".toString()
         }
-        groups.each { group, hosts -> Catalog.checkLabel("business/inventory/hosts.yml: group ${group} and its host names", group + ' ' + hosts.join(' '), errors) }
+        groups.each { group, hosts ->
+            Catalog.checkLabel("business/inventory/hosts.yml: group ${group} and its host names", group + ' ' + hosts.join(' '), errors)
+            List badHosts = hosts.findAll { !(it ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/) }
+            if (badHosts) errors << "business/inventory/hosts.yml: host names ${badHosts} in group ${group} may hold only letters, digits, ., _ and -".toString()
+        }
         return groups
     }
 
