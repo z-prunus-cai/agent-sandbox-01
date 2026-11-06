@@ -117,3 +117,10 @@ def test_ansible_lint_checks_the_argument_specs_of_business_tasks(examples_copy)
     assert result.returncode != 0
     assert 'schema[role-arg-spec]' in result.stdout + result.stderr
     assert 'business/tasks/task_a/meta/argument_specs.yml' in result.stdout + result.stderr
+
+
+def test_decrypted_vault_file_is_ascii():
+    # tests/test_files.py sees only the encrypted text
+    result = run_ansible(['ansible-vault', 'view', str(INVENTORY / 'group_vars' / 'all' / 'vault.yml')])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.isascii()

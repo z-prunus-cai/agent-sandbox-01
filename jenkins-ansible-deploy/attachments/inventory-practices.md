@@ -1,59 +1,59 @@
-# Ansible inventory 管理
+# Managing the Ansible inventory
 
-适用版本：ansible-core 2.21.5、ansible-lint 26.10.1、Jenkins Ansible 插件 635.v34b_48e979c86。
+Versions covered: ansible-core 2.21.5, ansible-lint 26.10.1, Jenkins Ansible plugin 635.v34b_48e979c86.
 
-出处有两种写法：上游源码与文档写成 `<owner>/<name>@<version>` 的 `<path>`，即上游仓库在该版本的路径，代码再写出所在的类与方法（或函数），文档再写出所在的章节标题，上游仓库与版本见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)；示例代码按文件与类、方法（或函数）名引用。文中的命令都针对示例目录 `examples/`，没有特别说明时在 `examples/platform/ansible/` 下执行；需要改动文件才能看到的现象，在示例的副本上改动后运行，不要改示例本身。vault 口令文件是 `tests/example-vault-password.txt`，内容为示例口令 `example-only-password`；在 `examples/platform/ansible/` 下写作 `../../../tests/example-vault-password.txt`。
+Sources are cited in two ways. Upstream source code and documentation are written as `<path>` of `<owner>/<name>@<version>`, that is, the path in the upstream repository at that version. For code, the class and method (or function) are named as well; for documentation, the section title is named as well. The upstream repositories and versions are listed in [BRIEF.md section 8](../BRIEF.md#8-sources). Example code is cited by file and by class and method (or function) name. All commands in this document apply to the example directory `examples/`. Unless stated otherwise, run them in `examples/platform/ansible/`. When a behavior can only be seen after changing a file, make the change in a copy of the example and run it there; do not change the example itself. The vault password file is `tests/example-vault-password.txt`; it contains the example password `example-only-password`. From `examples/platform/ansible/` it is written as `../../../tests/example-vault-password.txt`.
 
-术语：**inventory（清单）**是描述被管理主机及其分组的数据源；**主机组（group）**是一组主机，组可以包含子组，所有组都是 `all` 的后代；**变量层**是给主机赋值的不同位置，例如 `group_vars`、`host_vars`、命令行；**role（角色）**是一个目录，放可复用的任务、默认变量和元数据。
+Terms: **inventory** is the data source that describes the managed hosts and how they are grouped. A **host group** (group) is a set of hosts; a group can contain child groups, and every group is a descendant of `all`. A **variable layer** is one of the places that give a host a value, for example `group_vars`, `host_vars`, or the command line. A **role** is a directory that holds reusable tasks, default variables and metadata.
 
-## 结论
+## Conclusions
 
-1. 采用目录式 inventory：`ansible.cfg` 中设 `inventory = ../../business/inventory`。`hosts.yml` 只描述主机与组的关系，变量一律放在 `business/inventory/group_vars/` 和 `business/inventory/host_vars/`。playbook 所在的 `examples/platform/ansible/` 下不建 `group_vars/` 和 `host_vars/`。
-2. 不在 `examples/platform/ansible` 下运行 Ansible 时（Jenkins 就是这样），用环境变量 `ANSIBLE_CONFIG` 指向 `examples/platform/ansible/ansible.cfg`。它优先于当前目录下的 `ansible.cfg`；配置里的相对路径以配置文件所在目录为基准，所以从哪个目录运行，结果都一样。在 `examples/platform/ansible` 下运行时可以省略。
-3. 变量优先级从低到高：role defaults → `group_vars/all` → 子组（`web` 等）→ `host_vars` → extra vars。`meta/argument_specs.yml` 里的 `default` 只是文档，运行时不生效；示例仍写出它，并与 `defaults/main.yml` 保持一致（`test_tasks.py` 的 `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option` 检查）。
-4. 一台主机只属于 `web`、`api`、`worker` 中的一个组。同级组的同名变量按组名字母顺序合并，结果不直观。
-5. 命名：变量名只用小写字母、数字和下划线；role 自己定义的变量加 `<role 名>_` 前缀；inventory 中的应用参数以 `app_` 开头；加密值以 `vault_` 开头。第一条由 ansible-lint 的 `var-naming` 规则检查；`business/tasks/` 下的任务不在 `roles/` 目录中，ansible-lint 不检查它们的前缀，任务参数和 `defaults/main.yml` 的前缀由引擎和 `test_tasks.py` 检查（见 1.5）。
-6. 敏感值放在整文件加密的 `group_vars/all/vault.yml`，`main.yml` 中写 `app_api_token: "{{ vault_app_api_token }}"` 引用它。
-7. Jenkins 侧把 vault 口令存成 “Secret text” 凭据，通过 `vaultCredentialsId` 交给插件（插件也接受 “Secret file”，但引擎的凭据检查 `TaskRunner.checkCredentials` 按 Secret text 绑定，用 Secret file 时要把其中的 `string(...)` 改成 `file(...)`，见 BRIEF 第 4.9 节）。插件把口令写进权限为 0400 的临时文件，用 `--vault-password-file` 传给 ansible-playbook，进程结束后在 `finally` 中删除该文件。
-8. `ansible-inventory --graph` 不读变量，不需要 vault 口令。`--list` 和 `--host` 需要口令，且输出解密后的明文，所以不在 CI 中运行。
-9. `check-inventory.yml` 用 `ansible.builtin.validate_argument_spec`，按 `deploy` 的参数声明校验每台主机。它不连接主机，一次报告全部问题。
-10. ansible-lint 在 `examples/` 下用 `ansible-lint --offline --profile production` 运行，并且要提供 vault 口令，否则 `vault.yml` 不会被检查。
-11. 校验失败时，错误信息会打印变量的值，`no_log` 也遮不住这一行。因此秘密变量在 spec 中只声明 `type: str` 和 `required: true`。
+1. Use a directory inventory: set `inventory = ../../business/inventory` in `ansible.cfg`. `hosts.yml` only describes hosts and how they map to groups. All variables go in `business/inventory/group_vars/` and `business/inventory/host_vars/`. Do not create `group_vars/` or `host_vars/` in `examples/platform/ansible/`, where the playbooks are.
+2. When Ansible does not run in `examples/platform/ansible` (which is the case in Jenkins), point the environment variable `ANSIBLE_CONFIG` at `examples/platform/ansible/ansible.cfg`. It takes precedence over an `ansible.cfg` in the current directory. Relative paths in the configuration are resolved against the directory of the configuration file, so the result is the same whatever directory you run from. When running in `examples/platform/ansible` you can leave it out.
+3. Variable precedence from low to high: role defaults -> `group_vars/all` -> child groups (`web` etc.) -> `host_vars` -> extra vars. The `default` in `meta/argument_specs.yml` is documentation only and has no effect at run time. The example still writes it and keeps it equal to `defaults/main.yml` (checked by `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option` in `test_tasks.py`).
+4. A host belongs to only one of the groups `web`, `api` and `worker`. Variables with the same name in sibling groups are merged in alphabetical order of the group name, and the result is not obvious.
+5. Naming: variable names use only lowercase letters, digits and underscores. Variables a role defines itself get the prefix `<role name>_`. Application parameters in the inventory start with `app_`. Encrypted values start with `vault_`. The first rule is checked by the ansible-lint rule `var-naming`. The tasks under `business/tasks/` are not in a `roles/` directory, so ansible-lint does not check their prefixes; the prefixes of task parameters and of `defaults/main.yml` are checked by the engine and by `test_tasks.py` (see 1.5).
+6. Sensitive values go in `group_vars/all/vault.yml`, which is encrypted as a whole file. `main.yml` refers to them with `app_api_token: "{{ vault_app_api_token }}"`.
+7. On the Jenkins side, store the vault password as a "Secret text" credential and give it to the plugin through `vaultCredentialsId`. (The plugin also accepts "Secret file", but the engine's credential check `TaskRunner.checkCredentials` binds it as Secret text; to use Secret file, change the `string(...)` in it to `file(...)`, see BRIEF section 4.9.) The plugin writes the password to a temporary file with mode 0400 and passes it to ansible-playbook with `--vault-password-file`. After the process ends, it deletes the file in a `finally` block.
+8. `ansible-inventory --graph` does not read variables and does not need the vault password. `--list` and `--host` need the password and print the decrypted plain text, so they are not run in CI.
+9. `check-inventory.yml` uses `ansible.builtin.validate_argument_spec` to validate every host against the parameter declaration of `deploy`. It does not connect to the hosts and reports all problems in one run.
+10. ansible-lint runs in `examples/` as `ansible-lint --offline --profile production`, and it must be given the vault password; otherwise `vault.yml` is not checked.
+11. When validation fails, the error message prints the value of the variable, and `no_log` cannot hide that line. So secret variables are declared in the spec only with `type: str` and `required: true`.
 
-## 1. 目录与变量分层
+## 1. Directory layout and variable layers
 
-### 1.1 目录式 inventory，hosts 文件只放主机与组
+### 1.1 Directory inventory; the hosts file holds only hosts and groups
 
-规则：把整个 `business/inventory/` 目录作为一个 inventory 源，`hosts.yml` 中不写 `vars:`。示例的 `hosts.yml` 和各变量文件的内容见 [BRIEF.md 第 3.2 节](../BRIEF.md#32-inventory)。
+Rule: use the whole `business/inventory/` directory as one inventory source, and do not write `vars:` in `hosts.yml`. The contents of the example `hosts.yml` and of the variable files are in [BRIEF.md section 3.2](../BRIEF.md#32-inventory).
 
-机制：一个目录可以作为单一 inventory 源。Ansible 汇总目录内的各个源，从顶层往下按字母序读取。加载 inventory 源时，名为 `group_vars`、`host_vars` 的目录总是被跳过。这两个目录由默认的 vars 插件 `host_group_vars` 读取；vars 插件是在 inventory 之外为主机和组提供变量的插件。这些变量文件里可以使用列表、字典等结构。组目录（如 `group_vars/all/`）下的所有文件按字典序读取。`ansible_host` 是连接时用的实际地址，与主机别名是两回事。
+Mechanism: a directory can be a single inventory source. Ansible combines the sources in the directory and reads them from the top level down in alphabetical order. When inventory sources are loaded, directories named `group_vars` and `host_vars` are always skipped. These two directories are read by the default vars plugin `host_group_vars`; a vars plugin is a plugin that supplies variables for hosts and groups outside the inventory. These variable files can use structures such as lists and dictionaries. All files in a group directory (such as `group_vars/all/`) are read in lexical order. `ansible_host` is the actual address used to connect, which is not the same thing as the host alias.
 
-出处：`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/intro_inventory.rst` 的 “Organizing inventory in a directory” 一节；`ansible/ansible@2.21.5` 的 `lib/ansible/inventory/manager.py` 的模块级常量 `IGNORED_ALWAYS`；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/intro_inventory.rst` 的 “Adding variables to inventory” 一节、“Organizing host and group variables” 一节和 “Connecting to hosts: behavioral inventory parameters” 一节。
+Sources: `docs/docsite/rst/inventory_guide/intro_inventory.rst` of `ansible/ansible-documentation@b16dcb8`, section "Organizing inventory in a directory"; `lib/ansible/inventory/manager.py` of `ansible/ansible@2.21.5`, module-level constant `IGNORED_ALWAYS`; `docs/docsite/rst/inventory_guide/intro_inventory.rst` of `ansible/ansible-documentation@b16dcb8`, sections "Adding variables to inventory", "Organizing host and group variables" and "Connecting to hosts: behavioral inventory parameters".
 
-不这样做会怎样：如果变量写在 `hosts.yml` 的 `vars:` 下，它和 `group_vars` 中的同名变量就处在两个不同的优先级层（"Inventory file or script group vars" 低于 "Inventory group_vars/*"：`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Understanding variable precedence” 一节），查一个值要翻两处。
+What happens otherwise: if variables are written under `vars:` in `hosts.yml`, they and variables of the same name in `group_vars` sit in two different precedence layers ("Inventory file or script group vars" is lower than "Inventory group_vars/*": `docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, section "Understanding variable precedence"), and looking up one value means checking two places.
 
-### 1.2 用 ANSIBLE_CONFIG 指定配置，相对路径以配置文件为基准
+### 1.2 Set the configuration with ANSIBLE_CONFIG; relative paths are resolved against the configuration file
 
-规则：`examples/platform/ansible/ansible.cfg` 只写两个相对路径：`inventory = ../../business/inventory` 和 `roles_path = ../../business/tasks:../../business`。Jenkins 和测试都通过 `ANSIBLE_CONFIG` 指定这个文件；在 `examples/platform/ansible` 下手工运行时，Ansible 在当前目录找到它，可以不设。Jenkins 侧，`TaskRunner.playbook` 在每次 `ansiblePlaybook` 调用外包一层 `withEnv(["ANSIBLE_CONFIG=${script.env.WORKSPACE}/platform/ansible/ansible.cfg"])`（`examples/platform/jenkins/src/deploy/TaskRunner.groovy` 的 `playbook` 方法）。playbook 写成相对于工作区的路径（同文件 `deploy` 方法中的 `platform/ansible/deploy.yml`）。测试用同样的方式运行 Ansible（`tests/conftest.py` 的 `run_ansible`）。
+Rule: `examples/platform/ansible/ansible.cfg` contains only two relative paths: `inventory = ../../business/inventory` and `roles_path = ../../business/tasks:../../business`. Jenkins and the tests both select this file through `ANSIBLE_CONFIG`. When you run by hand in `examples/platform/ansible`, Ansible finds it in the current directory, so you need not set it. On the Jenkins side, `TaskRunner.playbook` wraps every `ansiblePlaybook` call in `withEnv(["ANSIBLE_CONFIG=${script.env.WORKSPACE}/platform/ansible/ansible.cfg"])` (method `playbook` in `examples/platform/jenkins/src/deploy/TaskRunner.groovy`). The playbook is written as a path relative to the workspace (`platform/ansible/deploy.yml` in method `deploy` of the same file). The tests run Ansible the same way (`run_ansible` in `tests/conftest.py`).
 
-机制：**查找顺序**：ansible-core 依次查找 `ANSIBLE_CONFIG`、当前目录的 `ansible.cfg`、`~/.ansible.cfg`、`/etc/ansible/ansible.cfg`，只用找到的第一个。如果当前目录全局可写，就跳过这个目录（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/reference_appendices/general_precedence.rst` 的 “Configuration settings” 一节；`ansible/ansible@2.21.5` 的 `lib/ansible/config/manager.py` 的 `find_ini_config_file` 函数）。**相对路径**：从配置文件读到的值，以该文件作为来源（origin）。`inventory` 的类型是 `pathlist`，`roles_path` 的类型是 `pathspec`，这两类值里的相对路径以来源文件所在目录为基准展开（`ansible/ansible@2.21.5` 的 `lib/ansible/config/manager.py` 的 `ConfigManager.get_config_value_and_origin` 方法；`ansible/ansible@2.21.5` 的 `lib/ansible/config/base.yml` 的 `DEFAULT_HOST_LIST.type` 键和 `DEFAULT_ROLES_PATH.type` 键；`ansible/ansible@2.21.5` 的 `lib/ansible/config/manager.py` 的 `ensure_type` 函数（文档字符串）和 `_ensure_type` 函数；`ansible/ansible@2.21.5` 的 `lib/ansible/utils/path.py` 的 `unfrackpath` 函数）。**插件侧**：插件把步骤的环境变量（包括 `withEnv` 设的值）复制给子进程，并以步骤工作目录为 cwd 启动 ansible-playbook。`TaskRunner.playbook` 不设 `inventory`，所以插件不加 `-i`（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` 中 `AnsiblePlaybookExecution` 类的 `envVars` 字段；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的构造方法 `AbstractAnsibleInvocation`；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` 的 `execute` 方法；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendInventory` 方法）。
+Mechanism: **Search order**: ansible-core looks for `ANSIBLE_CONFIG`, then `ansible.cfg` in the current directory, then `~/.ansible.cfg`, then `/etc/ansible/ansible.cfg`, and uses only the first one it finds. If the current directory is world-writable, that directory is skipped (`docs/docsite/rst/reference_appendices/general_precedence.rst` of `ansible/ansible-documentation@b16dcb8`, section "Configuration settings"; `lib/ansible/config/manager.py` of `ansible/ansible@2.21.5`, function `find_ini_config_file`). **Relative paths**: a value read from a configuration file has that file as its origin. `inventory` has type `pathlist` and `roles_path` has type `pathspec`; relative paths in values of these two types are expanded against the directory of the origin file (`lib/ansible/config/manager.py` of `ansible/ansible@2.21.5`, method `ConfigManager.get_config_value_and_origin`; `lib/ansible/config/base.yml` of `ansible/ansible@2.21.5`, keys `DEFAULT_HOST_LIST.type` and `DEFAULT_ROLES_PATH.type`; `lib/ansible/config/manager.py` of `ansible/ansible@2.21.5`, function `ensure_type` (docstring) and function `_ensure_type`; `lib/ansible/utils/path.py` of `ansible/ansible@2.21.5`, function `unfrackpath`). **Plugin side**: the plugin copies the step's environment variables (including values set by `withEnv`) to the child process and starts ansible-playbook with the step's working directory as cwd. `TaskRunner.playbook` does not set `inventory`, so the plugin does not add `-i` (field `envVars` of class `AnsiblePlaybookExecution` in `src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; constructor `AbstractAnsibleInvocation` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; method `execute` in `src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; method `appendInventory` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`).
 
-从另一个目录运行时的现象：该目录中有自己的 `ansible.cfg`（`inventory = other-inventory`）。设置 `ANSIBLE_CONFIG=<示例>/platform/ansible/ansible.cfg` 后，`ansible-config dump --only-changed` 的输出（节选）：
+What you see when running from another directory: that directory has its own `ansible.cfg` (`inventory = other-inventory`). With `ANSIBLE_CONFIG=<examples>/platform/ansible/ansible.cfg` set, the output of `ansible-config dump --only-changed` (excerpt):
 
 ```text
-CONFIG_FILE() = <仓库>/platform/ansible/ansible.cfg
-DEFAULT_HOST_LIST(<仓库>/platform/ansible/ansible.cfg) = ['<仓库>/business/inventory']
-DEFAULT_ROLES_PATH(<仓库>/platform/ansible/ansible.cfg) = ['<仓库>/business/tasks', '<仓库>/business']
+CONFIG_FILE() = <repo>/platform/ansible/ansible.cfg
+DEFAULT_HOST_LIST(<repo>/platform/ansible/ansible.cfg) = ['<repo>/business/inventory']
+DEFAULT_ROLES_PATH(<repo>/platform/ansible/ansible.cfg) = ['<repo>/business/tasks', '<repo>/business']
 ```
 
-此时 `ansible-inventory --graph deploy_targets` 列出全部 5 台主机。不设 `ANSIBLE_CONFIG` 时，`CONFIG_FILE` 变成该目录自己的 `ansible.cfg`，`ansible-inventory --graph deploy_targets` 的输出：
+In this case `ansible-inventory --graph deploy_targets` lists all 5 hosts. Without `ANSIBLE_CONFIG`, `CONFIG_FILE` becomes that directory's own `ansible.cfg`, and the output of `ansible-inventory --graph deploy_targets` is:
 
 ```text
 [WARNING]: No inventory was parsed, only implicit localhost is available
 [ERROR]: Pattern must be valid group name when using --graph
 ```
 
-按 Jenkins 的方式，从工作区根目录（即 `examples/` 这一层）运行部署时的输出（节选，退出码 0）：
+Output of a deployment run the Jenkins way, from the workspace root (the `examples/` level) (excerpt, exit code 0):
 
 ```text
 $ ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ansible-playbook --vault-password-file ../tests/example-vault-password.txt platform/ansible/deploy.yml --limit web
@@ -61,15 +61,15 @@ $ ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ansible-playbook --vault-pass
     "msg": "deploy web 2.3.1 to web-02 (192.0.2.12) dir=/opt/apps/web port=8080 max_connections=200 user=app"
 ```
 
-不这样做会怎样：如果依赖当前目录的 `ansible.cfg`，从工作区根目录运行时会读到别的配置，或者落到默认的 `/etc/ansible/hosts`。inventory 解析为空，只剩隐式 localhost。
+What happens otherwise: if you rely on `ansible.cfg` in the current directory, a run from the workspace root reads some other configuration, or falls back to the default `/etc/ansible/hosts`. The inventory parses as empty, and only the implicit localhost is left.
 
-### 1.3 group_vars / host_vars 只放在 inventory 目录下
+### 1.3 group_vars / host_vars only in the inventory directory
 
-规则：只用 `business/inventory/group_vars/` 和 `business/inventory/host_vars/`，不建 `examples/platform/ansible/group_vars/`。
+Rule: use only `business/inventory/group_vars/` and `business/inventory/host_vars/`. Do not create `examples/platform/ansible/group_vars/`.
 
-机制：`host_group_vars` 会在 inventory 源旁边查找这两个目录；运行 ansible-playbook 时，还会在 playbook 目录旁边查找。两处有同名变量时，以 playbook 旁的为准（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/intro_inventory.rst` 的 “Organizing host and group variables” 一节；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Understanding variable precedence” 一节）。示例的 inventory 源是 `examples/business/inventory` 目录，它旁边的是 `business/inventory/group_vars/`。所有 playbook 都直接放在 `examples/platform/ansible/` 下，所以 playbook 旁的是 `examples/platform/ansible/group_vars/`。ansible-playbook 把 playbook 所在目录设为基准目录。没有 playbook 的命令（`ansible`、`ansible-inventory`）默认以当前目录为基准目录，也可以用 `--playbook-dir` 指定（`ansible/ansible@2.21.5` 的 `lib/ansible/playbook/__init__.py` 的 `Playbook._load_playbook_data` 方法；`ansible/ansible@2.21.5` 的 `lib/ansible/parsing/dataloader.py` 的 `DataLoader.__init__` 方法；`ansible/ansible@2.21.5` 的 `lib/ansible/vars/manager.py` 的 `VariableManager.get_vars` 方法；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/intro_inventory.rst` 的 “Organizing host and group variables” 一节）。
+Mechanism: `host_group_vars` looks for these two directories next to the inventory source; when ansible-playbook runs, it also looks next to the playbook directory. When both places have a variable with the same name, the one next to the playbook wins (`docs/docsite/rst/inventory_guide/intro_inventory.rst` of `ansible/ansible-documentation@b16dcb8`, section "Organizing host and group variables"; `docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, section "Understanding variable precedence"). The inventory source of the example is the directory `examples/business/inventory`; next to it is `business/inventory/group_vars/`. All playbooks are directly in `examples/platform/ansible/`, so the one next to the playbooks is `examples/platform/ansible/group_vars/`. ansible-playbook sets the playbook's directory as the base directory. Commands without a playbook (`ansible`, `ansible-inventory`) use the current directory as the base directory by default; it can also be set with `--playbook-dir` (`lib/ansible/playbook/__init__.py` of `ansible/ansible@2.21.5`, method `Playbook._load_playbook_data`; `lib/ansible/parsing/dataloader.py` of `ansible/ansible@2.21.5`, method `DataLoader.__init__`; `lib/ansible/vars/manager.py` of `ansible/ansible@2.21.5`, method `VariableManager.get_vars`; `docs/docsite/rst/inventory_guide/intro_inventory.rst` of `ansible/ansible-documentation@b16dcb8`, section "Organizing host and group variables").
 
-不这样做会怎样：如果在 `platform/ansible/group_vars/web.yml`（与 playbook 同级）中写入 `app_max_connections: 999`，在 `platform/ansible/` 目录下运行时，三条命令都读到 999（输出节选）：
+What happens otherwise: if `app_max_connections: 999` is written in `platform/ansible/group_vars/web.yml` (at the same level as the playbooks), all three commands read 999 when run in `platform/ansible/` (output excerpt):
 
 ```text
 == ansible-playbook deploy.yml ==
@@ -80,7 +80,7 @@ $ ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ansible-playbook --vault-pass
     "app_max_connections": 999,
 ```
 
-从 `examples/` 这一层（即 Jenkins 的工作区根目录）运行、`ANSIBLE_CONFIG` 指向 `platform/ansible/ansible.cfg`（与 Jenkins 相同）时：
+When run from the `examples/` level (the Jenkins workspace root) with `ANSIBLE_CONFIG` pointing at `platform/ansible/ansible.cfg` (as in Jenkins):
 
 ```text
 == ansible-playbook platform/ansible/deploy.yml ==
@@ -91,26 +91,26 @@ $ ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ansible-playbook --vault-pass
     "app_max_connections": 100,
 ```
 
-也就是说：这样的目录会被 `platform/ansible/` 下的全部 playbook 读到，并覆盖 `business/inventory/group_vars/` 中的值；审查命令能不能看到它，却取决于当前目录；结果是部署实际用的是 999，从工作区根目录审查看到的却是 100，inventory 不再是主机参数的唯一来源。
+In other words: such a directory is read by every playbook in `platform/ansible/` and overrides the values in `business/inventory/group_vars/`, but whether the review commands see it depends on the current directory. The result is that the deployment actually uses 999 while a review from the workspace root sees 100, and the inventory is no longer the single source of host parameters.
 
-### 1.4 变量优先级
+### 1.4 Variable precedence
 
-规则：每个变量只在一层定义：所有主机共用的值放在 `group_vars/all/main.yml`；每组的值放在 `group_vars/<组>.yml`；个别主机的例外放在 `host_vars/<主机>.yml`。不在 role 的 `vars/` 中放主机参数，也不在命令行覆盖主机参数。
+Rule: define each variable in one layer only. Values shared by all hosts go in `group_vars/all/main.yml`; values for one group go in `group_vars/<group>.yml`; exceptions for individual hosts go in `host_vars/<host>.yml`. Do not put host parameters in a role's `vars/`, and do not override host parameters on the command line.
 
-机制：官方列表按从低到高排列，下表只列与示例相关的几层：
+Mechanism: the official list is ordered from low to high. The table lists only the layers that matter for the example:
 
-| 层（低 → 高）| 出处 |
+| Layer (low -> high) | Source |
 | --- | --- |
-| role defaults（role 的 `defaults/main.yml`）| `ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Understanding variable precedence” 一节 |
-| inventory `group_vars/all` | 同上 |
-| inventory `group_vars/*` | 同上 |
-| inventory `host_vars/*` | 同上 |
-| role vars（role 的 `vars/main.yml`）| 同上 |
-| extra vars（命令行 `-e` 传入的变量）| 同上 |
+| role defaults (the role's `defaults/main.yml`) | `docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, section "Understanding variable precedence" |
+| inventory `group_vars/all` | Same as above |
+| inventory `group_vars/*` | Same as above |
+| inventory `host_vars/*` | Same as above |
+| role vars (the role's `vars/main.yml`) | Same as above |
+| extra vars (variables passed with `-e` on the command line) | Same as above |
 
-补充规则：inventory 内部从低到高依次是 `all` 组 → 父组 → 子组 → 主机。同一级的组按组名字母顺序合并，后合并的覆盖先合并的（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/intro_inventory.rst` 的 “How variables are merged” 一节）。role defaults 可以被其他任何来源覆盖（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Role directory structure” 一节）。argument_specs 是 role 在 `meta/argument_specs.yml` 中声明的参数规格。其中的 `default` 只用于文档，实际默认值始终来自 role defaults（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Specification format” 一节）。
+Additional rules: inside the inventory, from low to high, the order is the `all` group -> parent group -> child group -> host. Groups at the same level are merged in alphabetical order of the group name, and a group merged later overrides one merged earlier (`docs/docsite/rst/inventory_guide/intro_inventory.rst` of `ansible/ansible-documentation@b16dcb8`, section "How variables are merged"). Role defaults can be overridden by any other source (`docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` of `ansible/ansible-documentation@b16dcb8`, section "Role directory structure"). argument_specs is the parameter specification a role declares in `meta/argument_specs.yml`. The `default` in it is for documentation only; the actual default value always comes from the role defaults (`docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` of `ansible/ansible-documentation@b16dcb8`, section "Specification format").
 
-host_vars 高于 group_vars：
+host_vars is higher than group_vars:
 
 ```text
 $ ansible-inventory --vault-password-file ../../../tests/example-vault-password.txt --host web-02
@@ -127,9 +127,9 @@ $ ansible-inventory --vault-password-file ../../../tests/example-vault-password.
 }
 ```
 
-`web-02` 的 `app_max_connections` 取自 `host_vars/web-02.yml`，值为 200；`web-01` 取自 `group_vars/web.yml`，值为 100。
+`app_max_connections` of `web-02` comes from `host_vars/web-02.yml` and is 200; for `web-01` it comes from `group_vars/web.yml` and is 100.
 
-子组高于 `all`：示例中没有跨层重名的变量；如果在 `business/inventory/group_vars/web.yml` 末尾加一行 `app_run_user: web`（`all` 中的值是 `app`），输出：
+A child group is higher than `all`: the example has no variable with the same name in more than one layer. If you add the line `app_run_user: web` at the end of `business/inventory/group_vars/web.yml` (the value in `all` is `app`), the output is:
 
 ```text
 $ ansible web-01,api-01 --vault-password-file ../../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_run_user
@@ -141,7 +141,7 @@ api-01 | SUCCESS => {
 }
 ```
 
-extra vars 高于 host_vars；用 `key=value` 形式传入时，得到的是字符串：
+Extra vars are higher than host_vars. When passed in `key=value` form, the value is a string:
 
 ```text
 $ ansible web-02 --vault-password-file ../../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_max_connections -e app_max_connections=500
@@ -150,9 +150,9 @@ web-02 | SUCCESS => {
 }
 ```
 
-文档写明，`key=value` 形式的值按字符串处理；要保持类型，就传 JSON 或 YAML 文件（`-e @file`）。示例的任务参数正是用这种方式传入的（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Key-value format” 一节和 “Vars from a JSON or YAML file” 一节；`examples/platform/jenkins/src/deploy/TaskRunner.groovy` 的 `attempt` 方法中运行 `run-task.yml` 的调用）。
+The documentation states that values in `key=value` form are treated as strings; to keep the type, pass a JSON or YAML file (`-e @file`). This is how the example passes task parameters (`docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, sections "Key-value format" and "Vars from a JSON or YAML file"; the call that runs `run-task.yml` in method `attempt` of `examples/platform/jenkins/src/deploy/TaskRunner.groovy`).
 
-role defaults 优先级最低：用 `run-task.yml` 运行 `task_c`，参数文件通过 `-e @task-c-localhost.json` 传入，内容为 `{"task_role": "task_c", "task_hosts": "localhost"}`。示例输出 `mode=plan`，这个值来自 `business/tasks/task_c/defaults/main.yml`；在 `business/inventory/group_vars/all/main.yml` 中加上 `task_c_mode: apply` 后，输出变为 `mode=apply`：
+Role defaults have the lowest precedence: run `task_c` with `run-task.yml`, passing the parameter file with `-e @task-c-localhost.json`, whose content is `{"task_role": "task_c", "task_hosts": "localhost"}`. The example prints `mode=plan`; this value comes from `business/tasks/task_c/defaults/main.yml`. After adding `task_c_mode: apply` to `business/inventory/group_vars/all/main.yml`, the output becomes `mode=apply`:
 
 ```text
 == original example ==
@@ -161,16 +161,16 @@ role defaults 优先级最低：用 `run-task.yml` 运行 `task_c`，参数文�
     "msg": "localhost: task_c mode=apply label="
 ```
 
-argument_specs 中的 `default` 不生效：`task_c` 的 argument_specs 给每个参数都写了 `default`（例如 `default: plan`），但没有 `business/tasks/task_c/defaults/main.yml` 时，同样运行，退出码为 2（输出节选）：
+The `default` in argument_specs has no effect: the argument_specs of `task_c` give every parameter a `default` (for example `default: plan`), but without `business/tasks/task_c/defaults/main.yml` the same run exits with code 2 (output excerpt):
 
 ```text
-TASK [task_c : Validating arguments against arg spec 'main' - 示例任务 C：带枚举参数和布尔参数] ***
+TASK [task_c : Validating arguments against arg spec 'main' - Example task C - has a choice and a boolean parameter] ***
 ok: [localhost]
 TASK [task_c : Run in the selected mode] ***************************************
 [ERROR]: Task failed: Finalization of task args for 'ansible.builtin.debug' failed: Error while resolving value for 'msg': 'task_c_mode' is undefined
 ```
 
-隐式 localhost 也会拿到 `group_vars/all`。inventory 中没有定义 localhost 时，Ansible 会自动创建一个“隐式 localhost”。它不属于任何组，但会读取 `host_vars` 和 `all` 组的变量（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/inventory_guide/implicit_localhost.rst` 的 “Implicit 'localhost'” 一节）：
+The implicit localhost also gets `group_vars/all`. When the inventory does not define localhost, Ansible creates an "implicit localhost" automatically. It belongs to no group, but it reads `host_vars` and the variables of the `all` group (`docs/docsite/rst/inventory_guide/implicit_localhost.rst` of `ansible/ansible-documentation@b16dcb8`, section "Implicit 'localhost'"):
 
 ```text
 $ ansible localhost --vault-password-file ../../../tests/example-vault-password.txt -m ansible.builtin.debug -a var=app_base_dir
@@ -179,58 +179,58 @@ localhost | SUCCESS => {
 }
 ```
 
-`ansible all --list-hosts` 只列出 5 台主机，其中没有 localhost。由此可知，在 Jenkins 节点本机上运行的任务（`meta/task.yml` 中 `run_on: controller`，引擎传入 `task_hosts: localhost`）同样会加载 `group_vars/all/vault.yml`，因此同样需要 vault 口令。
+`ansible all --list-hosts` lists only the 5 hosts, and localhost is not among them. It follows that tasks that run on the Jenkins node itself (`run_on: controller` in `meta/task.yml`; the engine passes `task_hosts: localhost`) also load `group_vars/all/vault.yml`, and so also need the vault password.
 
-不这样做会怎样：同一变量在多层都有定义时，审查的人很难看出最终取的是哪个值。一台主机如果同时属于 `web` 和 `api`，两组冲突的变量会按字母顺序由 `web` 覆盖 `api`。参数如果只在 argument_specs 里写了 `default`，运行时会报未定义（见上面 argument_specs 的 `default` 一段的输出）。
+What happens otherwise: when the same variable is defined in several layers, a reviewer can hardly tell which value is finally used. If a host belongs to both `web` and `api`, conflicting variables of the two groups are merged in alphabetical order, so `web` overrides `api`. If a parameter has a `default` only in argument_specs, the run fails with an undefined-variable error (see the output in the paragraph on the argument_specs `default` above).
 
-### 1.5 变量命名
+### 1.5 Variable naming
 
-规则：变量名只用小写字母、数字和下划线，并以字母开头。role 自己定义的变量（`defaults/`、`vars/`、`register`、`set_fact`）以 `<role 名>_` 为前缀，例如 `task_c_mode`、`task_b_file`。inventory 中的应用参数以 `app_` 开头（`app_version`、`app_max_connections`），在 `deploy` 的 argument_specs 中声明为必填项，不在 role defaults 中给值。加密值以 `vault_` 开头。
+Rule: variable names use only lowercase letters, digits and underscores, and start with a letter. Variables a role defines itself (`defaults/`, `vars/`, `register`, `set_fact`) have the prefix `<role name>_`, for example `task_c_mode`, `task_b_file`. Application parameters in the inventory start with `app_` (`app_version`, `app_max_connections`); they are declared as required in the argument_specs of `deploy` and get no value in the role defaults. Encrypted values start with `vault_`.
 
-机制：Ansible 变量名只能由字母、数字和下划线组成，不能以数字开头，也不能是 Python 关键字或 playbook 关键字。以下划线开头的变量并不是私有的（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Creating valid variable names” 一节）。ansible-lint 是 Ansible 内容的静态检查工具，它的 `var-naming` 规则检查名称是否匹配 `^[a-z_][a-z0-9_]*$`；`var-naming[no-role-prefix]` 要求 role 内定义的变量以 `role_name_` 开头，`ansible_` 开头的变量除外；`group_vars`、`host_vars`、`vars`、`defaults` 目录下的文件都按 vars 文件检查，但只有属于某个 role 的文件才检查前缀。出处：`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/rules/var_naming.md` 的 “var-naming” 一节（文首）和 “Settings” 一节；`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/rules/var_naming.py` 的 `VariableNamingRule.get_var_naming_matcherror` 方法和 `VariableNamingRule.matchyaml` 方法；`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/config.py` 的模块级常量 `DEFAULT_KINDS`。ansible-lint 只把路径中含 `roles` 目录、并带有 `tasks`、`meta`、`vars`、`defaults`、`handlers` 等子目录的目录认作 role（`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/file_utils.py` 的 `find_role_dir` 函数）。示例的任务放在 `business/tasks/<任务>/`，部署 role 放在 `business/deploy/`，路径中都没有 `roles`，所以 `no-role-prefix` 不检查它们。任务参数的前缀改由引擎（`examples/platform/jenkins/src/deploy/Catalog.groovy` 的 `parameters` 方法）和 `tests/test_tasks.py` 的 `test_option_names_cannot_override_inventory_reserved_or_engine_variables` 检查；同文件的 `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option` 要求 `defaults/main.yml` 中只有 argument_specs 声明过的可选参数。`register`、`set_fact` 定义的变量没有自动检查。
+Mechanism: Ansible variable names may contain only letters, digits and underscores, may not start with a digit, and may not be a Python keyword or a playbook keyword. Variables that start with an underscore are not private (`docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, section "Creating valid variable names"). ansible-lint is a static checker for Ansible content. Its `var-naming` rule checks that names match `^[a-z_][a-z0-9_]*$`; `var-naming[no-role-prefix]` requires variables defined in a role to start with `role_name_`, except variables that start with `ansible_`. Files in `group_vars`, `host_vars`, `vars` and `defaults` directories are all checked as vars files, but only files that belong to a role are checked for the prefix. Sources: `src/ansiblelint/rules/var_naming.md` of `ansible/ansible-lint@26.10.1`, section "var-naming" (top of the file) and section "Settings"; `src/ansiblelint/rules/var_naming.py` of `ansible/ansible-lint@26.10.1`, methods `VariableNamingRule.get_var_naming_matcherror` and `VariableNamingRule.matchyaml`; `src/ansiblelint/config.py` of `ansible/ansible-lint@26.10.1`, module-level constant `DEFAULT_KINDS`. ansible-lint treats a directory as a role only if its path contains a `roles` directory and it has subdirectories such as `tasks`, `meta`, `vars`, `defaults` or `handlers` (`src/ansiblelint/file_utils.py` of `ansible/ansible-lint@26.10.1`, function `find_role_dir`). The example's tasks are in `business/tasks/<task>/` and the deploy role is in `business/deploy/`; neither path contains `roles`, so `no-role-prefix` does not check them. Instead, the prefixes of task parameters are checked by the engine (method `parameters` in `examples/platform/jenkins/src/deploy/Catalog.groovy`) and by `test_option_names_cannot_override_inventory_reserved_or_engine_variables` in `tests/test_tasks.py`; `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option` in the same file requires `defaults/main.yml` to contain only optional parameters declared in argument_specs. Variables defined by `register` and `set_fact` are not checked automatically.
 
-现象：`business/inventory/group_vars/web.yml` 中有 `appMaxConn: 100`、`business/tasks/task_c/defaults/main.yml` 中有 `retry_count: 3` 时，按 3.3 的方式运行 ansible-lint，退出码为 2，只报告前一处（输出节选）：
+What you see: with `appMaxConn: 100` in `business/inventory/group_vars/web.yml` and `retry_count: 3` in `business/tasks/task_c/defaults/main.yml`, running ansible-lint as in 3.3 exits with code 2 and reports only the first one (output excerpt):
 
 ```text
 var-naming[pattern]: Variables names should match ^[a-z_][a-z0-9_]*$ regex. (appMaxConn) (vars: appMaxConn)
 business/inventory/group_vars/web.yml:5:1
 ```
 
-`retry_count` 不被 ansible-lint 报告，由 `test_tasks.py` 的 `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option`（`[task_c]`）发现：`defaults/main.yml` 中出现了 argument_specs 没有声明的变量。
+`retry_count` is not reported by ansible-lint. It is caught by `test_documented_defaults_equal_role_defaults_and_cover_every_optional_option` (`[task_c]`) in `test_tasks.py`: `defaults/main.yml` contains a variable that argument_specs does not declare.
 
-不这样做会怎样：role 的 `vars/` 和 `defaults/` 会导入 play 作用域，后面执行的 role 也能读到（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Role directory structure” 一节；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables.rst` 的 “Tips on where to set variables” 一节）。不加前缀时，一个 role 的变量会改变另一个 role 读到的同名变量；inventory 中的同名变量也会覆盖 role 的默认值（见 1.4）。
+What happens otherwise: a role's `vars/` and `defaults/` are imported into the play scope, and roles that run later can read them too (`docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` of `ansible/ansible-documentation@b16dcb8`, section "Role directory structure"; `docs/docsite/rst/playbook_guide/playbooks_variables.rst` of `ansible/ansible-documentation@b16dcb8`, section "Tips on where to set variables"). Without a prefix, one role's variable changes what another role reads for a variable of the same name; a variable of the same name in the inventory also overrides the role's default (see 1.4).
 
-## 2. 敏感信息
+## 2. Sensitive data
 
-### 2.1 ansible-vault：整文件加密，vault_ 前缀间接引用
+### 2.1 ansible-vault: encrypt whole files, refer through the vault_ prefix
 
-ansible-vault 是 Ansible 自带的对称加密工具，既可以加密单个值，也可以加密整个文件。
+ansible-vault is the symmetric encryption tool that comes with Ansible. It can encrypt a single value or a whole file.
 
-规则：把 `group_vars/all/` 拆成两个文件，不使用 `encrypt_string` 单值加密：`main.yml` 是明文，写出全部变量名，敏感值写成引用，例如 `app_api_token: "{{ vault_app_api_token }}"`；`vault.yml` 整文件加密，只放 `vault_` 前缀的变量。
+Rule: split `group_vars/all/` into two files, and do not use `encrypt_string` to encrypt single values. `main.yml` is plain text and names every variable; sensitive values are written as references, for example `app_api_token: "{{ vault_app_api_token }}"`. `vault.yml` is encrypted as a whole file and holds only variables with the `vault_` prefix.
 
-机制与出处：文档推荐这种做法：组目录中放一个明文文件和一个加密文件，加密文件里的变量加 `vault_` 前缀，明文文件用 Jinja 引用它们。这样变量名仍然可以用 `grep` 找到，文件名不限（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` 的 “Keep vaulted variables safely visible” 一节）。整文件加密可以用 `rekey` 轮换口令，单值加密不行（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/vault_guide/vault_encrypting_content.rst` 的 “Advantages and disadvantages of encrypting files” 一节和 “Advantages and disadvantages of encrypting variables” 一节）。加密文件只要被加载就会被解密，所以使用这份 inventory 的每条命令都需要口令（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/vault_guide/vault_encrypting_content.rst` 的 “Encrypting content with Ansible Vault” 一节的脚注；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` 的 “Keep vaulted variables safely visible” 一节）。口令文件读入后会去掉首尾空白，所以末尾的换行不影响口令。如果口令文件是可执行文件，Ansible 会执行它，并把输出当作口令（`ansible/ansible@2.21.5` 的 `lib/ansible/parsing/vault/__init__.py` 的 `FileVaultSecret._read_file` 方法和 `get_file_vault_secret` 函数）。
+Mechanism and sources: the documentation recommends this approach: put one plain-text file and one encrypted file in the group directory, give the variables in the encrypted file the `vault_` prefix, and refer to them from the plain-text file with Jinja. This way the variable names can still be found with `grep`, and the file names are free to choose (`docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` of `ansible/ansible-documentation@b16dcb8`, section "Keep vaulted variables safely visible"). With whole-file encryption the password can be rotated with `rekey`; with single-value encryption it cannot (`docs/docsite/rst/vault_guide/vault_encrypting_content.rst` of `ansible/ansible-documentation@b16dcb8`, sections "Advantages and disadvantages of encrypting files" and "Advantages and disadvantages of encrypting variables"). An encrypted file is decrypted whenever it is loaded, so every command that uses this inventory needs the password (footnote of section "Encrypting content with Ansible Vault" in `docs/docsite/rst/vault_guide/vault_encrypting_content.rst` of `ansible/ansible-documentation@b16dcb8`; `docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` of `ansible/ansible-documentation@b16dcb8`, section "Keep vaulted variables safely visible"). Leading and trailing whitespace is stripped after the password file is read, so a trailing newline does not affect the password. If the password file is executable, Ansible runs it and uses its output as the password (`lib/ansible/parsing/vault/__init__.py` of `ansible/ansible@2.21.5`, method `FileVaultSecret._read_file` and function `get_file_vault_secret`).
 
-加密文件的开头与解密后的内容：
+The start of the encrypted file and the decrypted content:
 
 ```text
 $ head -c 26 ../../business/inventory/group_vars/all/vault.yml; echo; ansible-vault view --vault-password-file ../../../tests/example-vault-password.txt ../../business/inventory/group_vars/all/vault.yml
 $ANSIBLE_VAULT;1.1;AES256
 
-# 只放 vault_ 前缀的敏感变量，整个文件用 ansible-vault 加密
+# Only sensitive variables with the vault_ prefix; the whole file is encrypted with ansible-vault
 vault_app_api_token: example-only-token
 ```
 
-不这样做会怎样：如果整个 `main.yml` 都加密，变量名就无法搜索，代码审查也看不到改动（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` 的 “Keep vaulted variables safely visible” 一节）。如果用单值加密，轮换口令时只能逐个值重新加密。
+What happens otherwise: if the whole `main.yml` is encrypted, the variable names cannot be searched, and code review cannot see the changes (`docs/docsite/rst/tips_tricks/ansible_tips_tricks.rst` of `ansible/ansible-documentation@b16dcb8`, section "Keep vaulted variables safely visible"). With single-value encryption, rotating the password means re-encrypting each value one by one.
 
 ### 2.2 no_log
 
-`no_log` 是任务（或 play）级别的关键字，用来隐藏该任务的结果和参数。
+`no_log` is a task-level (or play-level) keyword that hides the result and the arguments of that task.
 
-规则：凡是在参数或结果中用到秘密变量的任务，都加 `no_log: true`，并且只加在单个任务上。示例中没有这样的任务：`deploy` 的输出不含 `app_api_token`。
+Rule: every task that uses a secret variable in its arguments or result gets `no_log: true`, and only on that single task. The example has no such task: the output of `deploy` does not contain `app_api_token`.
 
-出处：`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/reference_appendices/logging.rst` 的 “Protecting sensitive data with no_log” 一节；`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/reference_appendices/faq.rst` 的 “How do I keep secret data in my playbook?” 一节（其中建议只用于单个任务，并说明它不影响 `ANSIBLE_DEBUG` 的输出）。
+Sources: `docs/docsite/rst/reference_appendices/logging.rst` of `ansible/ansible-documentation@b16dcb8`, section "Protecting sensitive data with no_log"; `docs/docsite/rst/reference_appendices/faq.rst` of `ansible/ansible-documentation@b16dcb8`, section "How do I keep secret data in my playbook?" (it recommends using it only on single tasks and says it does not affect the output of `ANSIBLE_DEBUG`).
 
-这样写时的现象：在 `platform/ansible/` 下临时写一个 playbook（`show-token.yml`，不属于样板），用同一个 `debug` 任务输出 `app_api_token`，一次不加 `no_log: true`，一次加上。运行 `ansible-playbook --vault-password-file ../../../tests/example-vault-password.txt show-token.yml` 的输出（节选）：
+What you see with it: write a temporary playbook in `platform/ansible/` (`show-token.yml`, not part of the template) that prints `app_api_token` with the same `debug` task, once without `no_log: true` and once with it. Output of `ansible-playbook --vault-password-file ../../../tests/example-vault-password.txt show-token.yml` (excerpt):
 
 ```text
 TASK [Without no_log] **********************************************************
@@ -242,32 +242,32 @@ TASK [With no_log] *************************************************************
 ok: [web-01]
 ```
 
-限制：`no_log` 只遮住任务结果，遮不住 ansible-core 2.21.5 打印的 `[ERROR]` 行（见 3.2 中秘密变量类型写错时的输出）。
+Limit: `no_log` only hides the task result. It does not hide the `[ERROR]` line that ansible-core 2.21.5 prints (see the output in 3.2 when a secret variable has the wrong type).
 
-### 2.3 Jenkins Ansible 插件如何把 vault 口令交给 ansible-playbook
+### 2.3 How the Jenkins Ansible plugin gives the vault password to ansible-playbook
 
-规则：vault 口令在 Jenkins 凭据库中存为 “Secret text” 凭据（插件也接受 “Secret file”；`TaskRunner.checkCredentials` 按 Secret text 绑定检查）；`TaskRunner.playbook` 给每次 `ansiblePlaybook` 调用加上 `vaultCredentialsId: credentials.vaultCredentialsId`（`examples/platform/jenkins/src/deploy/TaskRunner.groovy` 的 `playbook` 方法；凭据 ID 由 Jenkinsfile 调用 `deployPipeline` 时的 `vaultCredentialsId` 参数传入）；`vaultTmpPath` 保持默认值。
+Rule: the vault password is stored in the Jenkins credential store as a "Secret text" credential (the plugin also accepts "Secret file"; `TaskRunner.checkCredentials` checks it with a Secret text binding). `TaskRunner.playbook` adds `vaultCredentialsId: credentials.vaultCredentialsId` to every `ansiblePlaybook` call (method `playbook` in `examples/platform/jenkins/src/deploy/TaskRunner.groovy`; the credential ID is passed in by the `vaultCredentialsId` parameter when the Jenkinsfile calls `deployPipeline`). `vaultTmpPath` keeps its default value.
 
-机制与出处：**凭据类型**：README 写明可以用 “Secret text” 或 “Secret file”，下拉框里也只列出 `FileCredentials` 和 `StringCredentials`（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `README.md` 的 “Vault Credentials” 一节；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` 中 `DescriptorImpl` 类的 `doFillVaultCredentialsIdItems` 方法）。按 ID 查找凭据时用的是 `StandardCredentials`，所以其他类型的凭据也能找到；但只有上面两类会生成 `--vault-password-file`，其他类型被直接跳过（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` 的 `perform` 方法；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendVaultPasswordFile` 方法）。**写临时文件**：口令文件写在 `vaultTmpPath` 下；没有设置时，写在步骤的工作区。文件名形如 `vault*.password`，权限为 0400。Secret file 是复制文件内容，Secret text 是写入明文口令。0400 不含执行位，所以 ansible 把它当作普通口令文件读取（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendVaultPasswordFile` 方法；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/Utils.java` 的 `createVaultPasswordFile` 方法的 `FileCredentials` 和 `StringCredentials` 两个重载；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `README.md` 的 “Arguments” 一节）。**传递方式**：命令行上只出现口令文件的路径（`--vault-password-file <路径>`），不出现口令本身（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendVaultPasswordFile` 方法；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookInvocation.java` 的 `buildCommandLine` 方法）。**何时删除**：ansible-playbook 进程结束后，插件在 `finally` 中删除口令文件和 SSH 私钥文件，成功和失败时都会执行。删除失败时只打印一条以 `[WARNING] temp file` 开头的警告，不会让构建失败（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `execute` 方法；`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/Utils.java` 的 `deleteTempFile` 方法）。
+Mechanism and sources: **Credential type**: the README says "Secret text" or "Secret file" can be used, and the drop-down list offers only `FileCredentials` and `StringCredentials` (`README.md` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`, section "Vault Credentials"; method `doFillVaultCredentialsIdItems` of class `DescriptorImpl` in `src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`). The credential is looked up by ID as `StandardCredentials`, so credentials of other types are found too; but only the two types above produce `--vault-password-file`, and other types are silently skipped (method `perform` in `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; method `appendVaultPasswordFile` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`). **Writing the temporary file**: the password file is written under `vaultTmpPath`; when that is not set, it is written in the step's workspace. The file name looks like `vault*.password` and the mode is 0400. For Secret file the file content is copied; for Secret text the plain-text password is written. 0400 has no execute bit, so ansible reads it as an ordinary password file (method `appendVaultPasswordFile` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; the `FileCredentials` and `StringCredentials` overloads of method `createVaultPasswordFile` in `src/main/java/org/jenkinsci/plugins/ansible/Utils.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; `README.md` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`, section "Arguments"). **How it is passed**: only the path of the password file appears on the command line (`--vault-password-file <path>`), not the password itself (method `appendVaultPasswordFile` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; method `buildCommandLine` in `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`). **When it is deleted**: after the ansible-playbook process ends, the plugin deletes the password file and the SSH private key file in a `finally` block, on both success and failure. If deletion fails, it only prints a warning that starts with `[WARNING] temp file`; the build does not fail (method `execute` in `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`; method `deleteTempFile` in `src/main/java/org/jenkinsci/plugins/ansible/Utils.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`).
 
-不这样做会怎样：如果选了其他类型的凭据（例如 Username with password），插件不会报错，只是不加 `--vault-password-file`。随后 ansible-playbook 以 `[ERROR]: Attempting to decrypt but no vault secrets found.` 失败，退出码为 4（见 3.1、3.2 中不提供口令时的输出）。
+What happens otherwise: if a credential of another type is chosen (for example Username with password), the plugin reports no error; it just does not add `--vault-password-file`. ansible-playbook then fails with `[ERROR]: Attempting to decrypt but no vault secrets found.` and exit code 4 (see the output without a password in 3.1 and 3.2).
 
-## 3. 校验与审查
+## 3. Validation and review
 
 ### 3.1 ansible-inventory --graph / --list / --host
 
-机制：`ansible-inventory` 一次只能执行 `--list`、`--host`、`--graph` 中的一个。`--graph` 只遍历组和主机，加上 `--vars` 才读取变量。`--list` 和 `--host` 输出每台主机合并后的变量，值中的模板不会被渲染。
+Mechanism: `ansible-inventory` can run only one of `--list`, `--host` and `--graph` at a time. `--graph` only walks groups and hosts; it reads variables only when `--vars` is added. `--list` and `--host` print the merged variables of each host, and templates in the values are not rendered.
 
-出处：`ansible/ansible@2.21.5` 的 `lib/ansible/cli/inventory.py` 的 `InventoryCLI.init_parser` 方法和 `InventoryCLI._graph_group` 方法。
+Sources: `lib/ansible/cli/inventory.py` of `ansible/ansible@2.21.5`, methods `InventoryCLI.init_parser` and `InventoryCLI._graph_group`.
 
-| 命令 | 需要 vault 口令 | 输出 | 用途 |
+| Command | Needs vault password | Output | Use |
 | --- | --- | --- | --- |
-| `--graph [组]` | 否 | 组与主机的树 | 在 CI 和审查中查看组关系 |
-| `--graph --vars` | 是 | 树加变量 | 不用 |
-| `--list` | 是 | 全部组、主机和变量，含解密后的明文 | 只在本地排查时使用 |
-| `--host <主机>` | 是 | 单台主机合并后的变量，含明文 | 只在本地排查时使用 |
+| `--graph [group]` | No | Tree of groups and hosts | View group relationships in CI and in review |
+| `--graph --vars` | Yes | Tree plus variables | Not used |
+| `--list` | Yes | All groups, hosts and variables, including decrypted plain text | Only for local troubleshooting |
+| `--host <host>` | Yes | Merged variables of one host, including plain text | Only for local troubleshooting |
 
-不提供口令时的输出（在 `examples/platform/ansible/` 下运行）：
+Output without a password (run in `examples/platform/ansible/`):
 
 ```text
 $ ansible-inventory --graph
@@ -292,7 +292,7 @@ $ ansible-inventory --graph no_such_group
 [ERROR]: Pattern must be valid group name when using --graph
 ```
 
-以上命令的退出码依次为 0、4、4、4、5。提供口令后，`ansible-inventory --vault-password-file ../../../tests/example-vault-password.txt --list --yaml` 的输出中，每台主机都带有明文的秘密值（节选）：
+The exit codes of these commands are 0, 4, 4, 4 and 5, in that order. With the password, the output of `ansible-inventory --vault-password-file ../../../tests/example-vault-password.txt --list --yaml` shows the secret value in plain text for every host (excerpt):
 
 ```text
             web-01:
@@ -303,14 +303,14 @@ $ ansible-inventory --graph no_such_group
               vault_app_api_token: example-only-token
 ```
 
-不这样做会怎样：在 CI 中带口令运行 `--list` 或 `--host`，秘密会以明文进入构建日志。`--host` 输出中的 `app_api_token` 是未渲染的模板。要看实际值，用 `ansible <主机> -m ansible.builtin.debug -a var=<变量>`。
+What happens otherwise: if `--list` or `--host` runs in CI with the password, the secrets go into the build log in plain text. `app_api_token` in the `--host` output is an unrendered template. To see the actual value, use `ansible <host> -m ansible.builtin.debug -a var=<variable>`.
 
-### 3.2 用 argument_specs + validate_argument_spec 校验每台主机
+### 3.2 Validate every host with argument_specs + validate_argument_spec
 
-规则：`business/deploy/meta/argument_specs.yml` 是主机变量规格的唯一来源；`check-inventory.yml` 读取这份规格，对 `deploy_targets` 中的每台主机运行 `ansible.builtin.validate_argument_spec`。秘密变量只声明 `type: str` 和 `required: true`，不加 `choices`，也不声明为其他类型。不使用 2.20 起提供的 play 级 `validate_argspec`，它目前仍是 tech preview（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_variables_validation.rst` 的 “Play Argument Validation” 一节）。
+Rule: `business/deploy/meta/argument_specs.yml` is the single source of the host variable specification. `check-inventory.yml` reads this specification and runs `ansible.builtin.validate_argument_spec` on every host in `deploy_targets`. Secret variables are declared only with `type: str` and `required: true`; they get no `choices` and are not declared as any other type. Do not use the play-level `validate_argspec` available since 2.20; it is still a tech preview (`docs/docsite/rst/playbook_guide/playbooks_variables_validation.rst` of `ansible/ansible-documentation@b16dcb8`, section "Play Argument Validation").
 
 ```yaml
-# examples/platform/ansible/check-inventory.yml（去掉注释）
+# examples/platform/ansible/check-inventory.yml (comments removed)
 - name: Check inventory
   hosts: deploy_targets
   gather_facts: false
@@ -322,9 +322,9 @@ $ ansible-inventory --graph no_such_group
         argument_spec: "{{ deploy_spec.argument_specs.main.options }}"
 ```
 
-机制：role 有 argument_specs 时，Ansible 会在 role 执行前自动插入一个带 `always` 标签的校验任务。因此运行 `deploy.yml` 时，同一份规格还会再校验一次（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Role argument validation” 一节；`ansible/ansible@2.21.5` 的 `lib/ansible/playbook/role/__init__.py` 的 `Role._create_validation_task` 方法）。`validate_argument_spec` 的 action 插件声明自己不需要连接主机。它从主机变量中取出 spec 列出的变量，先渲染模板再校验，所以 vault 引用会被解密（`ansible/ansible@2.21.5` 的 `lib/ansible/plugins/action/validate_argument_spec.py` 中 `ActionModule` 类的 `_requires_connection` 属性、`ActionModule.get_args_from_task_vars` 方法和 `ActionModule.run` 方法）。模块文档的示例也是用 `ansible.builtin.file` lookup 读文件，再经 `from_yaml` 解析得到规格（`ansible/ansible@2.21.5` 的 `lib/ansible/modules/validate_argument_spec.py` 的模块级字符串 `EXAMPLES`）。
+Mechanism: when a role has argument_specs, Ansible automatically inserts a validation task with the `always` tag before the role runs. So when `deploy.yml` runs, the same specification is checked again (`docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` of `ansible/ansible-documentation@b16dcb8`, section "Role argument validation"; `lib/ansible/playbook/role/__init__.py` of `ansible/ansible@2.21.5`, method `Role._create_validation_task`). The action plugin of `validate_argument_spec` declares that it does not need a connection to the host. It takes the variables listed in the spec from the host variables and renders templates before validating, so vault references are decrypted (attribute `_requires_connection` of class `ActionModule`, method `ActionModule.get_args_from_task_vars` and method `ActionModule.run` in `lib/ansible/plugins/action/validate_argument_spec.py` of `ansible/ansible@2.21.5`). The example in the module documentation also reads the file with the `ansible.builtin.file` lookup and parses it with `from_yaml` to get the specification (`lib/ansible/modules/validate_argument_spec.py` of `ansible/ansible@2.21.5`, module-level string `EXAMPLES`).
 
-全部通过时退出码为 0。主机地址都在文档保留网段 192.0.2.0/24 内、没有真实主机，所有主机仍然返回 `ok`，可见校验不连接主机；从工作区根目录（`examples/`）以 `ANSIBLE_CONFIG` 运行 `platform/ansible/check-inventory.yml`，结果相同。输出（节选）：
+When everything passes, the exit code is 0. The host addresses are all in the documentation range 192.0.2.0/24 and there are no real hosts, yet every host still returns `ok`, which shows that the validation does not connect to the hosts. Running `platform/ansible/check-inventory.yml` from the workspace root (`examples/`) with `ANSIBLE_CONFIG` gives the same result. Output (excerpt):
 
 ```text
 $ ansible-playbook --vault-password-file ../../../tests/example-vault-password.txt check-inventory.yml
@@ -335,7 +335,7 @@ ok: [worker-02]
 ok: [worker-01]
 ```
 
-有问题时一次列出全部问题。例如 `group_vars/api.yml` 中没有 `app_version`、`group_vars/worker.yml` 中的 `app_port` 是 `nine-thousand`、`host_vars/web-01.yml` 中有 `app_max_connections: unlimited` 时，退出码为 2，输出（节选）：
+When there are problems, all of them are listed in one run. For example, when `group_vars/api.yml` has no `app_version`, `app_port` in `group_vars/worker.yml` is `nine-thousand`, and `host_vars/web-01.yml` has `app_max_connections: unlimited`, the exit code is 2 and the output is (excerpt):
 
 ```text
 fatal: [web-01]: FAILED! => {"argument_errors": ["argument 'app_max_connections' is of type str and we were unable to convert to int: \"'unlimited'\" cannot be converted to an int"]
@@ -345,9 +345,9 @@ fatal: [worker-02]: FAILED! => {"argument_errors": ["argument 'app_port' is of t
 web-02                     : ok=1    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
 ```
 
-不提供口令运行 `ansible-playbook check-inventory.yml`，退出码为 4，报错 `[ERROR]: Attempting to decrypt but no vault secrets found.`。`main.yml` 里的引用写错成 `vault_app_api_tokn` 时，校验报未定义：`fatal: [web-01]: FAILED! => {"changed": false, "msg": "Task failed: 'vault_app_api_tokn' is undefined"}`。
+Running `ansible-playbook check-inventory.yml` without a password exits with code 4 and the error `[ERROR]: Attempting to decrypt but no vault secrets found.`. When the reference in `main.yml` is mistyped as `vault_app_api_tokn`, validation reports it as undefined: `fatal: [web-01]: FAILED! => {"changed": false, "msg": "Task failed: 'vault_app_api_tokn' is undefined"}`.
 
-“秘密变量只声明 `type: str`”的依据：role argument_specs 的格式说明中没有列出 `no_log` 字段（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Specification format” 一节）。这样写时的现象：把 `app_api_token` 的规格改成 `type: int` 并加上 `no_log: true`，在校验任务上也加 `no_log: true`，运行 `ansible-playbook --vault-password-file ../../../tests/example-vault-password.txt check-inventory.yml --limit web-01`，退出码为 2。任务结果被遮住了，但 `[ERROR]` 行仍然打印出明文（节选）：
+Why "secret variables are declared only with `type: str`": the format description of role argument_specs does not list a `no_log` field (`docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` of `ansible/ansible-documentation@b16dcb8`, section "Specification format"). What you see otherwise: change the spec of `app_api_token` to `type: int` and add `no_log: true`, also add `no_log: true` to the validation task, and run `ansible-playbook --vault-password-file ../../../tests/example-vault-password.txt check-inventory.yml --limit web-01`. The exit code is 2. The task result is hidden, but the `[ERROR]` line still prints the plain text (excerpt):
 
 ```text
 [ERROR]: Task failed: Action failed: Validation of arguments failed:
@@ -355,19 +355,19 @@ argument 'app_api_token' is of type str and we were unable to convert to int: "'
 fatal: [web-01]: FAILED! => {"censored": "the output has been hidden due to the fact that 'no_log: true' was specified for this result", "changed": false}
 ```
 
-插件会把 ansible-playbook 的 stdout 和 stderr 都写进构建日志（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` 的 `execute` 方法）。
+The plugin writes both stdout and stderr of ansible-playbook to the build log (method `execute` in `src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` of `jenkinsci/ansible-plugin@635.v34b_48e979c86`).
 
-不这样做会怎样：不做这一步，变量缺失或类型错误要等部署到对应主机组时才暴露，而且只有被选中的组会暴露出来。秘密变量如果用了 `choices` 或非字符串类型，一旦校验失败，口令就会出现在 Jenkins 控制台里。
+What happens otherwise: without this step, a missing variable or a wrong type only shows up when the corresponding host group is deployed, and only for the groups that were selected. If a secret variable uses `choices` or a non-string type, the secret appears in the Jenkins console as soon as validation fails.
 
 ### 3.3 ansible-lint
 
-规则：在 `examples/` 下运行 `ansible-lint --offline --profile production`，同时设置 `ANSIBLE_CONFIG` 和 `ANSIBLE_VAULT_PASSWORD_FILE`（`tests/test_inventory.py` 的 `test_ansible_lint_passes_with_production_profile`，两个环境变量由该测试自己设置）。`examples/.ansible-lint` 有两部分：`run-task.yml` 需要 `task_role` 和 `task_hosts` 两个变量，`extra_vars` 为它们提供示例值；`business/tasks/` 下各文件的路径中都有名为 `tasks` 的目录，ansible-lint 默认把这样的文件都当作任务列表（`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/config.py` 的模块级常量 `DEFAULT_KINDS`），`kinds:` 为 `meta/argument_specs.yml`、`meta/task.yml`、`defaults/*.yml`、`tasks/*.yml` 分别指定类型。
+Rule: run `ansible-lint --offline --profile production` in `examples/`, with both `ANSIBLE_CONFIG` and `ANSIBLE_VAULT_PASSWORD_FILE` set (`test_ansible_lint_passes_with_production_profile` in `tests/test_inventory.py`; the test sets both environment variables itself). `examples/.ansible-lint` has two parts. `run-task.yml` needs the two variables `task_role` and `task_hosts`, and `extra_vars` gives them example values. Every file under `business/tasks/` has a directory named `tasks` in its path, and by default ansible-lint treats all such files as task lists (`src/ansiblelint/config.py` of `ansible/ansible-lint@26.10.1`, module-level constant `DEFAULT_KINDS`); `kinds:` sets the kind for `meta/argument_specs.yml`, `meta/task.yml`, `defaults/*.yml` and `tasks/*.yml` separately.
 
-机制与出处：`--offline` 表示不安装 `requirements.yml` 中的依赖，也不刷新 schema。`--profile` 选择规则集，`production` 是最严格的一档（`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/cli.py` 的 `get_cli_parser` 函数；`ansible/ansible-lint@26.10.1` 的 `docs/profiles.md` 的 “Profiles” 一节和 “production” 一节）。ansible-lint 从当前目录读取 `.ansible-lint`。它内部对每个 playbook 运行 `ansible-playbook --syntax-check`；配置了 `extra_vars` 时会一并传入（`ansible/ansible-lint@26.10.1` 的 `docs/configuring.md` 的 “Using local configuration files” 一节；`ansible/ansible-lint@26.10.1` 的 `docs/usage.md` 的 “Vaults” 一节；`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/runner.py` 的 `Runner._get_ansible_syntax_check_matches` 方法）。口令来源与 ansible-playbook 相同（例如 `ANSIBLE_VAULT_PASSWORD_FILE`），不支持交互输入。如果配置的口令文件是可执行文件，那么检查不受信任的内容时，可能执行其中的代码（`ansible/ansible-lint@26.10.1` 的 `docs/usage.md` 的 “Vaults” 一节）。
+Mechanism and sources: `--offline` means the dependencies in `requirements.yml` are not installed and schemas are not refreshed. `--profile` selects a rule set, and `production` is the strictest one (`src/ansiblelint/cli.py` of `ansible/ansible-lint@26.10.1`, function `get_cli_parser`; `docs/profiles.md` of `ansible/ansible-lint@26.10.1`, sections "Profiles" and "production"). ansible-lint reads `.ansible-lint` from the current directory. Internally it runs `ansible-playbook --syntax-check` on each playbook, and passes `extra_vars` along when they are configured (`docs/configuring.md` of `ansible/ansible-lint@26.10.1`, section "Using local configuration files"; `docs/usage.md` of `ansible/ansible-lint@26.10.1`, section "Vaults"; `src/ansiblelint/runner.py` of `ansible/ansible-lint@26.10.1`, method `Runner._get_ansible_syntax_check_matches`). The password comes from the same places as for ansible-playbook (for example `ANSIBLE_VAULT_PASSWORD_FILE`); interactive input is not supported. If the configured password file is executable, checking untrusted content may run code from it (`docs/usage.md` of `ansible/ansible-lint@26.10.1`, section "Vaults").
 
-以下命令在 `examples/` 这一层运行，前面都带 `ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg`。
+The following commands run at the `examples/` level, each prefixed with `ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg`.
 
-1. 不提供口令时，`vault.yml` 被跳过，只留下警告，退出码为 0：
+1. Without a password, `vault.yml` is skipped with only a warning, and the exit code is 0:
 
    ```text
    $ ansible-lint --offline --profile production
@@ -376,48 +376,48 @@ fatal: [web-01]: FAILED! => {"censored": "the output has been hidden due to the 
 
    Passed: 0 failure(s), 0 warning(s) in <n> files processed of <m> encountered. Profile 'production' was required, and it passed.
    ```
-2. 加上 `ANSIBLE_VAULT_PASSWORD_FILE=$PWD/../tests/example-vault-password.txt` 后，警告消失，检查同样通过。
-3. `vault.yml` 中有 `vaultBackupKey: example-only-value` 这样不合规则的名字时，不提供口令，结果仍是 `Passed`，退出码为 0；提供口令后，退出码为 2：
+2. With `ANSIBLE_VAULT_PASSWORD_FILE=$PWD/../tests/example-vault-password.txt` added, the warnings go away and the check still passes.
+3. When `vault.yml` contains a name that breaks the rule, such as `vaultBackupKey: example-only-value`, the result without a password is still `Passed` with exit code 0; with the password, the exit code is 2:
 
    ```text
    var-naming[pattern]: Variables names should match ^[a-z_][a-z0-9_]*$ regex. (vaultBackupKey) (vars: vaultBackupKey)
    business/inventory/group_vars/all/vault.yml:3:1
    ```
-4. 没有 `.ansible-lint` 时，退出码为 2：`syntax-check[specific]: Error processing keyword 'name': 'task_role' is undefined`（`platform/ansible/run-task.yml:4:9`）；`business/tasks/*/meta/` 下的每个文件被当作任务列表，各报一条 `schema[tasks]`。
+4. Without `.ansible-lint`, the exit code is 2: `syntax-check[specific]: Error processing keyword 'name': 'task_role' is undefined` (`platform/ansible/run-task.yml:4:9`); every file under `business/tasks/*/meta/` is treated as a task list and gets its own `schema[tasks]` error.
 
-不这样做会怎样：不提供口令，`vault.yml` 中写错的变量名不会被发现。没有 `.ansible-lint` 中的 `extra_vars`，`run-task.yml` 通不过语法检查；没有 `kinds:`，`business/tasks/*/meta/` 下的文件按任务列表的 schema 检查而失败。
+What happens otherwise: without the password, a wrong variable name in `vault.yml` is not found. Without the `extra_vars` in `.ansible-lint`, `run-task.yml` fails the syntax check; without `kinds:`, the files under `business/tasks/*/meta/` are checked against the task list schema and fail.
 
-### 3.4 在 CI 中运行
+### 3.4 Running in CI
 
-示例的自动化测试（`tests/`）承担 inventory 的 CI 检查。它们按 Jenkins 的方式运行 Ansible：`ANSIBLE_CONFIG` 指向 `examples/platform/ansible/ansible.cfg`，口令来自 `ANSIBLE_VAULT_PASSWORD_FILE`，任务参数通过 `-e @file` 传入（`tests/conftest.py` 的 `run_ansible`）。与 inventory 相关的检查：
+The example's automated tests (`tests/`) do the CI checks of the inventory. They run Ansible the Jenkins way: `ANSIBLE_CONFIG` points at `examples/platform/ansible/ansible.cfg`, the password comes from `ANSIBLE_VAULT_PASSWORD_FILE`, and task parameters are passed with `-e @file` (`run_ansible` in `tests/conftest.py`). The checks related to the inventory:
 
-1. 不提供口令运行 `ansible-inventory --graph deploy_targets`，断言输出的组树（`test_deploy_targets_graph_lists_every_group_with_its_hosts_without_vault_password`）；
-2. 不提供口令运行 `ansible-inventory --list`，必须失败（`test_listing_variables_without_vault_password_fails`）；
-3. `ansible-playbook check-inventory.yml` 全部通过；在改坏的副本上，一次报告所有问题（`test_check_inventory_passes_for_every_deploy_target`、`test_check_inventory_reports_every_broken_host_in_one_run`）；
-4. 运行 `ansible-lint --offline --profile production`（`test_ansible_lint_passes_with_production_profile`）。
+1. Run `ansible-inventory --graph deploy_targets` without a password and assert the group tree in the output (`test_deploy_targets_graph_lists_every_group_with_its_hosts_without_vault_password`);
+2. Run `ansible-inventory --list` without a password; it must fail (`test_listing_variables_without_vault_password_fails`);
+3. `ansible-playbook check-inventory.yml` passes for all hosts; on a broken copy, it reports all problems in one run (`test_check_inventory_passes_for_every_deploy_target`, `test_check_inventory_reports_every_broken_host_in_one_run`);
+4. Run `ansible-lint --offline --profile production` (`test_ansible_lint_passes_with_production_profile`).
 
-测试中用 `--host` 读取变量只是为了断言，不会打印输出。在 CI 日志里，不要运行 `ansible-inventory --list` 或 `--host` 并输出结果（见 3.1）。
+The tests use `--host` to read variables only for assertions and do not print the output. In CI logs, do not run `ansible-inventory --list` or `--host` and print the result (see 3.1).
 
-## 常用命令
+## Common commands
 
-以下命令在 `examples/platform/ansible/` 目录下执行（ansible-lint 除外，见注释）。从其他目录执行时，先设置 `ANSIBLE_CONFIG=<路径>/examples/platform/ansible/ansible.cfg`。需要口令的命令这里写的是 `--ask-vault-pass`（交互输入）。在 CI 中，口令由插件通过 `--vault-password-file` 传入，或者通过环境变量 `ANSIBLE_VAULT_PASSWORD_FILE` 提供。
+Run the following commands in `examples/platform/ansible/` (except ansible-lint, see the comment). When running from another directory, first set `ANSIBLE_CONFIG=<path>/examples/platform/ansible/ansible.cfg`. Commands that need the password are written here with `--ask-vault-pass` (interactive input). In CI, the password is passed by the plugin with `--vault-password-file`, or provided through the environment variable `ANSIBLE_VAULT_PASSWORD_FILE`.
 
 ```bash
-# 组与主机的树（不需要口令）
+# Tree of groups and hosts (no password needed)
 ansible-inventory --graph deploy_targets
-# 单台主机合并后的变量（需要口令，输出含明文，仅本地使用）
+# Merged variables of one host (needs the password; output contains plain text; local use only)
 ansible-inventory --ask-vault-pass --host web-02
-# 某个变量的实际值（模板已渲染，需要口令）
+# Actual value of one variable (template rendered; needs the password)
 ansible web-02 --ask-vault-pass -m ansible.builtin.debug -a var=app_max_connections
-# 实际生效的配置文件、inventory 与 roles 路径
+# Configuration file, inventory and roles paths actually in effect
 ansible-config dump --only-changed
-# 校验全部部署目标的变量（需要口令，不连接主机）
+# Validate the variables of all deploy targets (needs the password; does not connect to hosts)
 ansible-playbook --ask-vault-pass check-inventory.yml
 
-# 静态检查（在 examples/ 下执行，它从当前目录读取 .ansible-lint；口令通过环境变量提供）
-ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ANSIBLE_VAULT_PASSWORD_FILE=<口令文件> ansible-lint --offline --profile production
+# Static check (run in examples/; it reads .ansible-lint from the current directory; the password comes from an environment variable)
+ANSIBLE_CONFIG=$PWD/platform/ansible/ansible.cfg ANSIBLE_VAULT_PASSWORD_FILE=<password file> ansible-lint --offline --profile production
 
-# 编辑、查看、轮换加密文件
+# Edit, view and rotate the password of the encrypted file
 ansible-vault edit ../../business/inventory/group_vars/all/vault.yml
 ansible-vault view ../../business/inventory/group_vars/all/vault.yml
 ansible-vault rekey ../../business/inventory/group_vars/all/vault.yml
