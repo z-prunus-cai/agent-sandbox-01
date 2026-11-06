@@ -6,7 +6,7 @@ The screenshots come from the local Jenkins used by the tests (started by `tests
 
 ## 1. Start the build
 
-On the **Build with Parameters** page, check `SKIP_DEPLOY`, check `task_d` among the pre-deploy tasks, fill in `task_d_items` in the form that then appears, and click **Build**. When triggering through the API, setting `DEPLOY_PLAN` to `{skip_deploy: true, pre: [{name: task_d, params: {task_d_items: 'restart cache, rotate logs'}}]}` has the same effect.
+On the **Build with Parameters** page, check `SKIP_DEPLOY`, check `PRE_SHOW_MORE` and then `task_d` in the less-used pre-deploy tasks (`task_d` has `menu: more`), fill in `task_d_items` in the form that then appears, and click **Build**. When triggering through the API, setting `DEPLOY_PLAN` to `{skip_deploy: true, pre: [{name: task_d, params: {task_d_items: 'restart cache, rotate logs'}}]}` has the same effect.
 
 ![Start the build](review-before-run/01-build-with-parameters.png)
 
