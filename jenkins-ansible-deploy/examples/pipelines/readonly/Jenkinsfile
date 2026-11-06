@@ -1,4 +1,4 @@
-// The read-only job: only tasks whose meta/task.yml says access: read, and no deployment. Needs the plugins listed in BRIEF.md.
+// The read-only job: only tasks whose meta/task.yml says access: read, and no deployment.
 // The engine is loaded from the commit this file came from, so one build never mixes two revisions.
 String commit
 node {

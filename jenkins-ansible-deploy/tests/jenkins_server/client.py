@@ -1,4 +1,4 @@
-"""Minimal Jenkins REST client for the integration tests and the setup script (standard library only)."""
+"""Minimal Jenkins REST client for the integration tests (standard library only)."""
 import http.cookiejar
 import json
 import time
@@ -49,6 +49,20 @@ class Jenkins:
             return self.request('/api/json')[0] == 200
         except OSError:
             return False
+
+    def restart(self, timeout_seconds=300):
+        """Restart Jenkins and wait until it answers again; the new session needs a new CSRF crumb."""
+        self.request('/restart', b'')
+        deadline = time.time() + timeout_seconds
+        while self.is_ready():
+            if time.time() > deadline:
+                raise TimeoutError('Jenkins did not go down for the restart')
+            time.sleep(1)
+        while not self.is_ready():
+            if time.time() > deadline:
+                raise TimeoutError('Jenkins did not come back after the restart')
+            time.sleep(2)
+        self._crumb_header = None
 
     def run_script(self, groovy):
         """Run a Groovy script in the script console and return its output."""

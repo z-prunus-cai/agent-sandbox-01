@@ -2,12 +2,10 @@ package deploy
 
 import com.cloudbees.groovy.cps.NonCPS
 
-/**
- * The Active Choices parameter page. Its scripts run when the page opens and cannot see the workspace, so groups and
- * tasks are embedded as literals. The plugin turns full-width punctuation and @ = + " into HTML entities in returned
- * HTML; a form shows them decoded, a checkbox label shows the entity, so checkbox labels stay ASCII.
- */
+// Active Choices scripts run when the page opens, without the workspace, so data goes in as literals. The plugin turns
+// full-width punctuation and @ = + " into entities, which a checkbox label shows as written: labels use half-width punctuation.
 class ActiveChoicesForm {
+    private static final Map<String, String> JSON_ESCAPES = ['"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t']
 
     @NonCPS
     static String groupsScript(Map<String, List<String>> groups) {
@@ -43,20 +41,20 @@ return ${literal(labels(tasks))}
     }
 
     /**
-     * The plugin submits every input named "value" joined by commas, so each input follows a hidden marker
-     * "@@task.field"; splitting on the markers keeps commas inside values. The plugin's sanitizer drops fieldset,
-     * legend, label, title and aria-* attributes, so groups are divs and "required" is written out.
+     * Each input follows a hidden marker "@@<form key>": the plugin joins all inputs named "value" with commas. The
+     * sanitizer drops fieldset, legend, label, title and aria-*, so groups are divs and "required" is written out.
      */
     @NonCPS
     static String optionsScript(List<TaskDefinition> tasks, List<String> referencedParameters) {
         List<Map> data = tasks.collect { TaskDefinition task ->
-            [name: task.name, description: task.description, policy: task.policy.label, order: task.order,
-             params: task.parameters.collect { [name: it.name, type: it.type.label, required: it.required, description: it.description,
-                                                choices: it.choices, default: it.defaultValue] }]
+            [name     : task.name, description: task.description, policy: task.policy.label, order: task.order,
+             policyKey: FormField.POLICY.key(task.name), orderKey: FormField.ORDER.key(task.name),
+             params   : task.parameters.collect { ActiveChoicesForm.input(task, it) }]
         }
         return """def tasks = ${literal(data)}
 def policies = ${literal(FailurePolicy.values().collect { it.label })}
 def escapeHtml = { value -> groovy.xml.XmlUtil.escapeXml(String.valueOf(value == null ? '' : value)) }
+def marker = { key -> '<input type="hidden" name="value" value="@@' + escapeHtml(key) + '">' }
 def select = { List options, Object current ->
     '<select name="value">' + options.collect { option ->
         '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
@@ -71,23 +69,18 @@ def html = []
 chosen.each { task ->
     html << '<div style="border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;margin:0 0 10px 0">'
     html << '<div style="margin-bottom:6px"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table>'
-    html << '<tr><td style="padding:3px 12px 3px 0">On failure</td><td>'
-    html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.policy">' + select(policies, task.policy)
-    html << ' abort: stop the pipeline; warn: mark unstable and continue</td></tr>'
-    html << '<tr><td style="padding:3px 12px 3px 0">Order</td><td>'
-    html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.order">'
+    html << '<tr><td style="padding:3px 12px 3px 0">Order</td><td>' + marker(task.orderKey)
     html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="width:120px">'
     html << ' smaller numbers run first in this phase</td></tr>'
+    html << '<tr><td style="padding:3px 12px 3px 0">On failure</td><td>' + marker(task.policyKey) + select(policies, task.policy)
+    html << ' abort: stop the pipeline; warn: mark unstable and continue</td></tr>'
     task.params.each { param ->
-        html << '<tr><td style="padding:3px 12px 3px 0">' + escapeHtml(param.name) + (param.required ? ' (required)' : '') + '</td><td>'
-        html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.' + escapeHtml(param.name) + '">'
+        html << '<tr><td style="padding:3px 12px 3px 0">' + escapeHtml(param.label) + '</td><td>' + marker(param.key)
         if (param.choices) {
             html << select(param.choices, param.default)
-        } else if (param.type == 'bool') {
-            html << select(['true', 'false'], param.default == true)
         } else {
-            html << '<input type="' + (param.type == 'int' ? 'number' : 'text') + '" name="value" value="' + escapeHtml(param.default) + '"' +
-                    ' placeholder="' + escapeHtml(param.name + (param.required ? ' (required)' : '')) + '" class="jenkins-input" style="width:320px">'
+            html << '<input type="' + param.inputType + '" name="value" value="' + escapeHtml(param.default) + '"' +
+                    ' placeholder="' + escapeHtml(param.label) + '" class="jenkins-input" style="width:320px">'
         }
         html << ' ' + escapeHtml(param.description) + '</td></tr>'
     }
@@ -95,6 +88,19 @@ chosen.each { task ->
 }
 return html.join('')
 """
+    }
+
+    /** How the options form shows one parameter, decided here so the sandboxed script compares no type names. */
+    @NonCPS
+    static Map input(TaskDefinition task, ParameterDefinition parameter) {
+        Map field = [key: FormField.key(task.name, parameter.name), label: parameter.name + (parameter.required ? ' (required)' : ''),
+                     description: parameter.description, choices: parameter.choices, default: parameter.defaultValue, inputType: 'text']
+        switch (parameter.type) {
+            case ParameterType.STRING: return field
+            case ParameterType.INTEGER: return field + [inputType: 'number']
+            case ParameterType.BOOLEAN: return field + [choices: ['true', 'false'], default: String.valueOf(parameter.defaultValue == true)]
+        }
+        throw new IllegalStateException(String.valueOf(parameter.type))
     }
 
     /**
@@ -109,7 +115,7 @@ return html.join('')
             if (!part && index == 0) return
             int comma = part.indexOf(',')
             String key = comma > 0 ? part.substring(0, comma) : part
-            if (!(key ==~ /[^.]+\.[^.]+/)) {
+            if (FormField.split(key) == null) {
                 errors << "form field '${key}' is not valid: a value must not contain ,@@".toString()
                 return
             }
@@ -121,9 +127,9 @@ return html.join('')
 
     @NonCPS
     static String jsonUnescape(String text) {
-        Map simple = ['"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t']
+        Map<String, String> escapes = JSON_ESCAPES
         return text.replaceAll(/\\(u[0-9a-fA-F]{4}|.)/) { String all, String code ->
-            code.length() == 5 ? String.valueOf((char) Integer.parseInt(code.substring(1), 16)) : (simple[code] ?: all)
+            code.length() == 5 ? String.valueOf((char) Integer.parseInt(code.substring(1), 16)) : (escapes[code] ?: all)
         }
     }
 

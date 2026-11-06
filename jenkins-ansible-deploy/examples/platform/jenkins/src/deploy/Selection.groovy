@@ -14,13 +14,13 @@ class Selection {
         if (skipDeploy) raw.skip_deploy = true
         chosen.each { Phase phase, Map selection ->
             List<String> names = selection.names
-            selection.values.keySet().findAll { !(it.tokenize('.')[0] in names) }.each {
+            selection.values.keySet().findAll { !(FormField.split(it)?.task in names) }.each {
                 errors << "form field ${it} belongs to a task that is not selected".toString()
             }
             // a phase runs by the order chosen on the form, else catalog order; unknown names go last for PlanParser to report
             List<TaskDefinition> known = catalog.tasks.findAll { it.name in names }
             Map<String, Integer> chosenOrder = known.collectEntries { TaskDefinition task ->
-                [(task.name): Selection.order(task, selection.values["${task.name}.order".toString()], errors)]
+                [(task.name): Selection.order(task, selection.values[FormField.ORDER.key(task.name)], errors)]
             }
             List<TaskDefinition> sorted = [] + known
             sorted.sort { chosenOrder[it.name] }
@@ -36,16 +36,25 @@ class Selection {
         if (task == null) return entry
         Map params = [:]
         values.each { String key, String value ->
-            if (!key.startsWith(name + '.')) return
-            String field = key.substring(name.length() + 1)
-            if (field == 'policy') {
-                entry.policy = value
+            Map<String, String> parts = FormField.split(key)
+            if (parts?.task != name) return
+            FormField field = FormField.of(parts.field)
+            if (field == null) {
+                ParameterDefinition parameter = task.parameter(parts.field)
+                Object converted = parameter == null ? value : Values.fromForm(value, parameter)
+                if (converted != null) params[parts.field] = converted
                 return
             }
-            if (field == 'order') return
-            ParameterDefinition parameter = task.parameter(field)
-            Object converted = parameter == null ? value : Values.fromForm(value, parameter)
-            if (converted != null) params[field] = converted
+            switch (field) {
+                case FormField.POLICY:
+                    entry.policy = value
+                    break
+                case FormField.ORDER:
+                    // Selection.draft has already sorted by it
+                    break
+                default:
+                    throw new IllegalStateException(field.name())
+            }
         }
         if (params) entry.params = params
         return entry
@@ -56,7 +65,7 @@ class Selection {
     static int order(TaskDefinition task, String value, List<String> errors) {
         if (value == null || value.trim() == '') return task.order
         if (value.trim().isInteger()) return value.trim().toInteger()
-        errors << "form field ${task.name}.order must be an integer, got '${value}'".toString()
+        errors << "form field ${FormField.ORDER.key(task.name)} must be an integer, got '${value}'".toString()
         return task.order
     }
 

@@ -1,6 +1,5 @@
-# The engine runs a reviewed task twice: task_review_mode is generate, then execute after confirmation.
-# Only the file at task_review_file passes from one run to the next, and the engine refuses to execute
-# a file whose checksum differs from the reviewed one.
+# Runs twice: generate writes the file named by the engine, execute reads it after confirmation. Only that file
+# carries over, and the engine refuses one whose checksum differs from the reviewed file.
 - name: Write the changes to review
   ansible.builtin.copy:
     dest: "{{ task_review_file }}"

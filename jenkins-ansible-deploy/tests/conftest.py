@@ -13,11 +13,17 @@ TESTS = Path(__file__).resolve().parent
 EXAMPLES = TESTS.parent / 'examples'
 PLAYBOOKS = EXAMPLES / 'platform' / 'ansible'
 TASKS = EXAMPLES / 'business' / 'tasks'
+ENGINE_SOURCE = EXAMPLES / 'platform' / 'jenkins' / 'src' / 'deploy'
 VAULT_PASSWORD_FILE = TESTS / 'example-vault-password.txt'
 READ_WRITE = 'pipelines/readwrite/Jenkinsfile'
 READ_ONLY = 'pipelines/readonly/Jenkinsfile'
 # the basic form has no Jenkinsfile of its own in the examples: the tests derive one from the read-write job
 BASIC = 'pipelines/basic/Jenkinsfile'
+
+
+def limit(name):
+    """A constant of the engine's Limits.groovy, so tests and engine share one value."""
+    return int(re.search(rf'{name} = (\d+)', (ENGINE_SOURCE / 'Limits.groovy').read_text()).group(1))
 
 
 def task_metadata(name):
@@ -87,10 +93,13 @@ class Repository:
                               check=True, capture_output=True, text=True).stdout.strip()
 
     def commit(self, changes, message):
-        """Write {relative path: text} and commit; returns the commit to reset to afterwards."""
+        """Write {relative path: text, or None to delete} and commit; returns the commit to reset to afterwards."""
         head = self.git('rev-parse', 'HEAD')
         for relative, text in changes.items():
             target = self.path / relative
+            if text is None:
+                target.unlink()
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text)
         self.git('add', '-A')

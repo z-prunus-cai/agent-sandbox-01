@@ -25,6 +25,23 @@ class TaskRunner implements Serializable {
     private void run(PlannedTask planned, List<String> targets) {
         TaskResult result = TaskResult.of(planned)
         results << result
+        try {
+            runSteps(planned, targets, result)
+        } catch (InterruptedException e) {
+            // aborted while waiting for an executor, before any step recorded how the task ended
+            if (result.outcome == null) result.outcome = TaskOutcome.ABORTED
+            throw e
+        } catch (Exception e) {
+            // a step outside the playbook failed, such as unstash or verifySha256 before the confirmed run
+            if (result.outcome == null) {
+                result.outcome = TaskOutcome.ERROR
+                result.message = e.toString()
+            }
+            throw e
+        }
+    }
+
+    private void runSteps(PlannedTask planned, List<String> targets, TaskResult result) {
         if (planned.task.reviewTimeoutMinutes == null) {
             script.node {
                 restoreSource()
@@ -64,6 +81,8 @@ class TaskRunner implements Serializable {
             throw e
         }
         script.echo "[deploy] ${planned.id} confirmed by ${result.reviewer}"
+        // the generate run passed; only the confirmed run decides how the task ended
+        result.outcome = null
         script.node {
             restoreSource()
             script.unstash(stashName)
@@ -86,11 +105,13 @@ class TaskRunner implements Serializable {
         if (planned.task.runOn == RunLocation.TARGETS) args.limit = targets.join(':')
         script.echo "[deploy] ${planned.id} (${planned.task.description}) policy=${planned.policy.label} params=${planned.params}"
         long started = System.currentTimeMillis()
+        boolean passed = false
         String failure = null
         try {
             script.timeout(time: planned.timeoutMinutes, unit: 'MINUTES') {
                 playbook(args)
             }
+            passed = true
         } catch (hudson.AbortException e) {
             failure = e.message
         } catch (InterruptedException e) {
@@ -106,7 +127,7 @@ class TaskRunner implements Serializable {
             finish(result, started, TaskOutcome.ERROR, e.toString())
             throw e
         }
-        if (failure == null) {
+        if (passed) {
             finish(result, started, TaskOutcome.PASSED, null)
             return true
         }
@@ -118,12 +139,12 @@ class TaskRunner implements Serializable {
         switch (planned.policy) {
             case FailurePolicy.ABORT:
                 script.error "[deploy] task ${planned.id} failed: ${result.message} (abort: stopping the pipeline)"
-                break
+                return false
             case FailurePolicy.WARN:
                 script.unstable "[deploy] task ${planned.id} failed: ${result.message} (warn: continuing)"
-                break
+                return false
         }
-        return false
+        throw new IllegalStateException(planned.policy.name())
     }
 
     void deploy(List<String> targets) {

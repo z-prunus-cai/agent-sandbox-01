@@ -35,7 +35,7 @@ Jenkinsfile 从 git 加载，运行在 Groovy 沙箱中；引擎作为共享库�
 pip install ansible-core==2.21.5 ansible-lint==26.10.1 pytest==9.1.1 playwright==1.64.0 PyYAML==6.0.1 cryptography==50.0.1
 python3 -m playwright install chromium         # 不能下载浏览器的机器上改为 export CHROMIUM_PATH=<已安装的 chromium>
 python3 -m pytest tests                       # 全部；第一次运行下载 Jenkins 和插件
-python3 -m pytest tests -m 'not jenkins'      # 只运行不需要 Jenkins 的测试，约 1 分钟
+python3 -m pytest tests -m 'not jenkins'      # 只运行不需要 Jenkins 的测试
 ```
 
 需要 `java`（21）和 `git` 在 `PATH` 中。测试自己在一个空闲端口上启动只监听 127.0.0.1、没有登录的本地 Jenkins（仅用于测试），结束时停止；Jenkins 2.580.1、插件安装工具 plugin-installation-manager 2.15.0 和 `plugins.txt` 中的插件下载到 `tests/.jenkins/`（git 忽略，校验 sha256），第一次运行需要访问 get.jenkins.io、github.com 和 updates.jenkins.io（插件更新站点）。测试把 `examples/` 复制进一个临时 git 仓库的根目录，按读写 Jenkinsfile 中的 ID 创建凭据（两个 Jenkinsfile 用相同的 ID；vault 口令取自 `tests/example-vault-password.txt`，SSH 私钥随机生成）。多数测试新建自己的 job，结束后删除；只校验计划、互不影响的测试在一个模块内共用一个 job。
@@ -120,7 +120,7 @@ all:
 
 ### 3.3 部署与额外任务
 
-`platform/ansible/deploy.yml` 对 `deploy_targets` 运行 role `deploy`（`business/deploy/`），Jenkins 用 `--limit 'web:api'` 把范围缩小到所选的组。`business/deploy/meta/argument_specs.yml` 声明部署需要的主机变量及类型（`app_port: int, required` 等），Ansible 在 role 的第一个任务之前自动按它校验（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/playbook/role/__init__.py` 的 `Role._prepend_validation_task`）。
+`platform/ansible/deploy.yml` 对 `deploy_targets` 运行 role `deploy`（`business/deploy/`），Jenkins 用 `--limit 'web:api'` 把范围缩小到所选的组。`business/deploy/meta/argument_specs.yml` 声明部署需要的主机变量及类型（`app_port: int, required` 等），Ansible 在 role 的第一个任务之前自动按它校验（`ansible/ansible@2.21.5` 的 `lib/ansible/playbook/role/__init__.py` 的 `Role._prepend_validation_task`）。
 
 每个额外任务是 `business/tasks/` 下的一个 role：
 
@@ -242,6 +242,8 @@ ansible-playbook run-task.yml --limit api --vault-password-file ../../../tests/e
 | `TaskResult` | 报告中的一行 |
 | `TaskDefinition`、`ParameterDefinition`、`PlannedTask`、`Plan` | 任务与参数的定义；计划中的一个任务；整个计划 |
 | `Labels` | 按外部拼写查找枚举常量，找不到时记录问题 |
+| `FormField` | 表单字段的键：Active Choices 版为 `任务.字段`，无插件版为 `阶段.任务.字段`；除参数外的两个字段 `policy`、`order` |
+| `AnsibleNames` | Ansible 保留、且带任务名前缀也可能撞上的名字（含 `_` 的关键字和特殊变量）；`test_engine_refuses_every_name_ansible_reserves_that_a_task_prefix_can_produce` 保证它覆盖 ansible-core 认定的这些名字 |
 | `Limits` | 输入上限：`DEPLOY_PLAN` 20000 个字符、计划中 50 个任务、字符串参数 1000 个字符、`id` 64 个字符、超时 240 分钟、无插件版表单等待 30 分钟 |
 | 枚举 | `Phase`、`TaskAccess`、`TaskMenu`、`AccessMode`、`FailurePolicy`、`RunLocation`、`ParameterType`、`ParameterForm`、`RequestKind`、`ReviewStep`、`TaskOutcome`、`EngineVariable`；外部拼写（YAML 中的值、构建参数名、报告中的结果）写在每个常量上，解析时遇到未知值报错 |
 
@@ -250,7 +252,7 @@ ansible-playbook run-task.yml --limit api --vault-password-file ../../../tests/e
 读写 job（`pipelines/readwrite/Jenkinsfile`）：
 
 ```groovy
-// The read-write job: every task and the deployment. Needs the plugins listed in BRIEF.md.
+// The read-write job: every task and the deployment.
 // The engine is loaded from the commit this file came from, so one build never mixes two revisions.
 String commit
 node {
@@ -264,7 +266,7 @@ deployPipeline(commit: commit, mode: 'read-write', form: 'active-choices',
 
 只读 job（`pipelines/readonly/Jenkinsfile`）只有 `mode: 'read-only'` 和第一行注释不同。`form` 可以是 `'active-choices'` 或 `'basic'`（无插件版）。仓库需要凭据才能检出时，`scm.userRemoteConfigs[0]` 还有 `credentialsId`，在 `GitSCMSource` 中另加 `credentialsId: scm.userRemoteConfigs[0].credentialsId`。
 
-流水线是脚本式（Scripted）：构建参数要按运行时读到的任务目录和 inventory 生成，每个任务一个 stage，等待确认时要离开执行器，这些都由 `deployPipeline` 中的 `node`、`stage` 直接控制。不要在 job 配置中再设置参数或“禁止并发构建”：`properties` 步骤会在下一次运行时移除自己上次设置的 job 属性，同类属性会互相覆盖（`.reference-cache/jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e/src/main/java/org/jenkinsci/plugins/workflow/multibranch/JobPropertyStep.java` 的 `Execution.run`）。
+流水线是脚本式（Scripted）：构建参数要按运行时读到的任务目录和 inventory 生成，每个任务一个 stage，等待确认时要离开执行器，这些都由 `deployPipeline` 中的 `node`、`stage` 直接控制。不要在 job 配置中再设置参数或“禁止并发构建”：`properties` 步骤会在下一次运行时移除自己上次设置的 job 属性，同类属性会互相覆盖（`jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e` 的 `src/main/java/org/jenkinsci/plugins/workflow/multibranch/JobPropertyStep.java` 的 `Execution.run`）。
 
 ### 3.6 构建参数
 
@@ -276,7 +278,7 @@ Active Choices 版：
 | `SKIP_DEPLOY` | 布尔，只有读写 job 有 | 跳过部署，部署前后任务照常执行 |
 | `PRE_TASKS` / `POST_TASKS` | Active Choices 勾选框，带搜索框 | 该阶段允许、本 job 的模式允许、`menu: main` 的任务，按 `order` 排列 |
 | `PRE_SHOW_MORE` / `POST_SHOW_MORE` | 布尔，该阶段有 `menu: more` 的任务时才有 | 勾选后出现下一行的列表 |
-| `PRE_MORE_TASKS` / `POST_MORE_TASKS` | Active Choices 联动勾选框，带搜索框 | `menu: more` 的任务；没勾 `*_SHOW_MORE` 时为空。取消勾选 `*_SHOW_MORE` 会清空这里已选的任务 |
+| `PRE_MORE_TASKS` / `POST_MORE_TASKS` | Active Choices 联动勾选框，带搜索框 | `menu: more` 的任务；页面上没勾 `*_SHOW_MORE` 时为空，取消勾选会清空这里已选的任务。经 API 触发时可以直接传值，引擎不看 `*_SHOW_MORE` |
 | `PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS` | Active Choices 动态 HTML | 随两个列表的勾选实时生成：每个所选任务一组，含执行顺序数字框（默认为 `order`，数字小的先执行，相同时按 `order`）、失败策略下拉框和各参数输入框，预填 role 的默认值；整数为数字框，布尔和枚举为下拉框，必填参数名后标 “(required)” |
 | `DEPLOY_PLAN` | 多行文本 | 非空时忽略上面所有参数 |
 
@@ -297,11 +299,11 @@ post:
 
 字符串参数的值在 YAML 中加引号：未加引号的 `yes`、`2026-01-01`、`1.0` 会被解析成布尔、日期、小数，引擎拒绝这些值。
 
-从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试大多这样触发构建（`tests/jenkins_server/client.py` 的 `Jenkins.start_build`）；少数用例直接赋值 Active Choices 参数来模拟页面提交。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md` 的 “Known Limitations” 一节），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
+从 API 或上游 job 触发：向 job 的 `buildWithParameters` 接口 POST，只传 `DEPLOY_PLAN` 一个参数。集成测试大多这样触发构建（`tests/jenkins_server/client.py` 的 `Jenkins.start_build`）；少数用例直接赋值 Active Choices 参数来模拟页面提交。Active Choices 插件说明这些参数只供人在页面上填写，通过 API 或脚本触发时不保证可用（`jenkinsci/active-choices-plugin@2.8.11` 的 `README.md` 的 “Known Limitations” 一节），所以不要用 API 直接传 `TARGET_GROUPS` 等参数。
 
 参数页两种形式的界面细节与提交值的格式见 [attachments/parameter-page.md](attachments/parameter-page.md)。
 
-### 3.7 实际输出
+### 3.7 输出
 
 用下面的 `DEPLOY_PLAN` 运行读写 job（在参数页上做同样的选择，结果相同）：
 
@@ -362,16 +364,16 @@ Finished: UNSTABLE
 
 ### 3.8 新增一个业务任务
 
-只新建一个目录 `business/tasks/<任务名>/`，不改 `platform/`、`pipelines/`、`tests/`。任务名只用小写字母、数字和 `_`（它也是 role 名、参数名前缀和默认的 `id`）：
+只新建一个目录 `business/tasks/<任务名>/`，不改 `platform/`、`pipelines/`、`tests/`。目录名就是任务名，只能用小写字母、数字和 `_`，以字母开头（它也是 role 名、参数名前缀、表单字段键的第一段和默认的 `id`）：
 
 1. `meta/task.yml`：`description`（不用 U+FF01–U+FF5E 的全角字符和 `@ = + "`，原因见第 5 节；`、` `。` 不在此列）、`phases`、`access`、`menu`、`run_on`、`policy`、`timeout_minutes`、`order`（与其他任务不同），需要复核时加 `review`。
 2. `meta/argument_specs.yml`：参数名以 `<任务名>_` 开头，不能与 inventory 变量、Ansible 保留的变量名（ansible-core 的 `ansible.vars.reserved.is_reserved_name` 认定的名字，以及 `inventory_hostname`、`groups`、`hostvars`、`playbook_dir` 等特殊变量）、引擎变量（`task_role`、`task_hosts`、`task_review_mode`、`task_review_file`、`task_parameter_names`）重名；类型只用 `str`、`int`、`bool`，不写 `type` 时为 `str`；`choices` 只用于 `str`；非必填参数写 `default`；没有参数时写 `options: {}`（见 `check_c`）。
 3. `defaults/main.yml`：每个非必填参数的默认值，与 `default` 相同，用字面值（不含 `{{`）。
 4. `tasks/main.yml`：任务本身；条件不满足时用 `assert` / `fail` 让它失败。需要复核时按 3.10 写两种模式。
-5. 运行 `python3 -m pytest tests -m 'not jenkins'`：`tests/test_tasks.py` 遍历 `business/tasks/` 下的每个目录检查上面全部约定，新任务自动被检查。引擎在每次构建的 `Prepare` 中检查其中一部分，不符合时构建失败：元数据的字段与取值、`order` 不重复、参数类型与 `choices`、参数名前缀、引擎变量和 `ansible_*`、默认值的类型（`Catalog.parse`，`test_unknown_value_in_task_metadata_stops_the_build_before_any_task_runs`），以及与 inventory 变量重名（4.16）。说明文字的字符、`default` 与 `defaults/main.yml` 一致、Ansible 保留的变量名只由测试检查。
+5. 运行 `python3 -m pytest tests -m 'not jenkins'`：`tests/test_tasks.py` 遍历 `business/tasks/` 下的每个目录检查上面全部约定，新任务自动被检查。引擎在每次构建的 `Prepare` 中检查其中大部分，不符合时构建失败，任何任务都不运行（`Catalog.parse`，`test_problem_in_a_task_directory_or_the_inventory_stops_the_build_before_any_task_runs` 覆盖其中的主要情形）：目录名、`tasks/main.yml` 与 `meta/argument_specs.yml` 存在、元数据的字段与取值、`order` 不重复、参数声明的字段、参数类型与 `choices`、参数名前缀、引擎变量、`ansible_*` 和 Ansible 保留的名字、`defaults/main.yml` 只设已声明的参数、默认值的类型、每个主机组至少一台主机，以及与 inventory 变量重名（4.16）。说明文字的字符、`default` 与 `defaults/main.yml` 一致只由测试检查。
 6. 提交后先运行一次构建（任意参数），参数页从下一次构建起出现新任务。
 
-`test_new_task_directory_runs_without_any_platform_change` 在测试仓库中只提交一个新任务目录的三个文件，然后用它运行一次构建，构建成功。
+只提交一个新任务目录的文件，不改其他文件，构建就能运行这个任务：由 `test_new_task_directory_runs_without_any_platform_change` 保证。
 
 ### 3.9 新增一个主机或主机组
 
@@ -433,9 +435,9 @@ ansible-vault rekey group_vars/all/vault.yml --vault-password-file <旧口令文
 
 规则：每个任务单独调用一次 `ansiblePlaybook`，用 `try/catch` 捕获失败，再按策略调用 `error`（FAILURE，后续 stage 不再运行）或 `unstable`（UNSTABLE，继续）。实现见 `TaskRunner` 的 `attempt` 和 `settle`。
 
-机制：Ansible 插件在 playbook 返回非 0 时抛出 `hudson.AbortException("Ansible playbook execution failed")`，没有“失败也继续”的选项，也拿不到退出码（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` 的 `perform`）。所以参数校验失败、断言失败、主机不可达都表现为同一个异常。
+机制：Ansible 插件在 playbook 返回非 0 时抛出 `hudson.AbortException("Ansible playbook execution failed")`，没有“失败也继续”的选项，也拿不到退出码（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` 的 `perform`）。所以参数校验失败、断言失败、主机不可达都表现为同一个异常。
 
-证据：`test_warn_failure_marks_build_unstable_and_continues`（UNSTABLE，随后运行了 `deploy.yml`）、`test_abort_failure_stops_before_deploy_and_later_tasks`（FAILURE，只运行了一次 `run-task.yml`，报告中该任务为 `failed-stopped`）。
+测试：`test_warn_failure_marks_build_unstable_and_continues`（构建 UNSTABLE，随后照常运行 `deploy.yml`）、`test_abort_failure_stops_before_deploy_and_later_tasks`（构建 FAILURE，`run-task.yml` 只运行一次，报告中该任务为 `failed-stopped`）。
 
 不这样做：在一次 `ansiblePlaybook` 中运行所有任务，就只有一个结果，无法逐个任务决定阻塞或非阻塞。
 
@@ -445,9 +447,9 @@ ansible-vault rekey group_vars/all/vault.yml --vault-password-file <旧口令文
 
 机制：`timeout` 中止 `ansiblePlaybook` 与手动中止构建时，从插件抛出的都是普通的 `java.lang.InterruptedException`，不带中止原因；能区分原因的 `FlowInterruptedException.getCauses()` 在沙箱中需要管理员审批。所以引擎只能用已耗时区分（`TaskRunner` 的 `attempt` 中 `catch (InterruptedException e)` 一段）。已知缺口：超时之后、`timeout` 的宽限期内手动中止，也会被算作超时。
 
-证据：`test_timeout_counts_as_task_failure_and_follows_the_policy`（`timeout_minutes: 1`、任务等待 90 秒、策略 warn：控制台 `[deploy] task task_a failed: timed out after 1 min (warn: continuing)`，构建 UNSTABLE 并继续部署）；`test_manual_abort_during_a_task_aborts_the_build_instead_of_continuing`（任务运行中点中止：构建 ABORTED，没有继续部署，报告中该任务为 `aborted`）。
+测试：`test_timeout_counts_as_task_failure_and_follows_the_policy`（`timeout_minutes: 1`、任务等待 90 秒、策略 warn：控制台输出 `[deploy] task task_a failed: timed out after 1 min (warn: continuing)`，构建 UNSTABLE 并继续部署）；`test_manual_abort_during_a_task_aborts_the_build_instead_of_continuing`（任务运行中点中止：构建 ABORTED，不继续部署，报告中该任务为 `aborted`）。
 
-不这样做：用 `catchError(catchInterruptions: false)` 包住 `timeout { ansiblePlaybook(...) }`，手动中止也会被捕获，后面的步骤继续执行。实验流水线（沙箱中运行，任务暂停 120 秒，第 5 秒手动中止）：
+不这样做：用 `catchError(catchInterruptions: false)` 包住 `timeout { ansiblePlaybook(...) }`，手动中止也会被捕获，后面的步骤继续执行。这样写时的现象（流水线在沙箱中运行，`pause.yml` 暂停 120 秒，第 5 秒手动中止构建）：
 
 ```groovy
 long started = System.currentTimeMillis()
@@ -460,7 +462,7 @@ catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE', catchInterruptions: 
 echo "AFTER-WRAPPER elapsedMs=${System.currentTimeMillis() - started} currentResult=${currentBuild.currentResult}"
 ```
 
-控制台节选：
+输出（控制台节选）：
 
 ```
 Pausing for 120 seconds
@@ -472,15 +474,15 @@ AFTER-WRAPPER elapsedMs=6036 currentResult=UNSTABLE
 Finished: ABORTED
 ```
 
-`catchInterruptions: false` 只对 `FlowInterruptedException` 生效（`.reference-cache/jenkinsci/workflow-basic-steps-plugin@1098.v808b_fd7f8cf4/src/main/java/org/jenkinsci/plugins/workflow/steps/CatchErrorStep.java` 的 `Callback.onFailure`），而 `ansiblePlaybook` 抛出的不是它。
+`catchInterruptions: false` 只对 `FlowInterruptedException` 生效（`jenkinsci/workflow-basic-steps-plugin@1098.v808b_fd7f8cf4` 的 `src/main/java/org/jenkinsci/plugins/workflow/steps/CatchErrorStep.java` 的 `Callback.onFailure`），而 `ansiblePlaybook` 抛出的不是它。
 
 ### 4.3 参数用 JSON 文件传给 Ansible
 
 规则：任务参数写入 `.deploy-run/<阶段>-<id>.json`，用 `extras: '-e @文件'` 传入，不用 `ansiblePlaybook` 的 `extraVars`。
 
-机制：`extraVars` 的每个值先被转成字符串（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` 的 `AnsiblePlaybookExecution.convertExtraVars`），除 `true` / `false` 外都以 `-e key=value` 传入，列表等非标量值被跳过（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendExtraVars`）。`key=value` 形式的值在 Ansible 中是字符串。
+机制：`extraVars` 的每个值先被转成字符串（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/workflow/AnsiblePlaybookStep.java` 的 `AnsiblePlaybookExecution.convertExtraVars`），除 `true` / `false` 外都以 `-e key=value` 传入，列表等非标量值被跳过（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendExtraVars`）。`key=value` 形式的值在 Ansible 中是字符串。
 
-证据：在 `examples/platform/ansible` 下，同一任务分别用 `-e task_a_repeat=2` 和 `-e '{"task_a_repeat": 2, ...}'` 运行（两条命令都另加 `--vault-password-file ../../../tests/example-vault-password.txt`）：
+现象：在 `examples/platform/ansible` 下，同一任务分别用 `-e task_a_repeat=2` 和 `-e '{"task_a_repeat": 2, ...}'` 运行（两条命令都另加 `--vault-password-file ../../../tests/example-vault-password.txt`）时的输出：
 
 ```
 $ ansible-playbook run-task.yml --limit api -e task_role=task_a -e task_hosts=deploy_targets -e task_a_message=x -e task_a_repeat=2
@@ -497,11 +499,11 @@ $ ansible-playbook run-task.yml --limit api -e '{"task_role":"task_a","task_host
 
 ### 4.4 只接受登记过的任务名和参数名，拒绝模板语法，限制长度
 
-规则：计划中的任务名必须是 `business/tasks/` 下的目录，参数名必须在该任务的 `argument_specs.yml` 中；字符串参数不能含 `{{`、`{%`、`{#`，不超过 1000 个字符；参数名以任务名为前缀，不是引擎变量，不以 `ansible_` 开头（引擎检查），不与 inventory 变量重名（引擎在运行时检查，4.16），不是 Ansible 保留的变量名（只由 `tests/test_tasks.py` 检查）。所有上限在 `Limits` 中定义一次。
+规则：计划中的任务名必须是 `business/tasks/` 下的目录，参数名必须在该任务的 `argument_specs.yml` 中；字符串参数不能含 `{{`、`{%`、`{#`，不能以 `#jinja2:` 开头，不能含控制字符和格式字符（制表符除外），不超过 1000 个字符；参数名以任务名为前缀，不是引擎变量，不以 `ansible_` 开头，不是 Ansible 保留的名字（`AnsibleNames`），不与 inventory 变量重名（4.16）；这些都由引擎在运行任务之前检查。所有上限在 `Limits` 中定义一次。
 
-机制：Ansible 会渲染 extra vars 中的 Jinja 表达式，而 extra vars 的优先级最高。不加限制时，能触发构建的人可以在 Jenkins 节点上执行命令，或传入 `ansible_connection` 之类的变量改变连接方式；参数名与 inventory 变量重名时，会静默覆盖 inventory 中的值。
+机制：Ansible 会渲染 extra vars 中的 Jinja 表达式，而 extra vars 的优先级最高。以 `#jinja2:` 开头的字符串即使不含 `{{` 也按模板处理，第一行可以改用别的定界符（`ansible/ansible@2.21.5` 的 `lib/ansible/_internal/_templating/_jinja_bits.py` 中的 `JINJA2_OVERRIDE` 与 `is_possibly_template`）。控制字符和格式字符（如换行、`ESC`、`U+202E`）能在控制台和复核提示中伪造一行输出，或让显示的文字与实际字节不同。不加限制时，能触发构建的人可以在 Jenkins 节点上执行命令，或传入 `ansible_connection` 之类的变量改变连接方式；参数名与 inventory 变量重名时，会静默覆盖 inventory 中的值。
 
-证据：在 `examples/platform/ansible` 下，直接把含模板的值交给 Ansible（另加 `--vault-password-file ../../../tests/example-vault-password.txt`）：
+现象：不经过引擎、直接把含模板的值交给 Ansible 时（在 `examples/platform/ansible` 下，另加 `--vault-password-file ../../../tests/example-vault-password.txt`）：
 
 ```
 $ cat vars.json
@@ -510,15 +512,15 @@ $ ansible-playbook run-task.yml --limit api -e @vars.json
     "msg": "api-01: INJECTED (1/1)"
 ```
 
-经过引擎时被拒绝：`tests/test_pipeline_validation.py` 中 `test_invalid_plan_fails_before_any_task_runs` 的 `template-expression`、`template-statement`、`template-comment`、`undeclared-param`、`string-too-long`、`id-too-long`、`too-many-tasks`、`plan-too-long` 几例，构建 FAILURE 且没有运行任何任务；正好等于上限的值能通过（`test_values_at_their_limit_are_accepted`）。
+经过引擎时这些值被拒绝，构建 FAILURE 且不运行任何任务：由 `tests/test_pipeline_validation.py` 中 `test_invalid_plan_fails_before_any_task_runs` 的 `template-expression`、`template-statement`、`template-comment`、`template-override-header`、`control-character`、`format-character`、`undeclared-param`、`string-too-long`、`id-too-long`、`too-many-tasks`、`plan-too-long` 用例保证；正好等于上限的值能通过（`test_values_at_their_limit_are_accepted`）。
 
 ### 4.5 所有校验在运行任务之前完成，并一次列出
 
 规则：`Catalog.parse`、`PlanParser.parse`、`Values.check` 把问题收集到列表，最后调用一次 `error`。可选字段用 `== null` 判断是否提供：Groovy 中 `0`、`''`、`[]`、`[:]` 为假，用 `?:` 会把它们当成未提供而跳过类型检查。
 
-覆盖的问题（`test_invalid_plan_fails_before_any_task_runs` 每种一例，共 34 例）：主机组未知、未选、不是列表；`skip_deploy` 不是布尔；阶段不是列表；条目不是任务名或映射；未知任务；任务不能用于该阶段；未知字段；未知或空的策略；必填参数缺失或为空白；`params` 不是映射；未声明的参数；整数、枚举、布尔、字符串类型不符；三种模板语法；同一阶段 `id` 重复、`id` 非法、为空或过长；`timeout_minutes` 不在 1 到 240 之间；字符串过长；任务过多；计划的未知字段；`DEPLOY_PLAN` 不是映射、不是合法 YAML 或过长。表单提交的值另有 4 种（`test_invalid_form_values_fail_before_any_task_runs`），只读 job 另有 3 种（4.14）。
+覆盖的问题（`test_invalid_plan_fails_before_any_task_runs`）：主机组未知、未选（部署需要，或跳过部署时有任务运行在所选主机组上）、不是列表；`skip_deploy` 不是布尔；阶段不是列表；条目不是任务名或映射；未知任务；任务不能用于该阶段；未知字段；未知或空的策略；必填参数缺失或为空白；`params` 不是映射；未声明的参数；整数、枚举、布尔、字符串类型不符；三种模板语法和 `#jinja2:` 开头；控制字符和格式字符；同一阶段 `id` 重复、`id` 非法、为空或过长；`timeout_minutes` 不在 1 到 240 之间；字符串过长；任务过多；计划的未知字段；`DEPLOY_PLAN` 不是映射、不是合法 YAML 或过长。表单提交的值另有：同一字段出现两次（值中含 `,@@`）、字段属于未勾选的任务、字段不是该任务声明的参数、整数超出 64 位、执行顺序不是整数、模板语法、`*_TASK_OPTIONS` 超过 `DEPLOY_PLAN` 的长度上限（`test_invalid_form_values_fail_before_any_task_runs`）；只读 job 另有：写任务、`skip_deploy` 字段、表单中勾选的写任务（4.14）。
 
-证据：`test_invalid_plan_lists_all_problems_at_once`，用 `{targets: [nope], pre: [no_such_task, {name: task_a, policy: ask}]}` 运行，控制台节选：
+测试：`test_invalid_plan_lists_all_problems_at_once`。用 `{targets: [nope], pre: [no_such_task, {name: task_a, policy: ask}]}` 运行时的输出（控制台节选）：
 
 ```
 ERROR: [deploy] the plan has problems:
@@ -535,33 +537,33 @@ Finished: FAILURE
 
 规则：不在 Jenkins 中重复声明任务参数。`deployPipeline` 的 `readCatalog` 用 `readYaml` 读取每个任务的 `meta/argument_specs.yml`（名称、类型、必填、choices、说明）和 `defaults/main.yml`（默认值），交给 `Catalog.parse`。argument_specs 中也写 `default`，与 `defaults/main.yml` 相同。
 
-机制：role 开始执行前，Ansible 按 `argument_specs.yml` 自动插入一个 `validate_argument_spec` 任务（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/playbook/role/__init__.py` 的 `Role._prepend_validation_task`）。argument_specs 中的 `default` 用于文档，文档要求它与代码中的默认值一致，而实际默认值总是取自 role 的 defaults（`.reference-cache/ansible/ansible-documentation@b16dcb8/docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Specification format” 一节）。
+机制：role 开始执行前，Ansible 按 `argument_specs.yml` 自动插入一个 `validate_argument_spec` 任务（`ansible/ansible@2.21.5` 的 `lib/ansible/playbook/role/__init__.py` 的 `Role._prepend_validation_task`）。argument_specs 中的 `default` 用于文档，文档要求它与代码中的默认值一致，而实际默认值总是取自 role 的 defaults（`ansible/ansible-documentation@b16dcb8` 的 `docs/docsite/rst/playbook_guide/playbooks_reuse_roles.rst` 的 “Specification format” 一节）。
 
-证据：`test_documented_defaults_equal_role_defaults_and_cover_every_optional_option`；`test_role_defaults_apply_when_jenkins_passes_no_value`；参数页上的预填值即 defaults（`test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults`）。
+测试：`test_documented_defaults_equal_role_defaults_and_cover_every_optional_option`；`test_role_defaults_apply_when_jenkins_passes_no_value`；参数页上的预填值即 defaults（`test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults`）。
 
 ### 4.7 第一次运行只登记参数；`params` 必须在 `properties()` 之前读取
 
 规则：`deployPipeline` 开头先复制 `params`（`Map requested = [:] + params`），再调用 `properties()`。参数尚未登记时（`requested` 中没有 `DEPLOY_PLAN`，两种参数页都登记它；`RequestKind.of`）构建结果设为 NOT_BUILT，不运行任何任务。
 
-机制：`params` 每次读取时，除了本次构建提交的值，还会用 job **当前**的参数定义补上默认值（`.reference-cache/jenkinsci/workflow-cps-plugin@4395.v738456a_5da_6b_/plugin/src/main/java/org/jenkinsci/plugins/workflow/cps/ParamsVariable.java` 的 `getValue`）。`properties()` 执行后，第一次运行的 `params` 就有了 `DEPLOY_PLAN=''` 等默认值，无法判断参数页是否提交过。
+机制：`params` 每次读取时，除了本次构建提交的值，还会用 job **当前**的参数定义补上默认值（`jenkinsci/workflow-cps-plugin@4395.v738456a_5da_6b_` 的 `plugin/src/main/java/org/jenkinsci/plugins/workflow/cps/ParamsVariable.java` 的 `getValue`）。`properties()` 执行后，第一次运行的 `params` 就有了 `DEPLOY_PLAN=''` 等默认值，无法判断参数页是否提交过。
 
-证据：`test_first_build_registers_parameters_and_runs_nothing`（两个 job 各一次：NOT_BUILT，描述为 `Parameters registered; run again with Build with Parameters`，没有运行任何任务）。
+测试：`test_first_build_registers_parameters_and_runs_nothing`（两个 job 的第一次构建都是 NOT_BUILT，描述为 `Parameters registered; run again with Build with Parameters`，不运行任何任务）。
 
 ### 4.8 Ansible 的配置通过 `ANSIBLE_CONFIG` 传入
 
 规则：`TaskRunner` 的 `playbook` 用 `withEnv(["ANSIBLE_CONFIG=<工作区>/platform/ansible/ansible.cfg"])` 包住每次 `ansiblePlaybook` 调用，并统一传入 `vaultCredentialsId` 与 `credentialsId`。
 
-机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` 的 `execute`），那里没有 `ansible.cfg`。ansible-core 先查 `ANSIBLE_CONFIG`，再查当前目录的 `ansible.cfg`（`.reference-cache/ansible/ansible@2.21.5/lib/ansible/config/manager.py` 的 `find_ini_config_file`）；`ansible.cfg` 中 `inventory`、`roles_path` 的相对路径以该文件所在目录为基准展开（同文件 `ConfigManager.get_config_value_and_origin`，`.reference-cache/ansible/ansible@2.21.5/lib/ansible/utils/path.py` 的 `unfrackpath`）。所以同一个文件既给 Jenkins 用，也给在 `examples/platform/ansible` 下手工运行用。详见 [attachments/inventory-practices.md](attachments/inventory-practices.md) 第 1.2 节。
+机制：插件在 Jenkins 工作区根目录（仓库根目录）启动 ansible-playbook（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/CLIRunner.java` 的 `execute`），那里没有 `ansible.cfg`。ansible-core 先查 `ANSIBLE_CONFIG`，再查当前目录的 `ansible.cfg`（`ansible/ansible@2.21.5` 的 `lib/ansible/config/manager.py` 的 `find_ini_config_file`）；`ansible.cfg` 中 `inventory`、`roles_path` 的相对路径以该文件所在目录为基准展开（同文件 `ConfigManager.get_config_value_and_origin`，`ansible/ansible@2.21.5` 的 `lib/ansible/utils/path.py` 的 `unfrackpath`）。所以同一个文件既给 Jenkins 用，也给在 `examples/platform/ansible` 下手工运行用。详见 [attachments/inventory-practices.md](attachments/inventory-practices.md) 第 1.2 节。
 
-证据：3.7 节的命令行没有 `-i`，inventory 与 roles 仍被找到。
+所以 3.7 节的命令行没有 `-i`，inventory 与 roles 照样能找到。
 
 ### 4.9 每次运行都需要 vault 口令，包括只在本机运行的任务
 
 规则：所有 `ansiblePlaybook` 调用都传 `vaultCredentialsId`。`Prepare` 先用 `withCredentials` 绑定一次两个凭据（`TaskRunner.checkCredentials`），凭据不存在时构建在运行任何 playbook 之前失败，控制台中有凭据的 ID。插件接受 Secret text 和 Secret file 两种 vault 凭据，检查按 Secret text 绑定；用 Secret file 时把其中的 `string(...)` 换成 `file(...)`。
 
-机制：插件把 Secret text / Secret file 凭据写成工作区中的临时文件，以 `--vault-password-file` 传入，结束后删除（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendVaultPasswordFile`）。加载 inventory 时就要解密 `group_vars/all/vault.yml`，与 play 作用于哪些主机无关。凭据 ID 写错时插件不报错，只是不传口令（`.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86/src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` 的 `perform`），随后 ansible-playbook 因无法解密而失败，看起来与任务失败相同：只有 `warn` 任务时，构建只会变成 UNSTABLE。
+机制：插件把 Secret text / Secret file 凭据写成工作区中的临时文件，以 `--vault-password-file` 传入，结束后删除（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AbstractAnsibleInvocation.java` 的 `appendVaultPasswordFile`）。加载 inventory 时就要解密 `group_vars/all/vault.yml`，与 play 作用于哪些主机无关。凭据 ID 写错时插件不报错，只是不传口令（`jenkinsci/ansible-plugin@635.v34b_48e979c86` 的 `src/main/java/org/jenkinsci/plugins/ansible/AnsiblePlaybookBuilder.java` 的 `perform`），随后 ansible-playbook 因无法解密而失败，看起来与任务失败相同：只有 `warn` 任务时，构建只会变成 UNSTABLE。
 
-证据：`test_every_run_needs_the_vault_password_even_on_localhost`：不给口令运行 `task_b`（只作用于 localhost）失败，`[ERROR]: Attempting to decrypt but no vault secrets found.`，没有运行任何任务。`test_missing_vault_credential_stops_the_build_before_any_task_runs`：删除凭据后构建 FAILURE，控制台中有该凭据的 ID，没有运行任何任务。
+测试：`test_every_run_needs_the_vault_password_even_on_localhost`：不给口令时 `task_b`（只作用于 localhost）也失败，输出 `[ERROR]: Attempting to decrypt but no vault secrets found.`，不运行任何任务。`test_missing_vault_credential_stops_the_build_before_any_task_runs`：凭据不存在时构建 FAILURE，控制台中有该凭据的 ID，不运行任何任务。
 
 ### 4.10 等待时不占执行器
 
@@ -569,13 +571,13 @@ Finished: FAILURE
 
 机制：`input` 等待时，若在 `node` 之内就一直占着执行器和工作区。`unstash` 保证每个执行器上运行的是 `Prepare` 校验过的那份文件，而不是分支上的最新提交。
 
-证据：`test_waiting_for_the_form_holds_no_executor`、`test_waiting_for_review_holds_no_executor`：构建停在 `input` 时，Jenkins 的忙碌执行器数为 0。`test_runs_the_files_it_validated_even_if_the_branch_moves_while_waiting`：等待期间向测试仓库提交对 `hosts.yml` 的修改，`task_b` 报告的仍是原文件的大小。
+测试：`test_waiting_for_the_form_holds_no_executor`、`test_waiting_for_review_holds_no_executor`：构建停在 `input` 时，Jenkins 的忙碌执行器数为 0。`test_runs_the_files_it_validated_even_if_the_branch_moves_while_waiting`：等待期间分支上有修改 `hosts.yml` 的新提交，`task_b` 报告的仍是原文件的大小。
 
 ### 4.11 禁止同一 job 的并发构建
 
 规则：`properties()` 中加 `disableConcurrentBuilds()`。新构建在上一次结束前排队等待。不这样做，两次构建可能同时部署同一批主机。
 
-证据：`test_builds_of_one_job_do_not_run_concurrently`（两个 job 的 `concurrentBuild` 都为 false）。
+测试：`test_builds_of_one_job_do_not_run_concurrently`（两个 job 的 `concurrentBuild` 都为 false）。
 
 ### 4.12 引擎从 Jenkinsfile 所在的提交加载
 
@@ -583,7 +585,7 @@ Finished: FAILURE
 
 机制：引擎、任务、inventory 在同一个提交中，一起变更、一起回退；不需要管理员配置全局库，从仓库动态加载的库在沙箱中运行。`modernSCM` 把版本 `C` 解析成该提交；`legacySCM(scm)` 则忽略版本，总是取分支的最新提交。
 
-证据：实验（Jenkins 2.580.1，`pipeline-groovy-lib` 822.vc95f70dea_db_7）：Jenkinsfile 检出后 `sleep 15`，期间向分支推送一个修改了库中资源文件 `marker.txt`（`A` 改为 `B`）的新提交，然后加载库并读取 `libraryResource('marker.txt')`：
+两种写法的现象：Jenkinsfile 检出后 `sleep 15`，期间向分支推送一个新提交，把库中资源文件 `marker.txt` 从 `A` 改为 `B`，然后加载库并读取 `libraryResource('marker.txt')`：
 
 ```
 legacySCM(libraryPath: 'platform/jenkins/', scm: scm)，identifier engine@bbc193a…：
@@ -599,21 +601,22 @@ Could not find ff4e2fcf07328ad749fee955052d773387d2852b in remote references. Pu
 library marker A
 ```
 
-`test_engine_comes_from_the_commit_the_jenkinsfile_came_from` 用同样的方法检查样板本身：等待期间提交一个修改了 `Plan.groovy` 输出文字的新提交，构建打印的仍是原来的文字。
+测试：`test_engine_comes_from_the_commit_the_jenkinsfile_came_from` 用同样的方法检查样板本身：等待期间分支上有修改 `Plan.groovy` 输出文字的新提交，构建打印的仍是原来的文字。
 
 ### 4.13 沙箱中的共享库代码
 
-从仓库动态加载的库在 Groovy 沙箱中运行，下面几种写法被拒绝或出错。控制台消息原样引用；第一行来自 4.12 的实验库（包名 `org.example.deploy`），其余来自本样板的引擎（包名 `deploy`）：
+从仓库动态加载的库在 Groovy 沙箱中运行，下面几种写法被拒绝或出错。控制台消息原样引用；第一行来自一个包名为 `org.example.deploy` 的库，其余来自本样板的引擎（包名 `deploy`）：
 
 | 写法 | 结果 | 引擎的写法 |
 | --- | --- | --- |
 | 枚举常量带自己的方法体（`READ_ONLY { boolean allows(...) {...} }`） | `Scripts not permitted to use staticMethod org.example.deploy.AccessMode$1 $INIT java.lang.Object[]` | 常量只带构造参数，方法用 `switch (this)` |
 | 没有构造函数的枚举 | `Scripts not permitted to use new java.util.LinkedHashMap` | 每个枚举都有带 `label` 的构造函数 |
-| 静态字段的初始值引用另一个类的静态常量 | `Scripts not permitted to use staticMethod deploy.Limits getTASK_ROLE_VARIABLE`，类初始化失败 | 常量写成 `public static final` 字段；互相关联的名字用枚举（`EngineVariable`） |
+| 静态字段的初始值引用另一个类的静态常量 | `Scripts not permitted to use staticMethod deploy.<类> get<字段名>`，类初始化失败 | 常量写成 `public static final` 字段；互相关联的名字用枚举（`EngineVariable`） |
 | 闭包中调用同一个类的 `private static` 方法，或不带类名调用静态方法 | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods invokeMethod java.lang.Object java.lang.String java.lang.Object` | 静态方法不用 `private`，在闭包中写成 `类名.方法名(...)` |
 | 同名的 `private` 方法和 `public` 方法 | 编译错误 `Mixing private and public/protected methods of the same name causes multimethods to be disabled` | 改名 |
 | `new IllegalArgumentException(...)`、`new LinkedHashMap(map)` | `Scripts not permitted to use new ...` | 问题收集到列表后调用 `error`；复制 Map 用 `[:] + map` |
 | `list.sort(false) { ... }`（排序后返回新列表） | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods sort java.util.Collection boolean groovy.lang.Closure` | 复制一份再用 `sort { ... }` |
+| `text.codePointCount(...)` | `Scripts not permitted to use method java.lang.String codePointCount int int` | 用 `length()`：按 UTF-16 代码单元计数，`Limits` 中的字符数上限对 BMP 以外的字符（如 emoji）更严 |
 | `collection.flatten()` | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods flatten java.util.Collection` | 嵌套的 `any` / `collectMany` |
 | 对数组用展开运算符（`values()*.label`） | `No such field found: field ...[] label` | `values().collect { it.label }` |
 | `@NonCPS` 方法调用没有标 `@NonCPS` 的方法 | `expected to call deploy.Catalog.tasksFor but wound up catching deploy.AccessMode.allows` | 只做计算的方法一律标 `@NonCPS` |
@@ -624,21 +627,23 @@ Groovy 的 `switch` 不检查是否覆盖了枚举的所有常量：引擎在每
 
 规则：`AccessMode.READ_ONLY` 时，参数页只列出 `access: read` 的任务、没有 `SKIP_DEPLOY`；`PlanParser` 拒绝写任务和 `skip_deploy` 字段；`Plan.deploy` 为假，没有部署阶段。
 
-证据：`tests/test_read_only_job.py`：参数页只含只读任务；只读任务正常运行且没有部署；`DEPLOY_PLAN` 中的写任务（`pre[0]: task task_a writes, and this job is read-only`）、`skip_deploy`、表单中勾选的写任务都在运行任何任务之前失败。
+测试：`tests/test_read_only_job.py`：参数页只含只读任务；只读任务正常运行且没有部署；`DEPLOY_PLAN` 中的写任务（`pre[0]: task task_a writes, and this job is read-only`）、`skip_deploy`、表单中勾选的写任务都在运行任何任务之前失败。
 
 范围：这是引擎的检查。任务的 `access` 是作者的声明，标成 `read` 的 role 照样可以写；能修改仓库的人也能改只读 Jenkinsfile 中的 `mode`。需要更强的保证时，在 Jenkins 中给只读 job 配置权限更小的凭据（例如目标主机上没有写权限的 SSH 用户），Jenkinsfile 中只改凭据 ID。
 
 ### 4.15 执行前复核：执行的就是复核过的文件
 
-规则（`TaskRunner` 的 `run`）：
+规则（`TaskRunner` 的 `runSteps`）：
 
 1. 一个执行器上：`unstash`，以 `generate` 模式运行任务；任务没写出复核文件则构建失败；计算 `sha256`，读出全文，归档，`stash` 这一个文件；离开执行器。
 2. 不占执行器：`timeout(review.timeout_minutes) { input(message: 'Run <id> as reviewed below? (sha256 …)\n\n<全文>', ok: 'Run', submitterParameter: 'reviewer') }`。
 3. 另一个执行器上：`unstash` 源文件和复核文件，`verifySha256(file:, hash:)`，再以 `execute` 模式运行任务。
 
-谁能确认：`input` 不写 `submitter` 时，有该 job 的 Job/Build 权限的人可以确认，有 Job/Build 或 Job/Cancel 权限的人可以中止（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `canSettle` 与 `canCancel`）。测试用的 Jenkins 没有开启安全设置，所有人都能确认；这条规则没有集成测试。
+任务的结果只由第 3 步的运行决定：确认后先清除生成那次运行的结果；第 3 步开始前构建被中止则为 `aborted`，`unstash` 或 `verifySha256` 失败则为 `error`。生成那次运行失败时按任务的失败策略处理，不请求确认。
 
-证据：`tests/test_review.py`：等待时提示以 `Run task_d as reviewed below? (sha256 ` 开头、以复核文件全文结尾，归档的复核文件为 `change a\nchange b\n`，此时没有执行任何变更；确认后控制台有 `[Pipeline] verifySha256`、`applied change a`、`applied change b`，报告中 `reviewer` 为确认人；中止后构建 ABORTED，只运行过生成那一次；等待时忙碌执行器数为 0。
+谁能确认：`input` 不写 `submitter` 时，有该 job 的 Job/Build 权限的人可以确认，有 Job/Build 或 Job/Cancel 权限的人可以中止（`jenkinsci/pipeline-input-step-plugin@560.v56198a_642157` 的 `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `canSettle` 与 `canCancel`）。测试用的 Jenkins 没有开启安全设置，所有人都能确认；这条规则没有集成测试。
+
+测试：`tests/test_review.py`：等待时提示以 `Run task_d as reviewed below? (sha256 ` 开头、以复核文件全文结尾，归档的复核文件为 `change a\nchange b\n`，此时不执行任何变更；确认后控制台有 `[Pipeline] verifySha256`、`applied change a`、`applied change b`，报告中 `reviewer` 为确认人；中止后构建 ABORTED，任务只以生成模式运行过一次；确认后、执行前中止构建，报告中该任务为 `aborted`；生成失败时不请求确认，报告为 `failed-stopped`；等待时忙碌执行器数为 0。
 
 范围：复核文件在两次运行之间只经过 Jenkins 的 stash，`verifySha256` 是对这一点的再次确认；能让它失败的情形无法从外部构造，没有测试覆盖。
 
@@ -648,7 +653,7 @@ Groovy 的 `switch` 不检查是否覆盖了枚举的所有常量：引擎在每
 
 机制：任务参数以 extra vars 传入，优先级最高，与 inventory 变量同名时会静默覆盖该变量。引擎读不到解密后的 inventory，所以交给 Ansible 检查；`tests/test_tasks.py` 的 `test_option_names_cannot_override_inventory_reserved_or_engine_variables` 在提交前做同样的检查。
 
-证据：`test_parameter_name_used_by_the_inventory_stops_the_build_before_any_task_runs`：在测试仓库的 `host_vars/web-01.yml` 中加 `task_a_message`，构建 FAILURE，控制台 `task parameters also defined in the inventory: ['task_a_message']`，没有运行任何任务。
+测试：`test_parameter_name_used_by_the_inventory_stops_the_build_before_any_task_runs`：`host_vars/web-01.yml` 中有 `task_a_message` 时构建 FAILURE，控制台输出 `task parameters also defined in the inventory: ['task_a_message']`，不运行任何任务。
 
 ## 5. 陷阱
 
@@ -658,10 +663,10 @@ Groovy 的 `switch` 不检查是否覆盖了枚举的所有常量：引擎在每
 | 用 `catchError(catchInterruptions: false)` 区分超时与手动中止 | 手动中止后流水线继续执行 | `ansiblePlaybook` 抛出普通 `InterruptedException`，按已耗时区分（4.2） |
 | 用 `legacySCM(scm)` 从同一仓库加载库 | 库来自分支的最新提交，不是 Jenkinsfile 所在的提交 | 用 `modernSCM` 加提交号（4.12） |
 | 共享库代码照普通 Groovy 写 | 沙箱拒绝、编译错误或 CPS 不匹配 | 见 4.13 的对照表 |
-| Active Choices 勾选框的文字含全角标点（`（`、`：`、`！`）或 `@ = + "` | 勾选框旁显示 `web&#xff08;web-01&#xff09;` 之类的实体文字 | 勾选框文字只用半角符号；任务 `meta/task.yml` 的 `description` 同样（`test_description_has_no_characters_the_active_choices_sanitizer_turns_into_entities`）。原因：沙箱脚本的返回值都经过插件的 HTML 过滤（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/model/GroovyScript.java` 的 `eval`），把这些字符转成实体；勾选框的文字随后又被页面模板转义一次。HTML 表单（`*_TASK_OPTIONS`）中的实体会被浏览器还原，不受影响 |
-| 动态 HTML 表单用 `fieldset` / `legend` / `label`、`title` 或 `aria-*` 属性 | 这些标签和属性消失 | 过滤器只放行基本标签及 `input`、`select`、`option`、`textarea` 和少数属性（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` 的 `POLICY` 常量）；分组用 `div` 加 `style`，必填用文字 “(required)” 标出 |
+| Active Choices 勾选框的文字含全角标点（`（`、`：`、`！`）或 `@ = + "` | 勾选框旁显示 `web&#xff08;web-01&#xff09;` 之类的实体文字 | 勾选框文字只用半角符号；任务 `meta/task.yml` 的 `description` 同样（`test_description_has_no_characters_the_active_choices_sanitizer_turns_into_entities`）。原因：沙箱脚本的返回值都经过插件的 HTML 过滤（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/java/org/biouno/unochoice/model/GroovyScript.java` 的 `eval`），把这些字符转成实体；勾选框的文字随后又被页面模板转义一次。HTML 表单（`*_TASK_OPTIONS`）中的实体会被浏览器还原，不受影响 |
+| 动态 HTML 表单用 `fieldset` / `legend` / `label`、`title` 或 `aria-*` 属性 | 这些标签和属性消失 | 过滤器只放行基本标签及 `input`、`select`、`option`、`textarea` 和少数属性（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` 的 `POLICY` 常量）；分组用 `div` 加 `style`，必填用文字 “(required)” 标出 |
 | 先填写某个任务的参数，再勾选另一个任务 | 已填写的值全部恢复为默认值 | 改变勾选会重新生成整个表单。先勾选全部任务，再填写参数（`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`） |
-| 无插件版中只有一个输入项 | `input` 返回该值本身而不是 Map，按 Map 处理时报错 | 只有一个输入项时自己组成 Map（`ParameterPage` 的 `basicDraft`）；`input` 的行为见 `.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `proceed`。`check_c` 没有参数，所以只勾选它时表单只有一项（`test_form_with_a_single_field_returns_its_value`） |
+| 无插件版中只有一个输入项 | `input` 返回该值本身而不是 Map，按 Map 处理时报错 | 只有一个输入项时自己组成 Map（`ParameterPage` 的 `basicDraft`）；`input` 的行为见 `jenkinsci/pipeline-input-step-plugin@560.v56198a_642157` 的 `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `proceed`。`check_c` 没有参数，所以只勾选它时表单只有一项（`test_form_with_a_single_field_returns_its_value`） |
 | 用 `x ?: 默认值` 取可选字段 | `timeout_minutes: 0`、`policy: ''`、`params: []` 不报错，静默改用默认值 | Groovy 中 `0`、`''`、`[]` 为假；用 `x == null ? 默认值 : x`，再做类型检查（4.5） |
 | 在 `DEPLOY_PLAN` 中给字符串参数写未加引号的 `2026-01-01`、`yes` | 不加检查时到达 Ansible 的是 `Thu Jan 01 00:00:00 UTC 2026`、`true` | YAML 解析时已变成日期、布尔；引擎只接受字符串和整数，提示加引号 |
 | 表单中某个值含 `,@@` | 值被切断，后半段被当成另一个字段 | 提交值用 `,@@` 切分，无法区分；引擎在字段重复时报错（`test_invalid_form_values_fail_before_any_task_runs`） |
@@ -672,11 +677,11 @@ Groovy 的 `switch` 不检查是否覆盖了枚举的所有常量：引擎在每
 | 用 Jinja 测试 `is between(1, 5)` | `No test named 'between'` | 写成两个比较：`x >= 1`、`x <= 5` |
 | 按路径引用 role（`roles: [../../business/deploy]`） | 任务标题显示成 `TASK [../../business/deploy : ...]` | 把 `business` 加进 `roles_path`，按名字引用 `deploy` |
 | ansible-lint 检查 `business/tasks/` | `schema[tasks]: ... is not of type 'array'`：目录名 `tasks` 下的每个 YAML 都被当成任务列表 | `.ansible-lint` 的 `kinds` 中按路径指定文件类型 |
-| ansible-lint 检查 `run-task.yml` | `syntax-check[specific]: ... 'task_role' is undefined` | 在 `.ansible-lint` 中用 `extra_vars` 给出示例值（`.reference-cache/ansible/ansible-lint@26.10.1/src/ansiblelint/runner.py` 的 `Runner._get_ansible_syntax_check_matches`） |
+| ansible-lint 检查 `run-task.yml` | `syntax-check[specific]: ... 'task_role' is undefined` | 在 `.ansible-lint` 中用 `extra_vars` 给出示例值（`ansible/ansible-lint@26.10.1` 的 `src/ansiblelint/runner.py` 的 `Runner._get_ansible_syntax_check_matches`） |
 | 联动参数（`reactiveChoice`）的脚本直接使用被引用的参数，再经 API 触发构建 | 计划校验报 `unknown task '(task list failed)'` | API 不传该参数时，Jenkins 在没有绑定被引用参数的情况下运行脚本求默认值，脚本失败后备用脚本的返回值成了参数值；脚本中捕获 `MissingPropertyException`，按未选择处理（[attachments/parameter-page.md](attachments/parameter-page.md) 第 3.6 节） |
 | 用 Jinja 的 `intersect` 求两个列表的交集并写进消息 | 同样的输入，消息中名字的顺序每次不同 | `intersect` 不保证顺序；后面接 `sort`（`check-variable-names.yml`） |
 | 复核任务的 `copy` 写复核文件 | `Destination directory .../.deploy-run/review does not exist` | 目录由引擎创建（`TaskRunner` 在生成前用 `writeFile` 写一个占位文件） |
-| 非阻塞任务失败后看到控制台中的 `FATAL: command execution failed` 和 Java 堆栈 | 误以为构建失败 | playbook 失败时插件抛出的 `AbortException` 是 `IOException` 的子类（`.reference-cache/jenkinsci/jenkins@2.580.1/core/src/main/java/hudson/AbortException.java` 的类声明），被插件自己的 `catch (IOException)` 先打印成 FATAL 和堆栈再抛出（`AnsiblePlaybookBuilder` 的 `perform`）。以构建结果为准；真正原因看它上方 Ansible 的 `fatal: [主机]: FAILED! => {... "msg": ...}` |
+| 非阻塞任务失败后看到控制台中的 `FATAL: command execution failed` 和 Java 堆栈 | 误以为构建失败 | playbook 失败时插件抛出的 `AbortException` 是 `IOException` 的子类（`jenkinsci/jenkins@2.580.1` 的 `core/src/main/java/hudson/AbortException.java` 的类声明），被插件自己的 `catch (IOException)` 先打印成 FATAL 和堆栈再抛出（`AnsiblePlaybookBuilder` 的 `perform`）。以构建结果为准；真正原因看它上方 Ansible 的 `fatal: [主机]: FAILED! => {... "msg": ...}` |
 
 ## 6. 检查
 
@@ -687,26 +692,7 @@ python3 -m pytest tests -m 'not jenkins'      # inventory、playbook、任务目
 python3 -m pytest tests                        # 再加 Jenkins 与浏览器集成测试
 ```
 
-两条命令的退出码都应为 0。实测（第二条命令，Jenkins 和插件已下载；`.` 每个代表一个通过的测试）：
-
-```
-collected 164 items
-
-tests/test_basic_form.py ..........                                      [  6%]
-tests/test_inventory.py .........                                        [ 11%]
-tests/test_parameter_page.py .....                                       [ 14%]
-tests/test_pipeline_runs.py ....................                         [ 26%]
-tests/test_pipeline_validation.py ...................................... [ 50%]
-....                                                                     [ 52%]
-tests/test_playbooks.py .......................                          [ 66%]
-tests/test_read_only_job.py .....                                        [ 69%]
-tests/test_review.py ....                                                [ 71%]
-tests/test_tasks.py ..............................................       [100%]
-
-======================= 164 passed in 1432.78s (0:23:52) =======================
-```
-
-第一条命令只运行其中不需要 Jenkins 的 78 个测试。
+两条命令都必须以退出码 0 结束。
 
 只检查 inventory（在 `examples/platform/ansible` 下）：
 
@@ -732,19 +718,19 @@ missing required arguments: app_version
 
 ## 8. 出处
 
-文中 `.reference-cache/<owner>/<name>@<version>/<路径>` 指下表中上游仓库在该版本的同一路径：
+文中 `<owner>/<name>@<version>` 的 `<路径>` 指下表中上游仓库在该标签（或提交）上的同一路径：
 
-| 出处前缀 | 上游仓库 | 标签或分支 | 提交 |
-| --- | --- | --- | --- |
-| `.reference-cache/ansible/ansible@2.21.5` | https://github.com/ansible/ansible | `v2.21.5` | `3d36adf9a541aba1ed5f37aa124170f1f2df0a65` |
-| `.reference-cache/ansible/ansible-documentation@b16dcb8` | https://github.com/ansible/ansible-documentation | `stable-2.21` | `b16dcb8e8b5b5658ae9691b8632b7046e879606b` |
-| `.reference-cache/ansible/ansible-lint@26.10.1` | https://github.com/ansible/ansible-lint | `v26.10.1` | `9bce2bfb8f4a984e6b13767bc0d6bf0a49492164` |
-| `.reference-cache/jenkinsci/jenkins@2.580.1` | https://github.com/jenkinsci/jenkins | `jenkins-2.580.1` | `500c80a425077d987b97f62be32887d4f32e9ffb` |
-| `.reference-cache/jenkinsci/ansible-plugin@635.v34b_48e979c86` | https://github.com/jenkinsci/ansible-plugin | `635.v34b_48e979c86` | `34b48e979c862f28ee5bec47e929953267a71a0f` |
-| `.reference-cache/jenkinsci/active-choices-plugin@2.8.11` | https://github.com/jenkinsci/active-choices-plugin | `uno-choice-2.8.11` | `d8564cbc7ea72c6020a7942370581774e9804b07` |
-| `.reference-cache/jenkinsci/workflow-cps-plugin@4395.v738456a_5da_6b_` | https://github.com/jenkinsci/workflow-cps-plugin | `4395.v738456a_5da_6b_` | `738456a5da6b30900f4b87dcdbf49d8555fff293` |
-| `.reference-cache/jenkinsci/workflow-basic-steps-plugin@1098.v808b_fd7f8cf4` | https://github.com/jenkinsci/workflow-basic-steps-plugin | `1098.v808b_fd7f8cf4` | `808bfd7f8cf4fb7d1b32e20db9bcb586cf9ac891` |
-| `.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157` | https://github.com/jenkinsci/pipeline-input-step-plugin | `560.v56198a_642157` | `56198a642157f4648edd05bee6470b729ec09df7` |
-| `.reference-cache/jenkinsci/pipeline-utility-steps-plugin@3.810.va_7672d206740` | https://github.com/jenkinsci/pipeline-utility-steps-plugin | `3.810.va_7672d206740` | `a7672d2067401a3e191836df55b4282036edb01d` |
-| `.reference-cache/jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e` | https://github.com/jenkinsci/workflow-multibranch-plugin | `842.v3a_b_59b_57b_e6e` | `3ab59b57be6e59ebfa0e273a5743b02529476334` |
-| `.reference-cache/jenkins-infra/jenkins.io@d471394` | https://github.com/jenkins-infra/jenkins.io | `master` | `d4713943384e705fd7dd2f645555083b247e61b4` |
+| 出处 | 上游仓库 | 标签，或分支与提交 |
+| --- | --- | --- |
+| `ansible/ansible@2.21.5` | https://github.com/ansible/ansible | 标签 `v2.21.5` |
+| `ansible/ansible-documentation@b16dcb8` | https://github.com/ansible/ansible-documentation | 分支 `stable-2.21` 的提交 `b16dcb8e8b5b5658ae9691b8632b7046e879606b` |
+| `ansible/ansible-lint@26.10.1` | https://github.com/ansible/ansible-lint | 标签 `v26.10.1` |
+| `jenkinsci/jenkins@2.580.1` | https://github.com/jenkinsci/jenkins | 标签 `jenkins-2.580.1` |
+| `jenkinsci/ansible-plugin@635.v34b_48e979c86` | https://github.com/jenkinsci/ansible-plugin | 标签 `635.v34b_48e979c86` |
+| `jenkinsci/active-choices-plugin@2.8.11` | https://github.com/jenkinsci/active-choices-plugin | 标签 `uno-choice-2.8.11` |
+| `jenkinsci/workflow-cps-plugin@4395.v738456a_5da_6b_` | https://github.com/jenkinsci/workflow-cps-plugin | 标签 `4395.v738456a_5da_6b_` |
+| `jenkinsci/workflow-basic-steps-plugin@1098.v808b_fd7f8cf4` | https://github.com/jenkinsci/workflow-basic-steps-plugin | 标签 `1098.v808b_fd7f8cf4` |
+| `jenkinsci/pipeline-input-step-plugin@560.v56198a_642157` | https://github.com/jenkinsci/pipeline-input-step-plugin | 标签 `560.v56198a_642157` |
+| `jenkinsci/pipeline-utility-steps-plugin@3.810.va_7672d206740` | https://github.com/jenkinsci/pipeline-utility-steps-plugin | 标签 `3.810.va_7672d206740` |
+| `jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e` | https://github.com/jenkinsci/workflow-multibranch-plugin | 标签 `842.v3a_b_59b_57b_e6e` |
+| `jenkins-infra/jenkins.io@d471394` | https://github.com/jenkins-infra/jenkins.io | 分支 `master` 的提交 `d4713943384e705fd7dd2f645555083b247e61b4` |

@@ -5,10 +5,11 @@ import com.cloudbees.groovy.cps.NonCPS
 /** Checks one parameter value against its definition, the same way for defaults, DEPLOY_PLAN and form input. */
 class Values {
 
-    /**
-     * Ansible renders Jinja in extra vars, so a template in a value would run code on the Jenkins node.
-     * YAML reads unquoted yes, 2026-01-01 and 1.0 as boolean, date and decimal: a str parameter takes only text and integers.
-     */
+    // Ansible reads a string that starts with this header as a template with the delimiters the header names
+    public static final String JINJA_OVERRIDE = '#jinja2:'
+
+    // Ansible renders Jinja in extra vars, so a template would run code on the Jenkins node; control and format characters
+    // could forge log lines. Types are taken as YAML read them, so Ansible receives exactly what was checked
     @NonCPS
     static Object check(String where, Object value, ParameterDefinition parameter, List<String> errors) {
         switch (parameter.type) {
@@ -25,9 +26,10 @@ class Values {
                 }
                 String text = value.toString()
                 if (parameter.choices && !(text in parameter.choices)) errors << "${where} must be one of ${parameter.choices}, got '${text}'".toString()
-                if (text.contains('{{') || text.contains('{%') || text.contains('{#')) {
-                    errors << "${where} must not contain template syntax ({{, {%, {#)".toString()
+                if (text.contains('{{') || text.contains('{%') || text.contains('{#') || text.startsWith(JINJA_OVERRIDE)) {
+                    errors << "${where} must not contain template syntax ({{, {%, {# or a leading ${JINJA_OVERRIDE})".toString()
                 }
+                if (text.find(/[\p{Cc}\p{Cf}&&[^\t]]/) != null) errors << "${where} must not contain control or format characters".toString()
                 if (text.length() > Limits.MAX_STRING_PARAMETER_CHARACTERS) {
                     errors << "${where} is longer than ${Limits.MAX_STRING_PARAMETER_CHARACTERS} characters".toString()
                 }

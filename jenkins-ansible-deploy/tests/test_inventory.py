@@ -55,6 +55,7 @@ def test_deploy_target_groups_in_hosts_yml_match_ansible_inventory():
     result = run_ansible(['ansible-inventory', '--list'])
 
     assert result.returncode == 0, result.stderr
+    assert from_file
     assert from_file == json.loads(result.stdout)['deploy_targets']['children']
 
 
@@ -92,12 +93,27 @@ def test_check_inventory_reports_every_broken_host_in_one_run(examples_copy):
         'web-01': 1, 'web-02': 1, 'api-01': 1, 'worker-01': 0, 'worker-02': 0}
 
 
-def test_ansible_lint_passes_with_production_profile():
+def ansible_lint(root):
     # ansible-lint reads .ansible-lint from the directory it runs in: the root of the examples
     env = {key: value for key, value in os.environ.items() if not key.startswith('ANSIBLE_')}
-    env.update(ANSIBLE_CONFIG=str(EXAMPLES / 'platform' / 'ansible' / 'ansible.cfg'), ANSIBLE_NOCOLOR='1',
+    env.update(ANSIBLE_CONFIG=str(root / 'platform' / 'ansible' / 'ansible.cfg'), ANSIBLE_NOCOLOR='1',
                ANSIBLE_VAULT_PASSWORD_FILE=str(VAULT_PASSWORD_FILE))
-    result = subprocess.run(['ansible-lint', '--offline', '--profile', 'production'], cwd=EXAMPLES, env=env,
-                            capture_output=True, text=True, timeout=300)
+    return subprocess.run(['ansible-lint', '--offline', '--profile', 'production'], cwd=root, env=env,
+                          capture_output=True, text=True, timeout=300)
+
+
+def test_ansible_lint_passes_with_production_profile():
+    result = ansible_lint(EXAMPLES)
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_ansible_lint_checks_the_argument_specs_of_business_tasks(examples_copy):
+    spec = examples_copy / 'business' / 'tasks' / 'task_a' / 'meta' / 'argument_specs.yml'
+    spec.write_text(spec.read_text().replace('        type: int\n', '        type: int\n        bogus_key: 1\n', 1))
+
+    result = ansible_lint(examples_copy)
+
+    assert result.returncode != 0
+    assert 'schema[role-arg-spec]' in result.stdout + result.stderr
+    assert 'business/tasks/task_a/meta/argument_specs.yml' in result.stdout + result.stderr

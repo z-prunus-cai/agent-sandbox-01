@@ -77,6 +77,7 @@ def test_order_typed_on_the_form_decides_the_order_within_a_phase(jenkins, new_j
         'PRE_TASK_OPTIONS': '@@task_a.order,30,@@task_a.task_a_message,hi,@@task_b.order,,@@check_c.order,5'})
 
     assert result == 'SUCCESS', console
+    assert playbook_runs(console) == ['run-task.yml'] * 3                   # SKIP_DEPLOY on the form skips the deployment
     # check_c 5, then task_b with no order typed (its catalog order 20), then task_a 30
     assert console.index('(pre: check_c)') < console.index('(pre: task_b)') < console.index('(pre: task_a)')
 
@@ -84,11 +85,12 @@ def test_order_typed_on_the_form_decides_the_order_within_a_phase(jenkins, new_j
 def test_tasks_from_both_lists_run_in_catalog_order_without_typed_orders(jenkins, new_job):
     job = new_job(READ_WRITE)
 
-    result, console, _ = run(jenkins, job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'PRE_TASKS': 'task_b',
-                                            'PRE_MORE_TASKS': 'check_c'})
+    # check_a (main list, order 50) is submitted before check_c (more list, order 40)
+    result, console, _ = run(jenkins, job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'POST_TASKS': 'check_a',
+                                            'POST_MORE_TASKS': 'check_c', 'POST_TASK_OPTIONS': '@@check_a.check_a_min_connections,1'})
 
     assert result == 'SUCCESS', console
-    assert console.index('(pre: task_b)') < console.index('(pre: check_c)')
+    assert console.index('(post: check_c)') < console.index('(post: check_a)')
 
 
 REPORT_PLAN = '''
@@ -250,15 +252,17 @@ def test_engine_comes_from_the_commit_the_jenkinsfile_came_from(jenkins, new_job
         number = jenkins.start_build(job, plan('{skip_deploy: true, pre: [task_b]}'))
         jenkins.wait_for_console(job, number, 'Sleeping for 20 sec')
         repository.commit({str(plan_source.relative_to(repository.path)):
-                           plan_source.read_text().replace("'[deploy] plan:'", "'[deploy] newer plan:'")}, 'engine changes meanwhile')
+                           plan_source.read_text().replace("'[deploy] plan:'", "'[deploy] newer plan:'"),
+                           **mutated(repository, 'business/tasks/task_b/tasks/main.yml', 'default(0) }} bytes', 'default(0) }} octets')},
+                          'engine and business change meanwhile')
         result = jenkins.wait_for_build(job, number)
         console = jenkins.console(job, number)
     finally:
         repository.reset(head)
 
     assert result == 'SUCCESS', console
-    assert '[deploy] plan:' in console
-    assert 'newer plan' not in console
+    assert '[deploy] plan:' in console and 'business/inventory/hosts.yml: ' in console
+    assert 'newer plan' not in console and 'octets' not in console
 
 
 def test_new_task_directory_runs_without_any_platform_change(jenkins, new_job, repository):
@@ -307,4 +311,120 @@ def test_unknown_value_in_task_metadata_stops_the_build_before_any_task_runs(jen
 
     assert result == 'FAILURE'
     assert "task task_b: access 'admin' is not one of [read, write]" in console
+    assert playbook_runs(console) == []
+
+
+def test_timeout_under_abort_stops_before_the_deployment(jenkins, new_job):
+    job = new_job(READ_WRITE)
+
+    result, console, number = run(jenkins, job, plan('''
+targets: [api]
+pre: [{name: task_a, policy: abort, timeout_minutes: 1, params: {task_a_message: x, task_a_delay_seconds: 90}}]
+'''))
+    report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+
+    assert result == 'FAILURE'
+    assert '[deploy] task task_a failed: timed out after 1 min (abort: stopping the pipeline)' in console
+    assert playbook_runs(console) == ['run-task.yml']
+    assert [(row['id'], row['outcome']) for row in report] == [('task_a', 'timed-out-stopped')]
+
+
+def test_failed_deployment_stops_the_build_before_post_tasks(jenkins, new_job, repository):
+    job = new_job(READ_WRITE)
+    web = repository.path / 'business/inventory/group_vars/web.yml'
+    head = repository.commit({'business/inventory/group_vars/web.yml': web.read_text().replace('app_port: 8080', 'app_port: eighty')},
+                             'break the web group')
+    try:
+        result, console, number = run(jenkins, job, plan('{targets: [web], post: [check_c]}'))
+        report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+    finally:
+        repository.reset(head)
+
+    assert result == 'FAILURE'
+    assert playbook_runs(console) == ['deploy.yml']
+    assert [(row['id'], row['outcome']) for row in report] == [('deploy', 'failed-stopped')]
+
+
+def test_equal_orders_on_the_form_keep_the_catalog_order(jenkins, new_job):
+    job = new_job(READ_WRITE)
+
+    result, console, _ = run(jenkins, job, {
+        'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'POST_TASKS': 'check_a', 'POST_MORE_TASKS': 'check_c',
+        'POST_TASK_OPTIONS': '@@check_a.order,-1,@@check_a.check_a_min_connections,1,@@check_c.order,-1'})
+
+    assert result == 'SUCCESS', console
+    assert console.index('(post: check_c)') < console.index('(post: check_a)')
+
+
+def mutated(repository, path, old, new):
+    text = (repository.path / path).read_text()
+    assert old in text
+    return {path: text.replace(old, new, 1)}
+
+
+CATALOG_PROBLEMS = [
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'order: 20', 'order: 10'),
+                 'tasks [task_a, task_b] share order 10', id='shared-order'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'phases: [pre]', 'phases: []'),
+                 'task task_b: phases must be a non-empty list of [pre, post]', id='no-phase'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'phases: [pre]', 'phases: [during]'),
+                 "task task_b: phase 'during' is not one of [pre, post]", id='unknown-phase'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'order: 20', 'order: 20\nreview: yes'),
+                 'task task_b: review must be a mapping with timeout_minutes', id='review-not-mapping'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'order: 20', 'order: first'),
+                 'task task_b: order must be an integer', id='order-not-integer'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'order: 20', 'order: 20\nretries: 3'),
+                 'task task_b: unknown keys [retries] in meta/task.yml', id='unknown-meta-key'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'timeout_minutes: 5', 'timeout_minutes: 241'),
+                 "task task_b: timeout_minutes must be an integer from 1 to 240, got '241'", id='timeout-too-long'),
+    pytest.param(lambda r: {'business/tasks/task_b/meta/argument_specs.yml': None},
+                 'task task_b: business/tasks/task_b/meta/argument_specs.yml is missing', id='no-argument-specs'),
+    pytest.param(lambda r: {'business/tasks/task_b/tasks/main.yml': None},
+                 'task task_b: business/tasks/task_b/tasks/main.yml is missing', id='no-role-tasks'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_a/meta/argument_specs.yml', '        default: 1\n',
+                                   '        default: 1\n        choices: [1, 2]\n'),
+                 'task task_a: parameter task_a_repeat: choices are allowed only for str', id='choices-not-str'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_a/meta/argument_specs.yml', '        default: 1\n',
+                                   '        default: 1\n        reqiured: true\n'),
+                 'task task_a: parameter task_a_repeat: unknown keys [reqiured]', id='unknown-option-key'),
+    pytest.param(lambda r: {**mutated(r, 'business/tasks/task_a/meta/argument_specs.yml', 'task_a_repeat:', 'repeat:'),
+                            **mutated(r, 'business/tasks/task_a/defaults/main.yml', 'task_a_repeat:', 'repeat:')},
+                 'task task_a: parameter repeat: the name must start with task_a_', id='name-without-prefix'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_a/defaults/main.yml', 'task_a_repeat: 1', 'task_a_repeat: two'),
+                 "task task_a: parameter task_a_repeat: default in defaults/main.yml must be an integer, got 'two'", id='default-wrong-type'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_a/defaults/main.yml', 'task_a_repeat: 1', 'task_a_repeat: 1\ntask_a_extra: 2'),
+                 'task task_a: defaults/main.yml sets task_a_extra, which meta/argument_specs.yml does not declare', id='undeclared-default'),
+    pytest.param(lambda r: {'business/tasks/run/meta/task.yml': (r.path / 'business/tasks/task_b/meta/task.yml').read_text()
+                            .replace('order: 20', 'order: 90'),
+                            'business/tasks/run/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n'
+                                                                          '    options:\n      run_once:\n        type: bool\n'
+                                                                          '        description: x\n',
+                            'business/tasks/run/tasks/main.yml': '- name: Nothing\n  ansible.builtin.debug:\n    msg: x\n'},
+                 'task run: parameter run_once: the name must start with run_ and must not be', id='reserved-name'),
+    pytest.param(lambda r: {'business/tasks/Bad-Name/meta/task.yml': (r.path / 'business/tasks/task_b/meta/task.yml').read_text()
+                            .replace('order: 20', 'order: 91'),
+                            'business/tasks/Bad-Name/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n'
+                                                                               '    options: {}\n',
+                            'business/tasks/Bad-Name/tasks/main.yml': '- name: Nothing\n  ansible.builtin.debug:\n    msg: x\n'},
+                 'task Bad-Name: the directory name may hold only a-z, 0-9 and _, starting with a letter', id='bad-directory-name'),
+    pytest.param(lambda r: mutated(r, 'business/inventory/hosts.yml', '        api:\n          hosts:\n            api-01:\n',
+                                   '        api:\n          hosts: {}\n'),
+                 'business/inventory/hosts.yml: group api has no hosts', id='empty-group'),
+    pytest.param(lambda r: mutated(r, 'business/inventory/hosts.yml', 'deploy_targets:', 'release_targets:'),
+                 'business/inventory/hosts.yml has no all.children.deploy_targets.children', id='no-deploy-targets'),
+]
+
+
+@pytest.mark.parametrize('change, message', CATALOG_PROBLEMS)
+def test_problem_in_a_task_directory_or_the_inventory_stops_the_build_before_any_task_runs(jenkins, shared_job, repository,
+                                                                                          change, message):
+    head = repository.commit(change(repository), 'break the catalog')
+    try:
+        result, console, _ = run(jenkins, shared_job, plan('{skip_deploy: true, pre: [task_b]}'))
+    finally:
+        repository.reset(head)
+
+    assert result == 'FAILURE'
+    assert '[deploy] task catalog or inventory:' in console
+    assert message in console
     assert playbook_runs(console) == []

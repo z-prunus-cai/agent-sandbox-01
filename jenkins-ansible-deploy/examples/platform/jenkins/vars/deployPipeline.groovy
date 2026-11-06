@@ -11,11 +11,7 @@ import deploy.PlanParser
 import deploy.RequestKind
 import deploy.TaskRunner
 
-/**
- * The deployment pipeline of one job. A Jenkinsfile loads this library from its own commit and calls
- * deployPipeline(commit: ..., mode: 'read-only' or 'read-write', form: 'active-choices' or 'basic',
- *                vaultCredentialsId: ..., sshCredentialsId: ... or null).
- */
+/** The pipeline of one job; config: commit, mode (AccessMode label), form (ParameterForm label), vaultCredentialsId, sshCredentialsId. */
 def call(Map config) {
     List<String> errors = []
     AccessMode mode = Labels.find(AccessMode.values() as List, config.mode, 'mode', errors)
@@ -25,13 +21,17 @@ def call(Map config) {
     Map requested = [:] + params
     TaskRunner runner = new TaskRunner(this, [vaultCredentialsId: config.vaultCredentialsId, sshCredentialsId: config.sshCredentialsId])
     Catalog catalog = null
+    ParameterPage page = null
     stage('Prepare') {
         node {
+            // leftovers of an earlier build would otherwise be stashed and run with this commit's files
+            deleteDir()
             checkout([$class: 'GitSCM', branches: [[name: config.commit]], userRemoteConfigs: scm.userRemoteConfigs])
             catalog = readCatalog(errors)
             if (errors) error '[deploy] task catalog or inventory:\n  - ' + errors.join('\n  - ')
             // a change to the tasks or groups shows on the parameter page from the next build on
-            properties([disableConcurrentBuilds(), parameters(new ParameterPage(this, catalog, mode, form).definitions())])
+            page = new ParameterPage(this, catalog, mode, form)
+            properties([disableConcurrentBuilds(), parameters(page.definitions())])
             // after properties(), so a wrong credential still leaves the parameter page registered
             runner.checkCredentials()
             writeJSON file: "${TaskRunner.RUN_DIRECTORY}/variable-names.json", json: [(EngineVariable.PARAMETER_NAMES.label): catalog.parameterNames()]
@@ -48,8 +48,8 @@ def call(Map config) {
     }
     Plan plan = null
     stage('Plan') {
-        Map raw = kind == RequestKind.PLAN_TEXT ? readPlan(requested[Limits.PLAN_PARAMETER].toString(), errors) :
-                new ParameterPage(this, catalog, mode, form).draft(requested, errors)
+        echo "[deploy] reading the plan from the ${kind.label}"
+        Map raw = kind == RequestKind.PLAN_TEXT ? readPlan(requested[Limits.PLAN_PARAMETER].toString(), errors) : page.draft(requested, errors)
         if (raw != null) plan = PlanParser.parse(raw, catalog, mode, errors)
         if (errors) error '[deploy] the plan has problems:\n  - ' + errors.join('\n  - ')
         echo plan.describe()
@@ -72,9 +72,10 @@ def call(Map config) {
 private Catalog readCatalog(List<String> errors) {
     Map<String, Map> sources = [:]
     for (def file in findFiles(glob: 'business/tasks/*/meta/task.yml')) {
-        String directory = file.path.substring(0, file.path.length() - 'meta/task.yml'.length())
-        String name = directory.tokenize('/').last()
+        String name = file.path.tokenize('/')[2]
+        String directory = "business/tasks/${name}/"
         sources[name] = [task    : readYaml(file: file.path),
+                         role    : fileExists("${directory}tasks/main.yml"),
                          spec    : fileExists("${directory}meta/argument_specs.yml") ? readYaml(file: "${directory}meta/argument_specs.yml") : null,
                          defaults: fileExists("${directory}defaults/main.yml") ? readYaml(file: "${directory}defaults/main.yml") : null]
     }

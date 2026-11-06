@@ -1,6 +1,5 @@
-# Runs one task (one role under business/tasks). Jenkins passes, with -e @file, the task's own parameters and:
-#   task_role, task_hosts                     always
-#   task_review_mode, task_review_file        only for a task that asks for a review before it runs
+# Runs one role under business/tasks with the extra vars Jenkins passes: the task's parameters, task_role, task_hosts,
+# and task_review_mode, task_review_file for a task that asks for a review before it runs
 - name: "Task {{ task_role }}"
   hosts: "{{ task_hosts }}"
   gather_facts: false

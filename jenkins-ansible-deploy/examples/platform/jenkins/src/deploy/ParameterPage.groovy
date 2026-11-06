@@ -1,5 +1,7 @@
 package deploy
 
+import com.cloudbees.groovy.cps.NonCPS
+
 /** The build parameters of a job, and reading back what was chosen on them. Uses pipeline steps through script. */
 class ParameterPage implements Serializable {
     public static final String TARGETS_PARAMETER = 'TARGET_GROUPS'
@@ -24,7 +26,7 @@ class ParameterPage implements Serializable {
         switch (form) {
             case ParameterForm.ACTIVE_CHOICES:
                 result << script.activeChoice(name: TARGETS_PARAMETER, randomName: 'choice-target-groups', choiceType: 'PT_CHECKBOX',
-                        filterable: false, filterLength: 1, description: "Deploy targets: groups under ${Catalog.TARGETS_GROUP} in the inventory",
+                        filterable: false, filterLength: 1, description: "Deploy targets: groups under ${RunLocation.TARGETS.hosts} in the inventory",
                         script: sandboxed(ActiveChoicesForm.groupsScript(catalog.groups), 'return ["(group list failed)"]'))
                 break
             case ParameterForm.BASIC:
@@ -33,6 +35,8 @@ class ParameterPage implements Serializable {
                             description: "Deploy target: group ${group} (${hosts.join(', ')})")
                 }
                 break
+            default:
+                throw new IllegalStateException(form.name())
         }
         if (mode.deploys()) {
             result << script.booleanParam(name: SKIP_DEPLOY_PARAMETER, defaultValue: false,
@@ -68,6 +72,8 @@ class ParameterPage implements Serializable {
                                 description: "${phase.title} task: ${task.description}")
                     }
                     break
+                default:
+                    throw new IllegalStateException(form.name())
             }
         }
         if (form == ParameterForm.BASIC) {
@@ -85,8 +91,14 @@ class ParameterPage implements Serializable {
             case ParameterForm.ACTIVE_CHOICES:
                 Map<Phase, Map> chosen = [:]
                 for (Phase phase in Phase.values()) {
+                    String options = requested[phase.optionsParameter] ?: ''
+                    // bounded like DEPLOY_PLAN before it is split into fields
+                    if (options.length() > Limits.MAX_PLAN_CHARACTERS) {
+                        errors << "${phase.optionsParameter} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
+                        options = ''
+                    }
                     chosen[phase] = [names : Selection.splitList(requested[phase.tasksParameter]) + Selection.splitList(requested[phase.moreTasksParameter]),
-                                     values: ActiveChoicesForm.parseOptions(requested[phase.optionsParameter], errors)]
+                                     values: ActiveChoicesForm.parseOptions(options, errors)]
                 }
                 return Selection.draft(catalog, Selection.splitList(requested[TARGETS_PARAMETER]), skipDeploy(requested), chosen, errors)
             case ParameterForm.BASIC:
@@ -113,9 +125,10 @@ class ParameterPage implements Serializable {
             // with a single field input returns its value, otherwise [field name: value]
             Map answers = fields.size() == 1 ? [(fields[0].name): answer] : answer
             answers.each { String key, Object value ->
+                // the input form's keys are "phase.task.field": the phase, then a form key of the task
                 int dot = key.indexOf('.')
-                Phase phase = Phase.values().find { it.label == key.substring(0, dot) }
-                chosen[phase].values[key.substring(dot + 1)] = String.valueOf(value)
+                Phase phase = Labels.find(Phase.values() as List, key.substring(0, dot), 'input field phase', errors)
+                if (phase != null) chosen[phase].values[key.substring(dot + 1)] = String.valueOf(value)
             }
         }
         return Selection.draft(catalog, targets, skipDeploy(requested), chosen, errors)
@@ -123,23 +136,29 @@ class ParameterPage implements Serializable {
 
     /** [[name: field name such as pre.task_a.policy, input: parameter definition], ...] */
     private List<Map> inputFields(Phase phase, TaskDefinition task) {
-        String prefix = "${phase.label}.${task.name}."
+        String policyName = FormField.phasedKey(phase, task.name, FormField.POLICY.label)
         List<String> policies = FailurePolicy.values().collect { it.label }
-        List<Map> fields = [[name : prefix + 'policy',
-                             input: script.choice(name: prefix + 'policy', choices: defaultFirst(policies, task.policy.label),
+        List<Map> fields = [[name : policyName,
+                             input: script.choice(name: policyName, choices: defaultFirst(policies, task.policy.label),
                                      description: "${task.name}: on failure, abort stops the pipeline, warn marks it unstable and continues")]]
         for (ParameterDefinition parameter in task.parameters) {
-            String name = prefix + parameter.name
+            String name = FormField.phasedKey(phase, task.name, parameter.name)
             String description = "${task.name}: ${parameter.description}${parameter.required ? ' (required)' : ''}"
-            if (parameter.choices) {
-                fields << [name: name, input: script.choice(name: name, choices: defaultFirst(parameter.choices, parameter.defaultValue), description: description)]
-            } else if (parameter.type == ParameterType.BOOLEAN) {
-                fields << [name: name, input: script.booleanParam(name: name, defaultValue: parameter.defaultValue == true, description: description)]
-            } else {
-                fields << [name: name, input: script.string(name: name, defaultValue: parameter.defaultValue == null ? '' : String.valueOf(parameter.defaultValue), description: description)]
-            }
+            fields << [name: name, input: inputField(name, parameter, description)]
         }
         return fields
+    }
+
+    private Object inputField(String name, ParameterDefinition parameter, String description) {
+        if (parameter.choices) return script.choice(name: name, choices: defaultFirst(parameter.choices, parameter.defaultValue), description: description)
+        switch (parameter.type) {
+            case ParameterType.BOOLEAN:
+                return script.booleanParam(name: name, defaultValue: parameter.defaultValue == true, description: description)
+            case ParameterType.STRING:
+            case ParameterType.INTEGER:
+                return script.string(name: name, defaultValue: parameter.defaultValue == null ? '' : String.valueOf(parameter.defaultValue), description: description)
+        }
+        throw new IllegalStateException(String.valueOf(parameter.type))
     }
 
     private boolean skipDeploy(Map requested) {
@@ -152,7 +171,7 @@ class ParameterPage implements Serializable {
     }
 
     // a choice parameter defaults to its first option
-    @com.cloudbees.groovy.cps.NonCPS
+    @NonCPS
     static List<String> defaultFirst(List<String> options, Object current) {
         return current == null ? options : [String.valueOf(current)] + (options - String.valueOf(current))
     }

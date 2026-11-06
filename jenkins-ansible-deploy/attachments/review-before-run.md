@@ -1,8 +1,8 @@
 # 执行前复核：界面流程
 
-本附件用截图说明一个需要复核的任务在 Jenkins 上是怎样运行的：构建在任务执行前停下，把要执行的内容完整显示出来，有人点 **Run** 后才执行，点 **Abort** 则停止。机制、规则和证据见 BRIEF.md 的 3.10 节与 4.15 节；这里只讲界面。
+本附件用截图说明一个需要复核的任务在 Jenkins 上是怎样运行的：构建在任务执行前停下，把要执行的内容完整显示出来，有人点 **Run** 后才执行，点 **Abort** 则停止。机制、规则和测试见 BRIEF.md 的 3.10 节与 4.15 节；这里只讲界面。
 
-截图来自测试用的本地 Jenkins 2.580.1（`tests/jenkins_server/server.py` 启动，界面语言为英文，没有开启登录，所以操作人显示为 `anonymous`），job 用 `pipelines/readwrite/Jenkinsfile`，任务是示例任务 `task_d`：它把参数 `task_d_items` 中逗号分隔的每一项写成复核文件的一行 `change <项>`，确认后按复核文件逐行输出 `applied change <项>`。
+截图来自测试用的本地 Jenkins（`tests/jenkins_server/server.py` 启动，界面语言为英文，没有开启登录，所以操作人显示为 `anonymous`），job 用 `pipelines/readwrite/Jenkinsfile`，任务是示例任务 `task_d`：它把参数 `task_d_items` 中逗号分隔的每一项写成复核文件的一行 `change <项>`，确认后按复核文件逐行输出 `applied change <项>`。
 
 ## 1. 发起构建
 

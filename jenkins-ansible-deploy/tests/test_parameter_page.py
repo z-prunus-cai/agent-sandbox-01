@@ -58,6 +58,8 @@ def test_lists_show_inventory_groups_and_only_main_tasks_until_more_is_shown(par
         'task_a - 在所选主机组上运行的示例任务', 'task_b - 在 Jenkins 节点本机检查文件的示例任务', 'task_c - 带枚举参数和布尔参数的示例任务'])
     expect(page.locator('#ecp_choice-post-tasks label')).to_have_text([
         'task_c - 带枚举参数和布尔参数的示例任务', 'check_a - 部署后比较主机变量的示例检查'])
+    expect(page.locator('#ecp_choice-pre-more-tasks')).to_have_count(1)
+    expect(page.locator('#ecp_choice-post-more-tasks')).to_have_count(1)
     expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_count(0)
     expect(page.locator('#ecp_choice-post-more-tasks label')).to_have_count(0)
 

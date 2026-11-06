@@ -4,7 +4,7 @@ extra_vars:
   task_hosts: localhost
 # business/tasks holds roles: without these, every file under a directory named tasks counts as a task list
 kinds:
-  - arg_specs: "**/business/tasks/*/meta/argument_specs.yml"
+  - role-arg-spec: "**/business/tasks/*/meta/argument_specs.yml"
   - yaml: "**/business/tasks/*/meta/task.yml"
   - vars: "**/business/tasks/*/defaults/*.yml"
   - tasks: "**/business/tasks/*/tasks/*.yml"

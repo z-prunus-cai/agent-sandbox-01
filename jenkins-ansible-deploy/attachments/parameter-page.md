@@ -1,6 +1,6 @@
 # 参数页的两种实现
 
-文中上游源码与文档写成 `.reference-cache/<owner>/<name>@<version>/<path>`，代码再写出所在的类与方法，文档再写出所在的章节标题，指上游仓库在该版本的同一路径，对应关系见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)。
+文中上游源码与文档写成 `<owner>/<name>@<version>` 的 `<path>`，即上游仓库在该版本的路径，代码再写出所在的类与方法，文档再写出所在的章节标题，上游仓库与版本见 [BRIEF.md 第 8 节](../BRIEF.md#8-出处)。
 
 本文说明部署引擎提供的两种参数页：Active Choices 版（Jenkinsfile 中 `form: 'active-choices'`，Active Choices 插件 2.8.11；示例的两个 job `examples/pipelines/readwrite/Jenkinsfile` 和 `examples/pipelines/readonly/Jenkinsfile` 都用这一种）和无插件版（Jenkinsfile 中 `form: 'basic'`，只用 Jenkins 自带功能，构建开始后用 `input` 询问任务参数）：页面上有什么、怎样生成、提交后的值是什么格式、引擎怎样把它转成执行计划。两种方案共用 `examples/platform/jenkins/` 下的共享库（`vars/deployPipeline.groovy` 和 `src/deploy/` 中的类），都由 `ParameterPage.draft` 得到与 `DEPLOY_PLAN` 结构相同的计划草稿，再由 `PlanParser.parse` 统一校验。
 
@@ -39,7 +39,7 @@ return groups.collectEntries { name, hosts -> [(name): name + ' (' + hosts.join(
 
 ### 3.2 沙箱脚本的返回值会经过 HTML 过滤
 
-插件对沙箱脚本的返回值（字符串、列表的每一项、Map 的每个键和值）调用 `SafeHtmlExtendedMarkupFormatter` 过滤（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/model/GroovyScript.java` 的 `eval` 方法和同文件的 `resolveTypeAndSanitize` 方法）。过滤器只放行基本标签及 `input`、`textarea`、`select`、`option`（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` 中 `SafeHtmlExtendedMarkupFormatter` 类的静态字段 `POLICY`），并把部分字符改写成 HTML 实体。在 Jenkins 2.580.1 的脚本控制台中直接调用该过滤器的结果：
+插件对沙箱脚本的返回值（字符串、列表的每一项、Map 的每个键和值）调用 `SafeHtmlExtendedMarkupFormatter` 过滤（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/java/org/biouno/unochoice/model/GroovyScript.java` 的 `eval` 方法和同文件的 `resolveTypeAndSanitize` 方法）。过滤器只放行基本标签及 `input`、`textarea`、`select`、`option`（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` 中 `SafeHtmlExtendedMarkupFormatter` 类的静态字段 `POLICY`），并把部分字符改写成 HTML 实体。在脚本控制台中直接调用该过滤器，输入与输出：
 
 ```
 web（a）  =>  web&#xff08;a&#xff09;
@@ -57,7 +57,7 @@ x"z<b>  =>  x&#34;z<b></b>
 两种参数受到的影响不同：
 
 - **勾选框**（`activeChoice`）：显示文字随后又被页面模板转义一次，实体原样显示在页面上，例如 `web&#xff08;web-01, web-02&#xff09;`。所以勾选框文字和各任务 `meta/task.yml` 的 `description` 只用半角符号，`test_tasks.py` 的 `test_description_has_no_characters_the_active_choices_sanitizer_turns_into_entities` 检查 `description` 中没有 U+FF01–U+FF5E 和 `@ = + "`。
-- **动态 HTML**（`activeChoiceHtml`）：输出作为 HTML 插入页面，浏览器会还原实体，表单中的全角标点、`@@` 标记都正常。但未放行的标签和属性会被去掉，分组只能用 `div`，必填只能用文字标出。同一控制台中的结果：
+- **动态 HTML**（`activeChoiceHtml`）：输出作为 HTML 插入页面，浏览器会还原实体，表单中的全角标点、`@@` 标记都正常。但未放行的标签和属性会被去掉，分组只能用 `div`，必填只能用文字标出。过滤器的输入与输出：
 
 ```
 IN : <label for="x">a</label><input id="x" name="value">
@@ -72,12 +72,16 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 ### 3.3 参数表单
 
-`PRE_TASK_OPTIONS` 是 `activeChoiceHtml`，`referencedParameters: 'PRE_TASKS'`，`omitValueField: true`。`PRE_TASKS` 的勾选变化时，插件重新运行 `ActiveChoicesForm.optionsScript` 生成的脚本，脚本拿到 `PRE_TASKS` 的值（逗号分隔的任务名），为每个所选任务输出一组输入框；没有勾选任务时只显示 “No task selected”。勾选 `task_c` 后页面上的 HTML：
+`PRE_TASK_OPTIONS` 是 `activeChoiceHtml`，`referencedParameters: 'PRE_TASKS,PRE_MORE_TASKS'`，`omitValueField: true`。两个列表的勾选变化时，插件重新运行 `ActiveChoicesForm.optionsScript` 生成的脚本，脚本拿到两个列表的值（逗号分隔的任务名），为每个所选任务输出一组输入框；没有勾选任务时只显示 “No task selected”。勾选 `task_c` 后页面上的 HTML：
 
 ```html
 <div style="border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;margin:0 0 10px 0">
   <div style="margin-bottom:6px"><b>task_c</b> 带枚举参数和布尔参数的示例任务</div>
   <table><tbody>
+    <tr><td style="padding:3px 12px 3px 0">Order</td><td>
+      <input type="hidden" name="value" value="@@task_c.order">
+      <input type="number" name="value" value="30" placeholder="order" class="jenkins-input" style="width:120px">
+      smaller numbers run first in this phase</td></tr>
     <tr><td style="padding:3px 12px 3px 0">On failure</td><td>
       <input type="hidden" name="value" value="@@task_c.policy">
       <select name="value"><option value="abort" selected="selected">abort</option><option value="warn">warn</option></select>
@@ -100,30 +104,30 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 （为便于阅读加了换行和缩进。）
 
-控件按参数类型生成：`choices` → 下拉框；`bool` → `true` / `false` 下拉框（保证每个标记后面都恰好跟一个值）；`int` → `type="number"`；其余 → 文本框。预填值是任务目录的 `defaults/main.yml`。必填参数（如 `task_a_message`）的名称一格为 `task_a_message (required)`，输入框的可访问名称同样是 `task_a_message (required)`（`test_parameter_page.py` 的 `test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text`）。
+控件由引擎按参数类型决定（`ActiveChoicesForm.input`，对 `ParameterType` 的 `switch`），脚本只按结果生成 HTML：`choices` → 下拉框；`bool` → `true` / `false` 下拉框（保证每个标记后面都恰好跟一个值）；`int` → `type="number"`；其余 → 文本框。标记中的字段键也由引擎生成（`FormField`）。预填值是任务目录的 `defaults/main.yml`。必填参数（如 `task_a_message`）的名称一格为 `task_a_message (required)`，输入框的可访问名称同样是 `task_a_message (required)`（`test_parameter_page.py` 的 `test_integer_parameter_uses_number_input_and_required_parameter_is_marked_in_text`）。
 
 **勾选变化会重新生成整个表单**，已经填写的值丢失：脚本只能看到被引用参数（`PRE_TASKS`）的值，看不到表单自己的旧值。先勾选全部任务，再填写参数（`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`）。
 
 ### 3.4 提交的值与解析
 
-提交时，插件把参数中所有 `name="value"` 的输入框的值收集成数组，用 `join(",", true)` 连成一个字符串（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/java/org/biouno/unochoice/AbstractUnoChoiceParameter.java` 的 `createValue` 方法）。`join` 把每个值转成 JSON 字符串（`"` 变成 `\"`，`\` 变成 `\\`），第二个参数 `true` 只是去掉每个值两侧的引号。上面的表单中把 `task_c_label` 填为 `x, "y"` 后提交，构建参数 `PRE_TASK_OPTIONS` 的实际值：
+提交时，插件把参数中所有 `name="value"` 的输入框的值收集成数组，用 `join(",", true)` 连成一个字符串（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/java/org/biouno/unochoice/AbstractUnoChoiceParameter.java` 的 `createValue` 方法）。`join` 把每个值转成 JSON 字符串（`"` 变成 `\"`，`\` 变成 `\\`），第二个参数 `true` 只是去掉每个值两侧的引号。例如把上面表单中的 `task_c_label` 填为 `x, "y"` 后提交，构建参数 `PRE_TASK_OPTIONS` 的值是：
 
 ```
-@@task_c.policy,abort,@@task_c.task_c_mode,plan,@@task_c.task_c_verbose,false,@@task_c.task_c_label,x, \"y\"
+@@task_c.order,30,@@task_c.policy,abort,@@task_c.task_c_mode,plan,@@task_c.task_c_verbose,false,@@task_c.task_c_label,x, \"y\"
 ```
 
-值中的逗号与分隔符相同，所以引擎不按逗号切分，而按隐藏标记切分：`ActiveChoicesForm.parseOptions` 用正则 `(?:^|,)@@` 切开，每段第一个逗号前是 `任务名.字段`，之后是值，再由 `ActiveChoicesForm.jsonUnescape` 还原 `\"`、`\\` 等转义。这次构建的控制台中，执行计划与 Ansible 的输出：
+值中的逗号与分隔符相同，所以引擎不按逗号切分，而按隐藏标记切分：`ActiveChoicesForm.parseOptions` 用正则 `(?:^|,)@@` 切开，每段第一个逗号前是 `任务名.字段`（`FormField.split` 在第一个点处切开），之后是值，再由 `ActiveChoicesForm.jsonUnescape` 还原 `\"`、`\\` 等转义。控制台中的执行计划与 Ansible 的输出：
 
 ```
     - task_c [abort] [task_c_mode:plan, task_c_verbose:false, task_c_label:x, "y"]
     "msg": "worker-01: task_c mode=plan label=x, \"y\""
 ```
 
-`Selection.draft` 再用 `Values.fromForm` 按参数类型转换：`int` 能转成 64 位整数时转为数字，否则保留原字符串，由 `PlanParser.parse` 中的 `Values.check` 报 `must be an integer`；`bool` 的 `true` / `false` 转为布尔；非字符串参数的空值表示未填写，使用默认值。同一阶段的任务按各任务 `meta/task.yml` 中 `order` 的顺序排列，与勾选先后无关。
+`Selection.draft` 再用 `Values.fromForm` 按参数类型转换：`int` 能转成 64 位整数时转为数字，否则保留原字符串，由 `PlanParser.parse` 中的 `Values.check` 报 `must be an integer`；`bool` 的 `true` / `false` 转为布尔；非字符串参数的空值表示未填写，使用默认值。同一阶段的任务按表单中填写的执行顺序排列（见 3.5 节），与勾选先后无关。
 
 这种格式本身有歧义：用户在某个值中输入 `,@@` 时，后半段会被当成另一个字段。引擎不去猜测，而是报错：同一字段出现两次、字段不属于所选任务、字段不是该任务声明的参数，都在运行任何任务之前失败（`test_pipeline_validation.py` 的 `test_invalid_form_values_fail_before_any_task_runs`）。
 
-含逗号、引号、反斜杠、`@@`、`=`、`+`、中文的值原样到达 Ansible：在表单中把 `task_a_message` 填为 `a,"b" c\d, @@x 中文=1+2`，控制台中 Ansible 的输出为 `"msg": "api-01: a,\"b\" c\\d, @@x 中文=1+2 (2/2)"`（JSON 转义后的显示形式，`test_submitted_form_values_reach_ansible_unchanged`）。
+含逗号、引号、反斜杠、`@@`、`=`、`+`、中文的值原样到达 Ansible：在表单中把 `task_a_message` 填为 `a,"b" c\d, @@x 中文=1+2` 时，控制台中 Ansible 的输出为 `"msg": "api-01: a,\"b\" c\\d, @@x 中文=1+2 (2/2)"`（JSON 转义后的显示形式，`test_submitted_form_values_reach_ansible_unchanged`）。
 
 ### 3.5 常用任务与“显示更多”、搜索框、执行顺序
 
@@ -131,7 +135,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 - `PRE_TASKS`：`menu: main` 的任务，一直显示。
 - `PRE_SHOW_MORE`：Jenkins 自带的布尔参数，只在该阶段有 `menu: more` 的任务时登记。
-- `PRE_MORE_TASKS`：`reactiveChoice` 勾选框列表，`referencedParameters: 'PRE_SHOW_MORE'`。脚本（`ActiveChoicesForm.moreTasksScript`）在 `PRE_SHOW_MORE` 为空时返回空 Map，否则返回 `menu: more` 的任务。插件把勾选的复选框的值传给脚本，没勾时传空字符串（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/js/Util.ts` 中 `Util` 类的 `getElementValue` 方法）。取消勾选会重新生成这个列表，已勾选的不常用任务随之清空（`test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_selection`）。
+- `PRE_MORE_TASKS`：`reactiveChoice` 勾选框列表，`referencedParameters: 'PRE_SHOW_MORE'`。脚本（`ActiveChoicesForm.moreTasksScript`）在 `PRE_SHOW_MORE` 为空时返回空 Map，否则返回 `menu: more` 的任务。插件把勾选的复选框的值传给脚本，没勾时传空字符串（`jenkinsci/active-choices-plugin@2.8.11` 的 `src/main/js/Util.ts` 中 `Util` 类的 `getElementValue` 方法）。取消勾选会重新生成这个列表，已勾选的不常用任务随之清空（`test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_selection`）。
 - `PRE_TASK_OPTIONS` 同时引用两个列表（`referencedParameters: 'PRE_TASKS,PRE_MORE_TASKS'`），为两边所选的任务生成表单；引擎把两个列表的值合在一起（`ParameterPage.draft`）。
 
 两个勾选框列表都设 `filterable: true`：列表下方出现搜索框，按键时只显示文字中含输入内容的任务（`test_filter_box_narrows_a_task_list`）。插件在 `keyup` 事件上过滤，自动化测试要逐字输入，不能直接给输入框赋值。
@@ -140,7 +144,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 ### 3.6 不经过页面触发
 
-插件说明 Active Choices 参数只供人在页面上填写，通过插件、API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md` 的 “Known Limitations” 一节）。通过 `buildWithParameters` 直接传入的值不经过页面上的 JSON 转义，原样保存，引擎的 `ActiveChoicesForm.jsonUnescape` 却仍会处理其中的反斜杠，例如 `C:\new` 会变成 `C:`、换行、`ew`。所以 API 和上游 job 只传 `DEPLOY_PLAN`。集成测试中直接赋值 `TARGET_GROUPS`、`PRE_TASKS`、`PRE_MORE_TASKS`、`PRE_TASK_OPTIONS` 的用例（`test_pipeline_runs.py` 的 `test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only`、`test_pipeline_validation.py` 的 `test_invalid_form_values_fail_before_any_task_runs`）只用不含反斜杠的值，用来模拟页面提交。
+插件说明 Active Choices 参数只供人在页面上填写，通过插件、API 或脚本触发时不保证可用（`jenkinsci/active-choices-plugin@2.8.11` 的 `README.md` 的 “Known Limitations” 一节）。通过 `buildWithParameters` 直接传入的值不经过页面上的 JSON 转义，原样保存，引擎的 `ActiveChoicesForm.jsonUnescape` 却仍会处理其中的反斜杠，例如 `C:\new` 会变成 `C:`、换行、`ew`。所以 API 和上游 job 只传 `DEPLOY_PLAN`。集成测试中直接赋值 `TARGET_GROUPS`、`PRE_TASKS`、`PRE_MORE_TASKS`、`PRE_TASK_OPTIONS` 的用例（`test_pipeline_runs.py` 的 `test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only`、`test_pipeline_validation.py` 的 `test_invalid_form_values_fail_before_any_task_runs`）只用不含反斜杠的值，用来模拟页面提交。
 
 不传 `PRE_MORE_TASKS` 时，Jenkins 运行它的脚本求默认值，此时被引用的 `PRE_SHOW_MORE` 没有绑定：脚本访问它会抛出 `MissingPropertyException`，插件改用备用脚本，备用脚本返回的文字就成了参数值，计划校验报 `unknown task '(task list failed)'`。所以 `moreTasksScript` 捕获这个异常，按未勾选处理（`test_tasks_from_both_lists_run_in_catalog_order_without_typed_orders` 等经 API 触发的用例）。
 
@@ -163,7 +167,7 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 勾选 `TARGET_web`、`PRE_task_a`、`POST_check_a` 时，表单只含这两个任务的 6 项：`pre.task_a.policy`、`pre.task_a.task_a_message`、`pre.task_a.task_a_repeat`、`pre.task_a.task_a_delay_seconds`、`post.check_a.policy`、`post.check_a.check_a_min_connections`（`test_form_shows_only_selected_tasks_and_its_values_are_used`）。
 
-`input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`.reference-cache/jenkinsci/pipeline-input-step-plugin@560.v56198a_642157/src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `proceed` 方法）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicDraft` 在这种情况下自己组成 Map（`test_form_with_a_single_field_returns_its_value`）。
+`input` 有多个输入项时返回 `[名称: 值]`，**只有一个输入项时直接返回该值**（`jenkinsci/pipeline-input-step-plugin@560.v56198a_642157` 的 `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` 的 `proceed` 方法）。没有参数的任务（`check_c`）只有失败策略一项，所以 `basicDraft` 在这种情况下自己组成 Map（`test_form_with_a_single_field_returns_its_value`）。
 
 提交后，每个值转成字符串，按 `<阶段>` 分组成与 Active Choices 版相同的 `[任务.字段: 值]`，交给同一个 `Selection.draft`。点 “Abort” 时构建为 ABORTED，不运行任何任务（`test_abort_in_the_form_aborts_the_build`）。
 

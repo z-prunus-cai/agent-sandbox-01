@@ -4,15 +4,16 @@ import com.cloudbees.groovy.cps.NonCPS
 
 /** The tasks found under business/tasks and the deploy target groups of the inventory. */
 class Catalog implements Serializable {
-    public static final String TARGETS_GROUP = 'deploy_targets'
     private static final List<String> TASK_KEYS = ['description', 'phases', 'access', 'menu', 'run_on', 'policy',
                                                    'timeout_minutes', 'order', 'review']
+    private static final List<String> OPTION_KEYS = ['type', 'required', 'default', 'choices', 'description']
 
     List<TaskDefinition> tasks
     Map<String, List<String>> groups
 
     /**
-     * @param sources task name -> [task: meta/task.yml, spec: meta/argument_specs.yml or null, defaults: defaults/main.yml]
+     * @param sources task name -> [task: meta/task.yml, spec: meta/argument_specs.yml or null, defaults: defaults/main.yml or
+     *                null, role: whether tasks/main.yml exists]
      */
     @NonCPS
     static Catalog parse(Map<String, Map> sources, Map inventory, List<String> errors) {
@@ -41,6 +42,9 @@ class Catalog implements Serializable {
     @NonCPS
     static TaskDefinition definition(String name, Map source, List<String> errors) {
         String where = "task ${name}"
+        // the name is also the role name and the first part of the form keys "task.field"
+        if (!(name ==~ /[a-z][a-z0-9_]*/)) errors << "${where}: the directory name may hold only a-z, 0-9 and _, starting with a letter".toString()
+        if (!source.role) errors << "${where}: business/tasks/${name}/tasks/main.yml is missing".toString()
         Map meta = source.task instanceof Map ? source.task : [:]
         List unknownKeys = meta.keySet().findAll { !(it in TASK_KEYS) } as List
         if (unknownKeys) errors << "${where}: unknown keys ${unknownKeys} in meta/task.yml, expected ${TASK_KEYS}".toString()
@@ -80,12 +84,18 @@ class Catalog implements Serializable {
     @NonCPS
     static List<ParameterDefinition> parameters(String task, Map spec, Map defaults, List<String> errors) {
         Map options = spec?.argument_specs?.main?.options ?: [:]
-        return options.collect { String name, Map option ->
+        List<String> engineVariables = EngineVariable.labels()
+        defaults.keySet().findAll { !options.containsKey(it) }.each {
+            errors << "task ${task}: defaults/main.yml sets ${it}, which meta/argument_specs.yml does not declare".toString()
+        }
+        return options.findAll { key, body -> Catalog.optionShape(task, key, body, errors) }.collect { String name, Map option ->
             String where = "task ${task}: parameter ${name}"
             // Parameters arrive as extra vars, which outrank every other variable, so they carry the task's prefix
-            if (!name.startsWith(task + '_') || name in EngineVariable.labels() || name.startsWith('ansible_')) {
-                errors << "${where}: the name must start with ${task}_ and must not be ${EngineVariable.labels()} or ansible_*".toString()
+            if (!name.startsWith(task + '_') || name in engineVariables || name.startsWith('ansible_') || name in AnsibleNames.RESERVED) {
+                errors << "${where}: the name must start with ${task}_ and must not be ${engineVariables}, ansible_* or a name Ansible reserves".toString()
             }
+            List unknownKeys = option.keySet().findAll { !(it in OPTION_KEYS) } as List
+            if (unknownKeys) errors << "${where}: unknown keys ${unknownKeys}, expected ${OPTION_KEYS}".toString()
             ParameterType type = Labels.find(ParameterType.values() as List, (option.type ?: 'str').toString(), "${where}: type", errors)
             if (option.choices && type != ParameterType.STRING) errors << "${where}: choices are allowed only for str".toString()
             ParameterDefinition parameter = new ParameterDefinition(
@@ -94,22 +104,34 @@ class Catalog implements Serializable {
                     choices: option.choices ? option.choices.collect { it.toString() } : null,
                     defaultValue: defaults[name])
             if (parameter.defaultValue != null && type != null) {
-                // defaults reach Ansible as extra vars too, so they pass the same checks as typed values
-                Values.check("${where}: default in defaults/main.yml", parameter.defaultValue, parameter, errors)
+                // defaults reach Ansible as extra vars too, so they pass the same checks and conversion as typed values
+                parameter.defaultValue = Values.check("${where}: default in defaults/main.yml", parameter.defaultValue, parameter, errors)
             }
             return parameter
         }
     }
 
     @NonCPS
+    static boolean optionShape(String task, Object name, Object body, List<String> errors) {
+        if (name instanceof String && body instanceof Map) return true
+        errors << "task ${task}: option '${name}' in meta/argument_specs.yml must be a name with a mapping".toString()
+        return false
+    }
+
+    @NonCPS
     static Map<String, List<String>> targetGroups(Map inventory, List<String> errors) {
-        Map children = inventory?.all?.children?.get(TARGETS_GROUP)?.children
+        String targets = RunLocation.TARGETS.hosts
+        Map children = inventory?.all?.children?.get(targets)?.children
         if (!(children instanceof Map) || children.isEmpty()) {
-            errors << "business/inventory/hosts.yml has no all.children.${TARGETS_GROUP}.children".toString()
+            errors << "business/inventory/hosts.yml has no all.children.${targets}.children".toString()
             return [:]
         }
-        return children.collectEntries { String group, Object body ->
+        Map<String, List<String>> groups = children.collectEntries { String group, Object body ->
             [(group): ((body instanceof Map ? body.hosts : null) ?: [:]).keySet() as List]
         }
+        groups.findAll { group, hosts -> !hosts }.each { group, hosts ->
+            errors << "business/inventory/hosts.yml: group ${group} has no hosts".toString()
+        }
+        return groups
     }
 }
