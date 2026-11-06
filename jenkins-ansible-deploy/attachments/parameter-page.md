@@ -22,7 +22,7 @@ This document describes the two parameter pages the deploy engine provides: the 
 The list of host groups comes from `business/inventory/hosts.yml`. The list of tasks and their parameters come from each task directory's `business/tasks/<task>/meta/task.yml`, `meta/argument_specs.yml` and `defaults/main.yml`. All of these are known only by reading the workspace while the build runs. So `deployPipeline` writes the build parameters into the job in the `Prepare` stage by calling `properties([disableConcurrentBuilds(), parameters(new ParameterPage(...).definitions())])`, not in `pipeline { parameters { } }`. Consequences:
 
 - The parameter definitions are updated while a build runs and appear on the parameter page **from the next build on**. A new job must run once first (result NOT_BUILT).
-- Deciding "is this the first run" must use the `params` read before `properties()`. So `deployPipeline` first copies `params` to `requested` before calling `properties()`, and `RequestKind.of(requested)` decides (see [BRIEF.md section 4.7](../BRIEF.md#TODO-4.7)).
+- Deciding "is this the first run" must use the `params` read before `properties()`. So `deployPipeline` first copies `params` to `requested` before calling `properties()`, and `RequestKind.of(requested)` decides (see [BRIEF.md section 4.7](../BRIEF.md#47-the-first-run-only-registers-parameters-params-must-be-read-before-properties)).
 
 ## 3. Active Choices form
 
