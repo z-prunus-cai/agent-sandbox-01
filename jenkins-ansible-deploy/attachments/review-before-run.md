@@ -1,63 +1,63 @@
-# 执行前复核：界面流程
+# Review before run: the user interface flow
 
-本附件用截图说明一个需要复核的任务在 Jenkins 上是怎样运行的：构建在任务执行前停下，把要执行的内容完整显示出来，有人点 **Run** 后才执行，点 **Abort** 则停止。机制、规则和测试见 BRIEF.md 的 3.10 节与 4.15 节；这里只讲界面。
+This attachment uses screenshots to show how a task that needs review runs on Jenkins: the build stops before the task executes and shows in full what will be executed; the task executes only after someone clicks **Run**, and clicking **Abort** stops it. The mechanism, rules and tests are in sections 3.10 and 4.15 of BRIEF.md; this document covers only the user interface.
 
-截图来自测试用的本地 Jenkins（`tests/jenkins_server/server.py` 启动，界面语言为英文，没有开启登录，所以操作人显示为 `anonymous`），job 用 `pipelines/readwrite/Jenkinsfile`，任务是示例任务 `task_d`：它把参数 `task_d_items` 中逗号分隔的每一项写成复核文件的一行 `change <项>`，确认后按复核文件逐行输出 `applied change <项>`。
+The screenshots come from the local Jenkins used by the tests (started by `tests/jenkins_server/server.py`, user interface language English, login not enabled, so the user is shown as `anonymous`). The job uses `pipelines/readwrite/Jenkinsfile`, and the task is the example task `task_d`: it writes each comma-separated item of the parameter `task_d_items` as one line `change <item>` of the review file, and once confirmed it prints `applied change <item>` for each line of the review file.
 
-## 1. 发起构建
+## 1. Start the build
 
-在 **Build with Parameters** 页面上勾选 `SKIP_DEPLOY`，在部署前任务中勾选 `task_d`，在随之出现的表单中填写 `task_d_items`，点 **Build**。用 API 触发时，`DEPLOY_PLAN` 写 `{skip_deploy: true, pre: [{name: task_d, params: {task_d_items: 'restart cache, rotate logs'}}]}`，效果相同。
+On the **Build with Parameters** page, check `SKIP_DEPLOY`, check `task_d` among the pre-deploy tasks, fill in `task_d_items` in the form that then appears, and click **Build**. When triggering through the API, setting `DEPLOY_PLAN` to `{skip_deploy: true, pre: [{name: task_d, params: {task_d_items: 'restart cache, rotate logs'}}]}` has the same effect.
 
-![发起构建](review-before-run/01-build-with-parameters.png)
+![Start the build](review-before-run/01-build-with-parameters.png)
 
-## 2. 构建停在复核
+## 2. The build stops for review
 
-`task_d` 先以生成模式运行一次，写出复核文件，然后构建暂停。Stages 页面上 `pre: task_d` 显示暂停图标，右侧是复核提示和 **Run** / **Abort** 按钮：
+`task_d` first runs once in generate mode and writes the review file, then the build pauses. On the Stages page, `pre: task_d` shows a pause icon, with the review prompt and the **Run** / **Abort** buttons on the right:
 
-![Stages 页面](review-before-run/02-stages-waiting.png)
+![Stages page](review-before-run/02-stages-waiting.png)
 
-Stages 页面上的提示把换行折叠成了一行。控制台中是完整的提示：要执行的任务、复核文件的 sha256 和全文，换行保留，最后一行是 **Run or Abort** 两个链接。复核时看这里：
+The prompt on the Stages page folds the line breaks into one line. The console has the full prompt: the task to execute, the sha256 of the review file and its full text, with line breaks kept; the last line is the two links **Run or Abort**. Review here:
 
-![控制台](review-before-run/03-console-waiting.png)
+![Console](review-before-run/03-console-waiting.png)
 
-左侧菜单 **Paused for Input** 打开的页面同样把提示折叠成一行，长内容不便阅读：
+The page opened by **Paused for Input** in the left menu also folds the prompt into one line, which makes long content hard to read:
 
-![确认页面](review-before-run/04-input-page.png)
+![Confirmation page](review-before-run/04-input-page.png)
 
-复核文件同时归档为构建产物 `.deploy-run/review/pre-task_d.txt`，可以单独打开或下载：
+The review file is also archived as the build artifact `.deploy-run/review/pre-task_d.txt`, which can be opened or downloaded on its own:
 
-![复核文件](review-before-run/05-review-file.png)
+![Review file](review-before-run/05-review-file.png)
 
-等待期间不占执行器：首页的 **Build Executor Status** 为 `0/2`。
+The wait holds no executor: **Build Executor Status** on the home page shows `0/2`.
 
-![执行器空闲](review-before-run/06-executors-idle.png)
+![Executors idle](review-before-run/06-executors-idle.png)
 
-## 3. 点 Run：按复核文件执行
+## 3. Click Run: execute from the review file
 
-控制台依次显示 `Approved by anonymous`、`[deploy] task_d confirmed by anonymous`、`verifySha256`（复核文件与确认时的 sha256 一致），然后 `task_d` 以执行模式运行，逐行输出复核文件中的变更：
+The console shows `Approved by anonymous`, `[deploy] task_d confirmed by anonymous`, `verifySha256` (the review file has the same sha256 as at confirmation) in turn; then `task_d` runs in execute mode and prints the changes of the review file line by line:
 
-![确认后的控制台](review-before-run/07-console-confirmed.png)
+![Console after confirmation](review-before-run/07-console-confirmed.png)
 
-![确认后的 Stages 页面](review-before-run/08-stages-confirmed.png)
+![Stages page after confirmation](review-before-run/08-stages-confirmed.png)
 
-报告 `deploy-report.json` 中该任务的 `reviewer` 是确认人：
+In the report `deploy-report.json`, the task's `reviewer` is the person who confirmed:
 
-![报告](review-before-run/09-report.png)
+![Report](review-before-run/09-report.png)
 
-## 4. 点 Abort：不执行
+## 4. Click Abort: nothing is executed
 
-构建 ABORTED，控制台中有 `Rejected by anonymous`，任务没有以执行模式运行，报告中该任务为 `aborted`、`not confirmed`。等待超过 `review.timeout_minutes` 时结果相同。
+The build is ABORTED, the console has `Rejected by anonymous`, the task did not run in execute mode, and in the report the task is `aborted`, `not confirmed`. The result is the same when the wait exceeds `review.timeout_minutes`.
 
-![中止后的控制台](review-before-run/10-console-aborted.png)
+![Console after abort](review-before-run/10-console-aborted.png)
 
-![中止后的 Stages 页面](review-before-run/11-stages-aborted.png)
+![Stages page after abort](review-before-run/11-stages-aborted.png)
 
-## 5. 构建历史
+## 5. Build history
 
-确认后执行成功的构建为绿色，中止或超时的为灰色：
+Builds that ran successfully after confirmation are green; aborted or timed-out builds are gray:
 
-![构建历史](review-before-run/12-job-history.png)
+![Build history](review-before-run/12-job-history.png)
 
-## 谁能点 Run 和 Abort
+## Who can click Run and Abort
 
-引擎的 `input` 没有指定 `submitter`。开启了安全设置的 Jenkins 上，有这个 job 的 Job/Build 权限的人能点 **Run** 和 **Abort**，只有 Job/Cancel 权限的人只能点 **Abort**，只能查看的人两个都不能点；Jenkins 管理员都能点。依据和测试范围见 BRIEF.md 的 4.15 节。
+The engine's `input` does not set `submitter`. On a Jenkins with security enabled, people with Job/Build permission on this job can click **Run** and **Abort**, people with only Job/Cancel permission can click only **Abort**, and people who can only view can click neither; Jenkins administrators can click both. The basis and the test coverage are in section 4.15 of BRIEF.md.
