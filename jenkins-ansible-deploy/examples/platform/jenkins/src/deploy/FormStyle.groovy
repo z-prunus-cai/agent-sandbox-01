@@ -14,8 +14,8 @@ class FormStyle {
             // the name column and the input column of each row
             label : 'width:220px;padding:8px 24px 8px 0;vertical-align:middle',
             value : 'padding:8px 0;vertical-align:middle',
-            // text inputs as wide as the box allows, up to 960px
-            text  : 'width:960px;max-width:100%',
+            // text inputs, never wider than the box on a narrow window
+            text  : 'width:520px;max-width:100%',
             number: 'width:160px',
             select: 'width:160px;height:34px',
             // the explanation, on its own line under the input
