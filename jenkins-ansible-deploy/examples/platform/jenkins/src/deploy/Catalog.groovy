@@ -52,11 +52,17 @@ class Catalog implements Serializable {
         List<Phase> phases = meta.phases instanceof List && meta.phases ?
                 meta.phases.collect { Labels.find(Phase.values() as List, it, "${where}: phase", errors) }.findAll { it != null } : []
         if (!phases) errors << "${where}: phases must be a non-empty list of ${Phase.values().collect { it.label }}".toString()
+        String description = (meta.description ?: name).toString()
+        // a checkbox label: the Active Choices sanitizer turns other characters into entities, and the plugin ticks
+        // by default, in builds started through the API, every checkbox whose label contains "selected"
+        if (!(description ==~ /[ -~]*/) || description.find(/[@=+"]/) != null || description.contains('selected')) {
+            errors << "${where}: description must be ASCII without @ = + \" and without the word selected".toString()
+        }
         Map review = meta.review instanceof Map ? meta.review : null
         if (meta.review != null && review == null) errors << "${where}: review must be a mapping with timeout_minutes".toString()
         return new TaskDefinition(
                 name: name,
-                description: (meta.description ?: name).toString(),
+                description: description,
                 phases: phases,
                 access: Labels.find(TaskAccess.values() as List, meta.access, "${where}: access", errors),
                 menu: Labels.find(TaskMenu.values() as List, meta.menu, "${where}: menu", errors),

@@ -113,7 +113,7 @@ def test_role_defaults_are_literal_values(task):
 @pytest.mark.parametrize('task', TASK_NAMES)
 def test_description_is_ascii_without_characters_the_active_choices_sanitizer_turns_into_entities(task):
     description = task_metadata(task)['description']
-    assert re.fullmatch(r'[ -~]+', description) and not re.search(r'[@=+"]', description)
+    assert re.fullmatch(r'[ -~]+', description) and not re.search(r'[@=+"]', description) and 'selected' not in description
 
 
 @pytest.mark.parametrize('task', [task for task in TASK_NAMES if 'review' in task_metadata(task)])

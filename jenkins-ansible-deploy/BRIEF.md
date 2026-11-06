@@ -137,7 +137,7 @@ The four files of a task directory, with `task_a` as the example:
 
 ```yaml
 # business/tasks/task_a/meta/task.yml: metadata Jenkins needs and Ansible does not
-description: Example task that runs on the selected host groups
+description: Example task that runs on the chosen host groups
 phases: [pre]            # allowed phases: pre / post
 access: write            # read: the read-only job can run it too; write: only the read-write job can run it
 menu: main               # main: always shown on the parameter page; more: appears only after "Show more" is ticked
@@ -158,7 +158,7 @@ review:
 # business/tasks/task_a/meta/argument_specs.yml: parameter names, types, required, defaults, descriptions
 argument_specs:
   main:
-    short_description: Example task A - runs on each host of the selected host groups
+    short_description: Example task A - runs on each host of the chosen host groups
     options:
       task_a_message:
         type: str
@@ -366,7 +366,7 @@ Finished: UNSTABLE
 
 Create only one directory `business/tasks/<task name>/`; do not change `platform/`, `pipelines/` or `tests/`. The directory name is the task name; use only lowercase letters, digits and `_`, starting with a letter (it is also the role name, the parameter name prefix, the first part of form field keys and the default `id`):
 
-1. `meta/task.yml`: `description` (ASCII only, without `@ = + "`; see section 5 for why), `phases`, `access`, `menu`, `run_on`, `policy`, `timeout_minutes`, `order` (different from every other task); add `review` if the task needs review.
+1. `meta/task.yml`: `description` (ASCII only, without `@ = + "` and without the word `selected`; see section 5 for why), `phases`, `access`, `menu`, `run_on`, `policy`, `timeout_minutes`, `order` (different from every other task); add `review` if the task needs review.
 2. `meta/argument_specs.yml`: parameter names start with `<task name>_` and must not clash with inventory variables, names Ansible reserves (names that ansible-core's `ansible.vars.reserved.is_reserved_name` treats as reserved, plus special variables such as `inventory_hostname`, `groups`, `hostvars`, `playbook_dir`) or engine variables (`task_role`, `task_hosts`, `task_review_mode`, `task_review_file`, `task_parameter_names`); use only the types `str`, `int`, `bool`, and no `type` means `str`; `choices` only for `str`; write `default` for parameters that are not required; with no parameters write `options: {}` (see `check_c`).
 3. `defaults/main.yml`: the default of each parameter that is not required, equal to `default`, as a literal value (no `{{`).
 4. `tasks/main.yml`: the task itself; make it fail with `assert` / `fail` when a condition is not met. If it needs review, write the two modes as in 3.10.
@@ -664,7 +664,8 @@ Test: `test_parameter_name_used_by_the_inventory_stops_the_build_before_any_task
 | Use `catchError(catchInterruptions: false)` to tell a timeout from a manual abort | After a manual abort the pipeline keeps running | `ansiblePlaybook` throws a plain `InterruptedException`; tell them apart by elapsed time (4.2) |
 | Load the library from the same repository with `legacySCM(scm)` | The library comes from the latest commit of the branch, not the commit of the Jenkinsfile | Use `modernSCM` with the commit ID (4.12) |
 | Write shared library code like ordinary Groovy | Sandbox rejections, compile errors or CPS mismatches | See the table in 4.13 |
-| Active Choices checkbox text contains non-ASCII punctuation (such as full-width parentheses, colon or exclamation mark) or `@ = + "` | Entity text such as `web&#xff08;web-01&#xff09;` is shown next to the checkbox | Checkbox text is ASCII only, without `@ = + "`; the same goes for `description` in a task's `meta/task.yml` (`test_description_has_no_characters_the_active_choices_sanitizer_turns_into_entities`). Reason: every return value of a sandboxed script goes through the plugin's HTML filter (`eval` in `src/main/java/org/biouno/unochoice/model/GroovyScript.java` of `jenkinsci/active-choices-plugin@2.8.11`), which turns these characters into entities; the checkbox text is then escaped once more by the page template. Entities in the HTML form (`*_TASK_OPTIONS`) are decoded by the browser and are not affected |
+| A task `description` contains the word `selected` | In a build started through the API without `PRE_TASKS`, that task is ticked anyway and runs | `Catalog` refuses such a description in `Prepare` (`description-says-selected`). Reason: for a checkbox list, `getDefaultParameterValue` in `src/main/java/org/biouno/unochoice/ChoiceParameter.java` of `jenkinsci/active-choices-plugin@2.8.11` ticks every choice whose label contains `selected` (`SELECTED_OPTION`) |
+| Active Choices checkbox text contains non-ASCII punctuation (such as full-width parentheses, colon or exclamation mark) or `@ = + "` | Entity text such as `web&#xff08;web-01&#xff09;` is shown next to the checkbox | Checkbox text is ASCII only, without `@ = + "`; the same goes for `description` in a task's `meta/task.yml`, which `Catalog` checks in `Prepare` (`description-not-ascii` in `test_problem_in_a_task_directory_or_the_inventory_stops_the_build_before_any_task_runs`, and `test_description_is_ascii_without_characters_the_active_choices_sanitizer_turns_into_entities`). Reason: every return value of a sandboxed script goes through the plugin's HTML filter (`eval` in `src/main/java/org/biouno/unochoice/model/GroovyScript.java` of `jenkinsci/active-choices-plugin@2.8.11`), which turns these characters into entities; the checkbox text is then escaped once more by the page template. Entities in the HTML form (`*_TASK_OPTIONS`) are decoded by the browser and are not affected |
 | Use `fieldset` / `legend` / `label`, `title` or `aria-*` attributes in the dynamic HTML form | These tags and attributes disappear | The filter lets through only basic tags plus `input`, `select`, `option`, `textarea` and a few attributes (the `POLICY` constant in `src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` of `jenkinsci/active-choices-plugin@2.8.11`); group with `div` plus `style`, and mark required fields with the text "(required)" |
 | Fill in the parameters of one task, then tick another task | All values already typed go back to the defaults | Changing the selection regenerates the whole form. Tick all tasks first, then fill in the parameters (`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`) |
 | Only one input field in the plugin-free version | `input` returns the value itself instead of a Map, and treating it as a Map fails | With only one input field, build the Map yourself (`basicDraft` in `ParameterPage`); for the behavior of `input` see `proceed` in `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` of `jenkinsci/pipeline-input-step-plugin@560.v56198a_642157`. `check_c` has no parameters, so when only it is ticked the form has one field (`test_form_with_a_single_field_returns_its_value`) |

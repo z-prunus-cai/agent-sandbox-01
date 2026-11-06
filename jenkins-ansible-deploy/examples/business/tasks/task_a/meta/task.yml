@@ -1,4 +1,4 @@
-description: Example task that runs on the selected host groups
+description: Example task that runs on the chosen host groups
 phases: [pre]
 access: write
 menu: main

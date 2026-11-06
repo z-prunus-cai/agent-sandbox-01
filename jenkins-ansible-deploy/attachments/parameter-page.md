@@ -56,7 +56,7 @@ x"z<b>  =>  x&#34;z<b></b>
 
 The two kinds of parameter are affected differently:
 
-- **Checkboxes** (`activeChoice`): the display text is then escaped once more by the page template, so the entities are shown literally on the page, for example `web&#xff08;web-01, web-02&#xff09;`. So checkbox labels and the `description` in each task's `meta/task.yml` are ASCII only, without `@ = + "`. `test_description_is_ascii_without_characters_the_active_choices_sanitizer_turns_into_entities` in `test_tasks.py` checks that each `description` is ASCII and contains none of `@ = + "`.
+- **Checkboxes** (`activeChoice`): the display text is then escaped once more by the page template, so the entities are shown literally on the page, for example `web&#xff08;web-01, web-02&#xff09;`. So checkbox labels and the `description` in each task's `meta/task.yml` are ASCII only, without `@ = + "`, and a `description` never contains the word `selected` (BRIEF.md section 5). `Catalog` refuses other descriptions in `Prepare`; `test_description_is_ascii_without_characters_the_active_choices_sanitizer_turns_into_entities` in `test_tasks.py` checks the same before a commit.
 - **Dynamic HTML** (`activeChoiceHtml`): the output is inserted into the page as HTML and the browser turns the entities back into characters, so full-width punctuation and the `@@` markers in the form work. But tags and attributes that are not let through are removed: groups can only use `div`, and required parameters can only be marked with text. Input and output of the filter:
 
 ```

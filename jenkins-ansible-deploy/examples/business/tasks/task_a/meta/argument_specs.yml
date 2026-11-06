@@ -1,6 +1,6 @@
 argument_specs:
   main:
-    short_description: Example task A - runs on each host of the selected host groups
+    short_description: Example task A - runs on each host of the chosen host groups
     options:
       task_a_message:
         type: str

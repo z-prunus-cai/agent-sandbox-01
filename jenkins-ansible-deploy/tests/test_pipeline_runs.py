@@ -363,6 +363,10 @@ def mutated(repository, path, old, new):
 
 
 CATALOG_PROBLEMS = [
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'checks a file', 'checks a selected file'),
+                 'task task_b: description must be ASCII without @ = + " and without the word selected', id='description-says-selected'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'checks a file', 'checks a caf\u00e9 file'),
+                 'task task_b: description must be ASCII', id='description-not-ascii'),
     pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'order: 20', 'order: 10'),
                  'tasks [task_a, task_b] share order 10', id='shared-order'),
     pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'phases: [pre]', 'phases: []'),
