@@ -61,7 +61,7 @@ def select = { List options, Object current ->
         '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
     }.join('') + '</select>'
 }
-def hint = { text -> '<span style="' + style.hint + '">' + escapeHtml(text) + '</span>' }
+def hint = { text -> text ? '<div style="' + style.hint + '">' + escapeHtml(text) + '</div>' : '' }
 def selected = [${referencedParameters.join(', ')}].collectMany { String.valueOf(it ?: '').tokenize(',') }.collect { it.trim() }
 def chosen = tasks.findAll { it.name in selected }
 if (!chosen) {
@@ -70,7 +70,7 @@ if (!chosen) {
 def html = []
 chosen.each { task ->
     html << '<div style="' + style.group + '">'
-    html << '<div style="' + style.title + '"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table>'
+    html << '<div style="' + style.title + '"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table style="' + style.table + '">'
     html << '<tr><td style="' + style.label + '">Order</td><td style="' + style.value + '">' + marker(task.orderKey)
     html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="' + style.number + '">'
     html << hint('smaller numbers run first in this phase') + '</td></tr>'

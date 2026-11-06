@@ -106,7 +106,7 @@ def test_every_form_style_survives_the_sanitizer(parameter_page):
     field(page, 'task_a.order').wait_for()
 
     styles = page.locator('[style]').evaluate_all('elements => elements.map(element => element.getAttribute("style"))')
-    assert set(FORM_STYLES) == {'group', 'title', 'label', 'value', 'text', 'number', 'select', 'hint'}
+    assert set(FORM_STYLES) == {'group', 'title', 'table', 'label', 'value', 'text', 'number', 'select', 'hint'}
     assert {name: style for name, style in FORM_STYLES.items() if style not in styles} == {}
 
 

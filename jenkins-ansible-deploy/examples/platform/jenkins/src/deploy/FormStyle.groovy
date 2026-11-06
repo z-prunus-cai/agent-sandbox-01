@@ -9,13 +9,16 @@ class FormStyle {
             // one box per selected task
             group : 'border:1px solid #d1d5db;border-radius:6px;padding:14px 20px;margin:0 0 18px 0',
             title : 'margin-bottom:12px',
+            // fixed layout, so max-width on an input is measured against its cell
+            table : 'width:100%;table-layout:fixed',
             // the name column and the input column of each row
-            label : 'padding:8px 24px 8px 0;vertical-align:middle;white-space:nowrap',
+            label : 'width:220px;padding:8px 24px 8px 0;vertical-align:middle',
             value : 'padding:8px 0;vertical-align:middle',
-            text  : 'width:480px',
+            // text inputs as wide as the box allows, up to 960px
+            text  : 'width:960px;max-width:100%',
             number: 'width:160px',
             select: 'width:160px;height:34px',
-            // the explanation after an input
-            hint  : 'margin-left:12px;color:#4b5563',
+            // the explanation, on its own line under the input
+            hint  : 'margin-top:4px;font-size:12px;color:#6b7280',
     ]
 }
