@@ -52,14 +52,16 @@ return ${literal(labels(tasks))}
              params   : task.parameters.collect { ActiveChoicesForm.input(task, it) }]
         }
         return """def tasks = ${literal(data)}
+def style = ${literal(FormStyle.STYLES)}
 def policies = ${literal(FailurePolicy.values().collect { it.label })}
 def escapeHtml = { value -> groovy.xml.XmlUtil.escapeXml(String.valueOf(value == null ? '' : value)) }
 def marker = { key -> '<input type="hidden" name="value" value="@@' + escapeHtml(key) + '">' }
 def select = { List options, Object current ->
-    '<select name="value">' + options.collect { option ->
+    '<select name="value" style="' + style.select + '">' + options.collect { option ->
         '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
     }.join('') + '</select>'
 }
+def hint = { text -> '<span style="' + style.hint + '">' + escapeHtml(text) + '</span>' }
 def selected = [${referencedParameters.join(', ')}].collectMany { String.valueOf(it ?: '').tokenize(',') }.collect { it.trim() }
 def chosen = tasks.findAll { it.name in selected }
 if (!chosen) {
@@ -67,22 +69,22 @@ if (!chosen) {
 }
 def html = []
 chosen.each { task ->
-    html << '<div style="border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;margin:0 0 10px 0">'
-    html << '<div style="margin-bottom:6px"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table>'
-    html << '<tr><td style="padding:3px 12px 3px 0">Order</td><td>' + marker(task.orderKey)
-    html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="width:120px">'
-    html << ' smaller numbers run first in this phase</td></tr>'
-    html << '<tr><td style="padding:3px 12px 3px 0">On failure</td><td>' + marker(task.policyKey) + select(policies, task.policy)
-    html << ' abort: stop the pipeline; warn: mark unstable and continue</td></tr>'
+    html << '<div style="' + style.group + '">'
+    html << '<div style="' + style.title + '"><b>' + escapeHtml(task.name) + '</b> ' + escapeHtml(task.description) + '</div><table>'
+    html << '<tr><td style="' + style.label + '">Order</td><td style="' + style.value + '">' + marker(task.orderKey)
+    html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="' + style.number + '">'
+    html << hint('smaller numbers run first in this phase') + '</td></tr>'
+    html << '<tr><td style="' + style.label + '">On failure</td><td style="' + style.value + '">' + marker(task.policyKey) + select(policies, task.policy)
+    html << hint('abort: stop the pipeline; warn: mark unstable and continue') + '</td></tr>'
     task.params.each { param ->
-        html << '<tr><td style="padding:3px 12px 3px 0">' + escapeHtml(param.label) + '</td><td>' + marker(param.key)
+        html << '<tr><td style="' + style.label + '">' + escapeHtml(param.label) + '</td><td style="' + style.value + '">' + marker(param.key)
         if (param.choices) {
             html << select(param.choices, param.default)
         } else {
             html << '<input type="' + param.inputType + '" name="value" value="' + escapeHtml(param.default) + '"' +
-                    ' placeholder="' + escapeHtml(param.label) + '" class="jenkins-input" style="width:320px">'
+                    ' placeholder="' + escapeHtml(param.label) + '" class="jenkins-input" style="' + param.style + '">'
         }
-        html << ' ' + escapeHtml(param.description) + '</td></tr>'
+        html << hint(param.description) + '</td></tr>'
     }
     html << '</table></div>'
 }
@@ -94,10 +96,11 @@ return html.join('')
     @NonCPS
     static Map input(TaskDefinition task, ParameterDefinition parameter) {
         Map field = [key: FormField.key(task.name, parameter.name), label: parameter.name + (parameter.required ? ' (required)' : ''),
-                     description: parameter.description, choices: parameter.choices, default: parameter.defaultValue, inputType: 'text']
+                     description: parameter.description, choices: parameter.choices, default: parameter.defaultValue, inputType: 'text',
+                     style: FormStyle.STYLES.text]
         switch (parameter.type) {
             case ParameterType.STRING: return field
-            case ParameterType.INTEGER: return field + [inputType: 'number']
+            case ParameterType.INTEGER: return field + [inputType: 'number', style: FormStyle.STYLES.number]
             case ParameterType.BOOLEAN: return field + [choices: ['true', 'false'], default: String.valueOf(parameter.defaultValue == true)]
         }
         throw new IllegalStateException(String.valueOf(parameter.type))

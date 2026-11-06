@@ -1,13 +1,15 @@
 """Integration tests in a real browser: the Active Choices parameter page of the read-write job."""
 import os
+import re
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from conftest import READ_WRITE
+from conftest import ENGINE_SOURCE, READ_WRITE
 
 pytestmark = pytest.mark.jenkins
 
+FORM_STYLES = dict(re.findall(r"^\s+(\w+)\s*: '([^']*)'", (ENGINE_SOURCE / 'FormStyle.groovy').read_text(), re.MULTILINE))
 SPECIAL_TEXT = 'a,"b" c\\d, @@x caf\u00e9=1+2'
 
 
@@ -95,6 +97,17 @@ def test_order_field_is_prefilled_with_the_catalog_order(parameter_page):
 
     expect(field(page, 'task_c.order')).to_have_attribute('type', 'number')
     expect(field(page, 'task_c.order')).to_have_value('30')
+
+
+def test_every_form_style_survives_the_sanitizer(parameter_page):
+    _, page = parameter_page
+
+    tick(page, 'ecp_choice-pre-tasks', 'task_a')                   # text and number inputs, and the policy select
+    field(page, 'task_a.order').wait_for()
+
+    styles = page.locator('[style]').evaluate_all('elements => elements.map(element => element.getAttribute("style"))')
+    assert set(FORM_STYLES) == {'group', 'title', 'label', 'value', 'text', 'number', 'select', 'hint'}
+    assert {name: style for name, style in FORM_STYLES.items() if style not in styles} == {}
 
 
 def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(parameter_page):

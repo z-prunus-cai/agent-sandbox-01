@@ -242,6 +242,7 @@ The engine is the Jenkins shared library under `platform/jenkins/`: `vars/deploy
 | `TaskResult` | One row of the report |
 | `TaskDefinition`, `ParameterDefinition`, `PlannedTask`, `Plan` | Task and parameter definitions; one task in the plan; the whole plan |
 | `Labels` | Finds enum constants by their external spelling; records a problem when not found |
+| `FormStyle` | Inline styles of the Active Choices task form (column widths, spacing), kept in one map; see `attachments/parameter-page.md` section 3.3 |
 | `FormField` | Keys of form fields: `task.field` in the Active Choices version, `phase.task.field` in the plugin-free version; the two fields besides parameters, `policy` and `order` |
 | `AnsibleNames` | Names Ansible reserves that a name with a task-name prefix could still hit (keywords and special variables containing `_`); `test_engine_refuses_every_name_ansible_reserves_that_a_task_prefix_can_produce` ensures it covers the names ansible-core treats as such |
 | `Limits` | Input limits: `DEPLOY_PLAN` 20000 characters, 50 tasks in a plan, string parameters 1000 characters, `id` 64 characters, timeout 240 minutes, plugin-free form wait 30 minutes |
