@@ -71,14 +71,18 @@ def test_aborted_review_runs_nothing_and_aborts_the_build(jenkins, waiting):
 
 @pytest.fixture
 def no_executors(jenkins):
-    """Take every executor away for one test, and check they are back afterwards."""
+    """Take every executor away for one test; yields a function that gives them back, which teardown calls anyway."""
     executors = jenkins.run_script('print(Jenkins.get().numExecutors)').strip()
-    try:
-        jenkins.run_script('Jenkins.get().setNumExecutors(0)')
-        yield
-    finally:
+
+    def restore():
         jenkins.run_script(f'Jenkins.get().setNumExecutors({executors})')
         assert jenkins.run_script('print(Jenkins.get().numExecutors)').strip() == executors
+
+    try:
+        jenkins.run_script('Jenkins.get().setNumExecutors(0)')
+        yield restore
+    finally:
+        restore()
 
 
 def wait_for_queued(jenkins, job, timeout_seconds=60):
@@ -97,7 +101,7 @@ def test_build_aborted_after_confirmation_before_the_run_reports_the_task_aborte
     wait_for_queued(jenkins, job)                                   # the confirmed run waits for an executor
     jenkins.stop_build(job, number)
     jenkins.wait_for_console(job, number, 'Aborted by')
-
+    no_executors()                                                  # the Report stage needs one to finish the build
 
     assert jenkins.wait_for_build(job, number) == 'ABORTED'
     console = jenkins.console(job, number)
