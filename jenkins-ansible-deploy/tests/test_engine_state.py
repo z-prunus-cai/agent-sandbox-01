@@ -2,7 +2,7 @@
 
 Jenkins reads that state under a sandbox that refuses the static call each Groovy enum makes when its class loads, so a
 build holding an enum in a field, or in a variable of a method that is on the stack while an input waits, cannot resume
-(test_waiting_review_survives_a_jenkins_restart, test_waiting_options_form_survives_a_jenkins_restart).
+(test_waiting_review_survives_a_jenkins_restart).
 """
 import re
 
@@ -116,6 +116,6 @@ def test_no_method_that_waits_for_input_keeps_an_enum_in_a_variable():
     all_methods = [method for path in sources if path.stem not in ENUMS for method in methods(path.read_text())]
     waiting = waiting_methods(all_methods)
 
-    assert {'call', 'draft', 'basicDraft', 'runTasks', 'run', 'runSteps'} <= waiting
+    assert {'call', 'runTasks', 'run', 'runSteps'} <= waiting
     found = {name: problems(parameters, body, ENUMS) for name, parameters, body, cps in all_methods if cps and name in waiting}
     assert {name: lines for name, lines in found.items() if lines} == {}

@@ -3,7 +3,6 @@ import deploy.Catalog
 import deploy.EngineVariable
 import deploy.Labels
 import deploy.Limits
-import deploy.ParameterForm
 import deploy.ParameterPage
 import deploy.Phase
 import deploy.Plan
@@ -12,13 +11,12 @@ import deploy.RequestKind
 import deploy.TaskRunner
 import deploy.Values
 
-/** The pipeline of one job; config: commit, mode (AccessMode label), form (ParameterForm label), vaultCredentialsId, sshCredentialsId. */
+/** The pipeline of one job; config: commit, mode (AccessMode label), vaultCredentialsId, sshCredentialsId. */
 // No enum is held in a variable that lives while tasks run: Jenkins reads the build state back after a restart under a
 // sandbox that refuses the static call each Groovy enum makes when its class loads (see deploy.PlannedTask)
 def call(Map config) {
     List<String> errors = []
     Labels.find(AccessMode.values() as List, config.mode, 'mode', errors)
-    Labels.find(ParameterForm.values() as List, config.form, 'form', errors)
     if (errors) error "[deploy] Jenkinsfile settings: ${Values.problems(errors, '; ')}"
     // properties() fills params with the defaults it registers, so the request is read before it runs
     Map requested = [:] + params
@@ -33,7 +31,7 @@ def call(Map config) {
             catalog = readCatalog(errors)
             if (errors) error '[deploy] task catalog or inventory:\n  - ' + Values.problems(errors, '\n  - ')
             // a change to the tasks or groups shows on the parameter page from the next build on
-            page = new ParameterPage(this, catalog, accessMode(config), Labels.of(ParameterForm.values() as List, config.form))
+            page = new ParameterPage(this, catalog, accessMode(config))
             properties([disableConcurrentBuilds(), parameters(page.definitions())])
             // after properties(), so a wrong credential still leaves the parameter page registered
             runner.checkCredentials()

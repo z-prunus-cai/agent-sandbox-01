@@ -2,10 +2,7 @@ package deploy
 
 import com.cloudbees.groovy.cps.NonCPS
 
-/**
- * The fields of a task on the forms besides its parameters. Form keys are "task.field" on the Active Choices page and
- * "phase.task.field" in the input form; task names hold no dot, so the first dots split them.
- */
+/** The fields of a task on the form besides its parameters. Form keys are "task.field"; task names hold no dot, so the first dot splits them. */
 enum FormField {
     POLICY('policy'),
     ORDER('order')
@@ -32,10 +29,6 @@ enum FormField {
         return task + '.' + field
     }
 
-    @NonCPS
-    static String phasedKey(String phase, String task, String field) {
-        return phase + '.' + key(task, field)
-    }
 
     /** [task: ..., field: ...], or null when the key is not "task.field". */
     @NonCPS

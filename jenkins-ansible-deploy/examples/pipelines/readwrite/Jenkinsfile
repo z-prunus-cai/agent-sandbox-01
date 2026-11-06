@@ -6,5 +6,5 @@ node {
 }
 library(identifier: "deploy-engine@${commit}",
         retriever: modernSCM(scm: [$class: 'GitSCMSource', remote: scm.userRemoteConfigs[0].url], libraryPath: 'platform/jenkins/'))
-deployPipeline(commit: commit, mode: 'read-write', form: 'active-choices',
+deployPipeline(commit: commit, mode: 'read-write',
                vaultCredentialsId: 'ansible-vault-password', sshCredentialsId: 'deploy-ssh-key')

@@ -17,8 +17,6 @@ ENGINE_SOURCE = EXAMPLES / 'platform' / 'jenkins' / 'src' / 'deploy'
 VAULT_PASSWORD_FILE = TESTS / 'example-vault-password.txt'
 READ_WRITE = 'pipelines/readwrite/Jenkinsfile'
 READ_ONLY = 'pipelines/readonly/Jenkinsfile'
-# the basic form has no Jenkinsfile of its own in the examples: the tests derive one from the read-write job
-BASIC = 'pipelines/basic/Jenkinsfile'
 
 
 def limit(name):
@@ -142,10 +140,6 @@ class Repository:
 def repository(tmp_path_factory):
     path = tmp_path_factory.mktemp('repository')
     shutil.copytree(EXAMPLES, path, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
-    basic = (EXAMPLES / READ_WRITE).read_text().replace("form: 'active-choices'", "form: 'basic'")
-    assert "form: 'basic'" in basic
-    (path / BASIC).parent.mkdir(parents=True)
-    (path / BASIC).write_text(basic)
     repository = Repository(path)
     repository.git('init', '-q', '-b', 'main')
     repository.git('add', '-A')
