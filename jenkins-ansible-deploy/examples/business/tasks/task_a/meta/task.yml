@@ -1,6 +1,7 @@
 description: 在所选主机组上运行的示例任务
 phases: [pre]
 access: write
+menu: main
 run_on: targets
 policy: abort
 timeout_minutes: 5

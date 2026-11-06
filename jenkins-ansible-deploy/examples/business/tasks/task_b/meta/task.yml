@@ -1,6 +1,7 @@
 description: 在 Jenkins 节点本机检查文件的示例任务
 phases: [pre]
 access: read
+menu: main
 run_on: controller
 policy: abort
 timeout_minutes: 5

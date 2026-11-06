@@ -42,13 +42,25 @@ class ParameterPage implements Serializable {
             List<TaskDefinition> tasks = catalog.tasksFor(phase, mode)
             switch (form) {
                 case ParameterForm.ACTIVE_CHOICES:
+                    List<TaskDefinition> more = tasks.findAll { it.menu == TaskMenu.MORE }
+                    List<String> lists = [phase.tasksParameter]
                     result << script.activeChoice(name: phase.tasksParameter, randomName: "choice-${phase.label}-tasks", choiceType: 'PT_CHECKBOX',
-                            filterable: false, filterLength: 1, description: "${phase.title} tasks, run in this order",
-                            script: sandboxed(ActiveChoicesForm.tasksScript(tasks), 'return ["(task list failed)"]'))
+                            filterable: true, filterLength: 1, description: "${phase.title} tasks",
+                            script: sandboxed(ActiveChoicesForm.tasksScript(tasks.findAll { it.menu == TaskMenu.MAIN }), 'return ["(task list failed)"]'))
+                    if (more) {
+                        lists << phase.moreTasksParameter
+                        result << script.booleanParam(name: phase.showMoreParameter, defaultValue: false,
+                                description: "Show the ${more.size()} less used ${phase.title.toLowerCase()} tasks")
+                        // a list that empties when the box is unticked: the plugin cannot fold part of one checkbox list
+                        result << script.reactiveChoice(name: phase.moreTasksParameter, randomName: "choice-${phase.label}-more-tasks",
+                                choiceType: 'PT_CHECKBOX', filterable: true, filterLength: 1, referencedParameters: phase.showMoreParameter,
+                                description: "Less used ${phase.title.toLowerCase()} tasks",
+                                script: sandboxed(ActiveChoicesForm.moreTasksScript(more, phase.showMoreParameter), 'return ["(task list failed)"]'))
+                    }
                     result << script.activeChoiceHtml(name: phase.optionsParameter, randomName: "choice-${phase.label}-task-options",
-                            choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: phase.tasksParameter,
-                            description: "Failure policy and parameters of the selected ${phase.title.toLowerCase()} tasks",
-                            script: sandboxed(ActiveChoicesForm.optionsScript(tasks, phase.tasksParameter), 'return "(form failed)"'))
+                            choiceType: 'ET_FORMATTED_HTML', omitValueField: true, referencedParameters: lists.join(','),
+                            description: "Order, failure policy and parameters of the selected ${phase.title.toLowerCase()} tasks",
+                            script: sandboxed(ActiveChoicesForm.optionsScript(tasks, lists), 'return "(form failed)"'))
                     break
                 case ParameterForm.BASIC:
                     for (TaskDefinition task in tasks) {
@@ -73,7 +85,7 @@ class ParameterPage implements Serializable {
             case ParameterForm.ACTIVE_CHOICES:
                 Map<Phase, Map> chosen = [:]
                 for (Phase phase in Phase.values()) {
-                    chosen[phase] = [names : Selection.splitList(requested[phase.tasksParameter]),
+                    chosen[phase] = [names : Selection.splitList(requested[phase.tasksParameter]) + Selection.splitList(requested[phase.moreTasksParameter]),
                                      values: ActiveChoicesForm.parseOptions(requested[phase.optionsParameter], errors)]
                 }
                 return Selection.draft(catalog, Selection.splitList(requested[TARGETS_PARAMETER]), skipDeploy(requested), chosen, errors)

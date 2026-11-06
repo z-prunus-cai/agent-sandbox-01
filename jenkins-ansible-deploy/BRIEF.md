@@ -140,10 +140,11 @@ all:
 description: 在所选主机组上运行的示例任务
 phases: [pre]            # 允许的阶段：pre / post
 access: write            # read：只读 job 也能运行；write：只有读写 job 能运行
+menu: main               # main：参数页上一直显示；more：勾选 “显示更多” 后才出现
 run_on: targets          # targets：所选主机组；controller：Jenkins 节点本机
 policy: abort            # 默认失败策略：abort / warn
 timeout_minutes: 5       # 1 到 240；超时按任务失败处理
-order: 10                # 参数页上选择时，同一阶段按 order 从小到大执行；任务之间不能重复
+order: 10                # 同一阶段的默认执行顺序，从小到大；任务之间不能重复
 ```
 
 需要复核的任务另加：
@@ -242,7 +243,7 @@ ansible-playbook run-task.yml --limit api --vault-password-file ../../../tests/e
 | `TaskDefinition`、`ParameterDefinition`、`PlannedTask`、`Plan` | 任务与参数的定义；计划中的一个任务；整个计划 |
 | `Labels` | 按外部拼写查找枚举常量，找不到时记录问题 |
 | `Limits` | 输入上限：`DEPLOY_PLAN` 20000 个字符、计划中 50 个任务、字符串参数 1000 个字符、`id` 64 个字符、超时 240 分钟、无插件版表单等待 30 分钟 |
-| 枚举 | `Phase`、`TaskAccess`、`AccessMode`、`FailurePolicy`、`RunLocation`、`ParameterType`、`ParameterForm`、`RequestKind`、`ReviewStep`、`TaskOutcome`、`EngineVariable`；外部拼写（YAML 中的值、构建参数名、报告中的结果）写在每个常量上，解析时遇到未知值报错 |
+| 枚举 | `Phase`、`TaskAccess`、`TaskMenu`、`AccessMode`、`FailurePolicy`、`RunLocation`、`ParameterType`、`ParameterForm`、`RequestKind`、`ReviewStep`、`TaskOutcome`、`EngineVariable`；外部拼写（YAML 中的值、构建参数名、报告中的结果）写在每个常量上，解析时遇到未知值报错 |
 
 ### 3.5 Jenkinsfile
 
@@ -273,8 +274,10 @@ Active Choices 版：
 | --- | --- | --- |
 | `TARGET_GROUPS` | Active Choices 勾选框 | 主机组，选项 `web (web-01, web-02)` 等来自 inventory |
 | `SKIP_DEPLOY` | 布尔，只有读写 job 有 | 跳过部署，部署前后任务照常执行 |
-| `PRE_TASKS` / `POST_TASKS` | Active Choices 勾选框 | 该阶段允许、且本 job 的模式允许的任务，按 `order` 排列 |
-| `PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS` | Active Choices 动态 HTML | 随勾选实时生成：每个所选任务一组，含失败策略下拉框和各参数输入框，预填 role 的默认值；整数为数字框，布尔和枚举为下拉框，必填参数名后标 “(required)” |
+| `PRE_TASKS` / `POST_TASKS` | Active Choices 勾选框，带搜索框 | 该阶段允许、本 job 的模式允许、`menu: main` 的任务，按 `order` 排列 |
+| `PRE_SHOW_MORE` / `POST_SHOW_MORE` | 布尔，该阶段有 `menu: more` 的任务时才有 | 勾选后出现下一行的列表 |
+| `PRE_MORE_TASKS` / `POST_MORE_TASKS` | Active Choices 联动勾选框，带搜索框 | `menu: more` 的任务；没勾 `*_SHOW_MORE` 时为空。取消勾选 `*_SHOW_MORE` 会清空这里已选的任务 |
+| `PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS` | Active Choices 动态 HTML | 随两个列表的勾选实时生成：每个所选任务一组，含执行顺序数字框（默认为 `order`，数字小的先执行，相同时按 `order`）、失败策略下拉框和各参数输入框，预填 role 的默认值；整数为数字框，布尔和枚举为下拉框，必填参数名后标 “(required)” |
 | `DEPLOY_PLAN` | 多行文本 | 非空时忽略上面所有参数 |
 
 无插件版：每个主机组一个勾选框 `TARGET_<组>`，`SKIP_DEPLOY`（只有读写 job），每个阶段的每个任务一个勾选框 `PRE_<任务>` / `POST_<任务>`，`EDIT_TASK_OPTIONS`（默认勾选），`DEPLOY_PLAN`。构建开始后，若勾选了任务且 `EDIT_TASK_OPTIONS` 为真，流水线暂停并弹出只含所选任务的表单（字段名形如 `pre.task_a.task_a_repeat`），点 “Start” 后继续，点 “Abort” 则构建 ABORTED（`test_abort_in_the_form_aborts_the_build`）。等待包在 30 分钟的 `timeout` 中，期间不占执行器（`test_waiting_for_the_form_holds_no_executor`）。
@@ -361,7 +364,7 @@ Finished: UNSTABLE
 
 只新建一个目录 `business/tasks/<任务名>/`，不改 `platform/`、`pipelines/`、`tests/`。任务名只用小写字母、数字和 `_`（它也是 role 名、参数名前缀和默认的 `id`）：
 
-1. `meta/task.yml`：`description`（不用 U+FF01–U+FF5E 的全角字符和 `@ = + "`，原因见第 5 节；`、` `。` 不在此列）、`phases`、`access`、`run_on`、`policy`、`timeout_minutes`、`order`（与其他任务不同），需要复核时加 `review`。
+1. `meta/task.yml`：`description`（不用 U+FF01–U+FF5E 的全角字符和 `@ = + "`，原因见第 5 节；`、` `。` 不在此列）、`phases`、`access`、`menu`、`run_on`、`policy`、`timeout_minutes`、`order`（与其他任务不同），需要复核时加 `review`。
 2. `meta/argument_specs.yml`：参数名以 `<任务名>_` 开头，不能与 inventory 变量、Ansible 保留的变量名（ansible-core 的 `ansible.vars.reserved.is_reserved_name` 认定的名字，以及 `inventory_hostname`、`groups`、`hostvars`、`playbook_dir` 等特殊变量）、引擎变量（`task_role`、`task_hosts`、`task_review_mode`、`task_review_file`、`task_parameter_names`）重名；类型只用 `str`、`int`、`bool`，不写 `type` 时为 `str`；`choices` 只用于 `str`；非必填参数写 `default`；没有参数时写 `options: {}`（见 `check_c`）。
 3. `defaults/main.yml`：每个非必填参数的默认值，与 `default` 相同，用字面值（不含 `{{`）。
 4. `tasks/main.yml`：任务本身；条件不满足时用 `assert` / `fail` 让它失败。需要复核时按 3.10 写两种模式。
@@ -610,6 +613,7 @@ library marker A
 | 闭包中调用同一个类的 `private static` 方法，或不带类名调用静态方法 | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods invokeMethod java.lang.Object java.lang.String java.lang.Object` | 静态方法不用 `private`，在闭包中写成 `类名.方法名(...)` |
 | 同名的 `private` 方法和 `public` 方法 | 编译错误 `Mixing private and public/protected methods of the same name causes multimethods to be disabled` | 改名 |
 | `new IllegalArgumentException(...)`、`new LinkedHashMap(map)` | `Scripts not permitted to use new ...` | 问题收集到列表后调用 `error`；复制 Map 用 `[:] + map` |
+| `list.sort(false) { ... }`（排序后返回新列表） | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods sort java.util.Collection boolean groovy.lang.Closure` | 复制一份再用 `sort { ... }` |
 | `collection.flatten()` | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods flatten java.util.Collection` | 嵌套的 `any` / `collectMany` |
 | 对数组用展开运算符（`values()*.label`） | `No such field found: field ...[] label` | `values().collect { it.label }` |
 | `@NonCPS` 方法调用没有标 `@NonCPS` 的方法 | `expected to call deploy.Catalog.tasksFor but wound up catching deploy.AccessMode.allows` | 只做计算的方法一律标 `@NonCPS` |
@@ -669,6 +673,7 @@ Groovy 的 `switch` 不检查是否覆盖了枚举的所有常量：引擎在每
 | 按路径引用 role（`roles: [../../business/deploy]`） | 任务标题显示成 `TASK [../../business/deploy : ...]` | 把 `business` 加进 `roles_path`，按名字引用 `deploy` |
 | ansible-lint 检查 `business/tasks/` | `schema[tasks]: ... is not of type 'array'`：目录名 `tasks` 下的每个 YAML 都被当成任务列表 | `.ansible-lint` 的 `kinds` 中按路径指定文件类型 |
 | ansible-lint 检查 `run-task.yml` | `syntax-check[specific]: ... 'task_role' is undefined` | 在 `.ansible-lint` 中用 `extra_vars` 给出示例值（`.reference-cache/ansible/ansible-lint@26.10.1/src/ansiblelint/runner.py` 的 `Runner._get_ansible_syntax_check_matches`） |
+| 联动参数（`reactiveChoice`）的脚本直接使用被引用的参数，再经 API 触发构建 | 计划校验报 `unknown task '(task list failed)'` | API 不传该参数时，Jenkins 在没有绑定被引用参数的情况下运行脚本求默认值，脚本失败后备用脚本的返回值成了参数值；脚本中捕获 `MissingPropertyException`，按未选择处理（[attachments/parameter-page.md](attachments/parameter-page.md) 第 3.6 节） |
 | 用 Jinja 的 `intersect` 求两个列表的交集并写进消息 | 同样的输入，消息中名字的顺序每次不同 | `intersect` 不保证顺序；后面接 `sort`（`check-variable-names.yml`） |
 | 复核任务的 `copy` 写复核文件 | `Destination directory .../.deploy-run/review does not exist` | 目录由引擎创建（`TaskRunner` 在生成前用 `writeFile` 写一个占位文件） |
 | 非阻塞任务失败后看到控制台中的 `FATAL: command execution failed` 和 Java 堆栈 | 误以为构建失败 | playbook 失败时插件抛出的 `AbortException` 是 `IOException` 的子类（`.reference-cache/jenkinsci/jenkins@2.580.1/core/src/main/java/hudson/AbortException.java` 的类声明），被插件自己的 `catch (IOException)` 先打印成 FATAL 和堆栈再抛出（`AnsiblePlaybookBuilder` 的 `perform`）。以构建结果为准；真正原因看它上方 Ansible 的 `fatal: [主机]: FAILED! => {... "msg": ...}` |

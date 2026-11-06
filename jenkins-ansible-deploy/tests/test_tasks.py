@@ -51,9 +51,10 @@ def test_every_task_directory_has_metadata_and_a_role():
 def test_metadata_uses_only_engine_values(task):
     meta = task_metadata(task)
 
-    assert set(meta) <= {'description', 'phases', 'access', 'run_on', 'policy', 'timeout_minutes', 'order', 'review'}
+    assert set(meta) <= {'description', 'phases', 'access', 'menu', 'run_on', 'policy', 'timeout_minutes', 'order', 'review'}
     assert meta['phases'] and set(meta['phases']) <= set(labels('Phase.groovy'))
     assert meta['access'] in labels('TaskAccess.groovy')
+    assert meta['menu'] in labels('TaskMenu.groovy')
     assert meta['run_on'] in labels('RunLocation.groovy')
     assert meta['policy'] in labels('FailurePolicy.groovy')
     assert type(meta['timeout_minutes']) is int and 1 <= meta['timeout_minutes'] <= 240

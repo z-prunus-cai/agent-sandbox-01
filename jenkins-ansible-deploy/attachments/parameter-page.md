@@ -125,9 +125,24 @@ OUT: <input type="text" name="value" placeholder="必填" class="jenkins-input" 
 
 含逗号、引号、反斜杠、`@@`、`=`、`+`、中文的值原样到达 Ansible：在表单中把 `task_a_message` 填为 `a,"b" c\d, @@x 中文=1+2`，控制台中 Ansible 的输出为 `"msg": "api-01: a,\"b\" c\\d, @@x 中文=1+2 (2/2)"`（JSON 转义后的显示形式，`test_submitted_form_values_reach_ansible_unchanged`）。
 
-### 3.5 不经过页面触发
+### 3.5 常用任务与“显示更多”、搜索框、执行顺序
 
-插件说明 Active Choices 参数只供人在页面上填写，通过插件、API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md` 的 “Known Limitations” 一节）。通过 `buildWithParameters` 直接传入的值不经过页面上的 JSON 转义，原样保存，引擎的 `ActiveChoicesForm.jsonUnescape` 却仍会处理其中的反斜杠，例如 `C:\new` 会变成 `C:`、换行、`ew`。所以 API 和上游 job 只传 `DEPLOY_PLAN`。集成测试中直接赋值 `TARGET_GROUPS`、`PRE_TASKS`、`PRE_TASK_OPTIONS` 的用例（`test_pipeline_runs.py` 的 `test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only`、`test_pipeline_validation.py` 的 `test_invalid_form_values_fail_before_any_task_runs`）只用不含反斜杠的值，用来模拟页面提交。
+任务多时，每个阶段的任务分两个列表。插件只能整体绘制一个勾选框列表，不能折叠其中一部分，所以“收起”的做法是让第二个列表为空：
+
+- `PRE_TASKS`：`menu: main` 的任务，一直显示。
+- `PRE_SHOW_MORE`：Jenkins 自带的布尔参数，只在该阶段有 `menu: more` 的任务时登记。
+- `PRE_MORE_TASKS`：`reactiveChoice` 勾选框列表，`referencedParameters: 'PRE_SHOW_MORE'`。脚本（`ActiveChoicesForm.moreTasksScript`）在 `PRE_SHOW_MORE` 为空时返回空 Map，否则返回 `menu: more` 的任务。插件把勾选的复选框的值传给脚本，没勾时传空字符串（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/src/main/js/Util.ts` 中 `Util` 类的 `getElementValue` 方法）。取消勾选会重新生成这个列表，已勾选的不常用任务随之清空（`test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_selection`）。
+- `PRE_TASK_OPTIONS` 同时引用两个列表（`referencedParameters: 'PRE_TASKS,PRE_MORE_TASKS'`），为两边所选的任务生成表单；引擎把两个列表的值合在一起（`ParameterPage.draft`）。
+
+两个勾选框列表都设 `filterable: true`：列表下方出现搜索框，按键时只显示文字中含输入内容的任务（`test_filter_box_narrows_a_task_list`）。插件在 `keyup` 事件上过滤，自动化测试要逐字输入，不能直接给输入框赋值。
+
+参数表单中每个任务的第一行是执行顺序：数字框，标记为 `@@<任务>.order`，预填该任务的 `order`。`Selection.draft` 按这些数字给一个阶段的任务排序，留空时用 `order`，数字相同时按 `order`；不是整数时报 `form field <任务>.order must be an integer`（`test_order_typed_on_the_form_decides_the_order_within_a_phase`）。任务之间的先后依赖不做校验，执行计划在运行任何任务之前打印在控制台上。
+
+### 3.6 不经过页面触发
+
+插件说明 Active Choices 参数只供人在页面上填写，通过插件、API 或脚本触发时不保证可用（`.reference-cache/jenkinsci/active-choices-plugin@2.8.11/README.md` 的 “Known Limitations” 一节）。通过 `buildWithParameters` 直接传入的值不经过页面上的 JSON 转义，原样保存，引擎的 `ActiveChoicesForm.jsonUnescape` 却仍会处理其中的反斜杠，例如 `C:\new` 会变成 `C:`、换行、`ew`。所以 API 和上游 job 只传 `DEPLOY_PLAN`。集成测试中直接赋值 `TARGET_GROUPS`、`PRE_TASKS`、`PRE_MORE_TASKS`、`PRE_TASK_OPTIONS` 的用例（`test_pipeline_runs.py` 的 `test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only`、`test_pipeline_validation.py` 的 `test_invalid_form_values_fail_before_any_task_runs`）只用不含反斜杠的值，用来模拟页面提交。
+
+不传 `PRE_MORE_TASKS` 时，Jenkins 运行它的脚本求默认值，此时被引用的 `PRE_SHOW_MORE` 没有绑定：脚本访问它会抛出 `MissingPropertyException`，插件改用备用脚本，备用脚本返回的文字就成了参数值，计划校验报 `unknown task '(task list failed)'`。所以 `moreTasksScript` 捕获这个异常，按未勾选处理（`test_tasks_from_both_lists_run_in_catalog_order_without_typed_orders` 等经 API 触发的用例）。
 
 ## 4. 无插件版：勾选框 + input 步骤
 

@@ -5,8 +5,8 @@ import com.cloudbees.groovy.cps.NonCPS
 /** The tasks found under business/tasks and the deploy target groups of the inventory. */
 class Catalog implements Serializable {
     public static final String TARGETS_GROUP = 'deploy_targets'
-    private static final List<String> TASK_KEYS = ['description', 'phases', 'access', 'run_on', 'policy', 'timeout_minutes',
-                                                   'order', 'review']
+    private static final List<String> TASK_KEYS = ['description', 'phases', 'access', 'menu', 'run_on', 'policy',
+                                                   'timeout_minutes', 'order', 'review']
 
     List<TaskDefinition> tasks
     Map<String, List<String>> groups
@@ -55,6 +55,7 @@ class Catalog implements Serializable {
                 description: (meta.description ?: name).toString(),
                 phases: phases,
                 access: Labels.find(TaskAccess.values() as List, meta.access, "${where}: access", errors),
+                menu: Labels.find(TaskMenu.values() as List, meta.menu, "${where}: menu", errors),
                 runOn: Labels.find(RunLocation.values() as List, meta.run_on, "${where}: run_on", errors),
                 policy: Labels.find(FailurePolicy.values() as List, meta.policy, "${where}: policy", errors),
                 timeoutMinutes: minutes(meta.timeout_minutes, "${where}: timeout_minutes", errors),

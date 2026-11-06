@@ -1,6 +1,7 @@
 description: 部署后比较主机变量的示例检查
 phases: [post]
 access: read
+menu: main
 run_on: targets
 policy: warn
 timeout_minutes: 5

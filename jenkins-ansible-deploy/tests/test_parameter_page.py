@@ -44,17 +44,55 @@ def field(page, marker):
     return page.locator(f'input[type=hidden][value="@@{marker}"] + *')
 
 
-def test_lists_show_inventory_groups_and_catalog_tasks_per_phase(parameter_page):
+def show_more(page, phase):
+    # Jenkins draws its own checkbox over the input; the label receives the click
+    page.locator('label', has_text=f'{phase}_SHOW_MORE').first.click()
+
+
+def test_lists_show_inventory_groups_and_only_main_tasks_until_more_is_shown(parameter_page):
     _, page = parameter_page
 
     expect(page.locator('#ecp_choice-target-groups label')).to_have_text(
         ['web (web-01, web-02)', 'api (api-01)', 'worker (worker-01, worker-02)'])
     expect(page.locator('#ecp_choice-pre-tasks label')).to_have_text([
-        'task_a - 在所选主机组上运行的示例任务', 'task_b - 在 Jenkins 节点本机检查文件的示例任务',
-        'task_c - 带枚举参数和布尔参数的示例任务', 'check_c - 在 task_c 之后运行的示例检查', 'task_d - 执行前需要复核的示例任务'])
+        'task_a - 在所选主机组上运行的示例任务', 'task_b - 在 Jenkins 节点本机检查文件的示例任务', 'task_c - 带枚举参数和布尔参数的示例任务'])
     expect(page.locator('#ecp_choice-post-tasks label')).to_have_text([
-        'task_c - 带枚举参数和布尔参数的示例任务', 'check_c - 在 task_c 之后运行的示例检查',
-        'check_a - 部署后比较主机变量的示例检查', 'task_d - 执行前需要复核的示例任务'])
+        'task_c - 带枚举参数和布尔参数的示例任务', 'check_a - 部署后比较主机变量的示例检查'])
+    expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_count(0)
+    expect(page.locator('#ecp_choice-post-more-tasks label')).to_have_count(0)
+
+
+def test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_selection(parameter_page):
+    _, page = parameter_page
+
+    show_more(page, 'PRE')
+    expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_text([
+        'check_c - 在 task_c 之后运行的示例检查', 'task_d - 执行前需要复核的示例任务'])
+    tick(page, 'ecp_choice-pre-more-tasks', 'task_d')
+    expect(field(page, 'task_d.task_d_items')).to_be_visible()
+    show_more(page, 'PRE')
+
+    expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_count(0)
+    expect(page.locator('input[type=hidden][value^="@@task_d."]')).to_have_count(0)
+    expect(page.locator('#ecp_choice-post-more-tasks label')).to_have_count(0)
+
+
+def test_filter_box_narrows_a_task_list(parameter_page):
+    _, page = parameter_page
+
+    # the plugin filters on keyup, which fill() does not send
+    page.locator('#ecp_choice-pre-tasks').locator('xpath=..').locator('input.uno_choice_filter').press_sequentially('task_b')
+
+    expect(page.locator('#ecp_choice-pre-tasks label:visible')).to_have_text(['task_b - 在 Jenkins 节点本机检查文件的示例任务'])
+
+
+def test_order_field_is_prefilled_with_the_catalog_order(parameter_page):
+    _, page = parameter_page
+
+    tick(page, 'ecp_choice-pre-tasks', 'task_c')
+
+    expect(field(page, 'task_c.order')).to_have_attribute('type', 'number')
+    expect(field(page, 'task_c.order')).to_have_value('30')
 
 
 def test_selecting_a_task_shows_only_its_fields_prefilled_with_role_defaults(parameter_page):

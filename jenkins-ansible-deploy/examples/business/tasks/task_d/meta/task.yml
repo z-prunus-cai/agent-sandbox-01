@@ -1,6 +1,7 @@
 description: 执行前需要复核的示例任务
 phases: [pre, post]
 access: write
+menu: more
 run_on: controller
 policy: abort
 timeout_minutes: 5

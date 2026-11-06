@@ -99,6 +99,8 @@ def test_invalid_plan_lists_all_problems_at_once(jenkins, shared_job):
                  'form field task_b.task_b_path belongs to a task that is not selected', id='field-of-unselected-task'),
     pytest.param('@@task_a.policy,abort,@@task_a.task_a_message,hi,@@task_a.task_a_repeat,99999999999999999999',
                  "parameter task_a_repeat must be an integer, got '99999999999999999999'", id='integer-too-large'),
+    pytest.param('@@task_a.order,first,@@task_a.task_a_message,hi',
+                 "form field task_a.order must be an integer, got 'first'", id='order-not-integer'),
 ])
 def test_invalid_form_values_fail_before_any_task_runs(jenkins, shared_job, options, message):
     result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web', 'PRE_TASKS': 'task_a', 'PRE_TASK_OPTIONS': options})

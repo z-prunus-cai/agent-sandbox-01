@@ -8,6 +8,7 @@ class TaskDefinition implements Serializable {
     String description
     List<Phase> phases
     TaskAccess access
+    TaskMenu menu
     RunLocation runOn
     FailurePolicy policy
     int timeoutMinutes

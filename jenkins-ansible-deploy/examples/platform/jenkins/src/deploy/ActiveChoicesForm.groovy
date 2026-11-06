@@ -16,7 +16,30 @@ class ActiveChoicesForm {
 
     @NonCPS
     static String tasksScript(List<TaskDefinition> tasks) {
-        return "return ${literal(tasks.collectEntries { [(it.name): it.name + ' - ' + it.description] })}"
+        return "return ${literal(labels(tasks))}"
+    }
+
+    /**
+     * The tasks behind "show more": none until the referenced checkbox is ticked, which sends "on" (an empty string when
+     * not). A build started through the API leaves the checkbox unbound while Jenkins computes this list's default.
+     */
+    @NonCPS
+    static String moreTasksScript(List<TaskDefinition> tasks, String showMoreParameter) {
+        return """def shown = ''
+try {
+    shown = ${showMoreParameter}
+} catch (MissingPropertyException unbound) {
+}
+if (!shown) {
+    return [:]
+}
+return ${literal(labels(tasks))}
+"""
+    }
+
+    @NonCPS
+    static Map<String, String> labels(List<TaskDefinition> tasks) {
+        return tasks.collectEntries { [(it.name): it.name + ' - ' + it.description] }
     }
 
     /**
@@ -25,9 +48,9 @@ class ActiveChoicesForm {
      * legend, label, title and aria-* attributes, so groups are divs and "required" is written out.
      */
     @NonCPS
-    static String optionsScript(List<TaskDefinition> tasks, String referencedParameter) {
+    static String optionsScript(List<TaskDefinition> tasks, List<String> referencedParameters) {
         List<Map> data = tasks.collect { TaskDefinition task ->
-            [name: task.name, description: task.description, policy: task.policy.label,
+            [name: task.name, description: task.description, policy: task.policy.label, order: task.order,
              params: task.parameters.collect { [name: it.name, type: it.type.label, required: it.required, description: it.description,
                                                 choices: it.choices, default: it.defaultValue] }]
         }
@@ -39,7 +62,7 @@ def select = { List options, Object current ->
         '<option value="' + escapeHtml(option) + '"' + (String.valueOf(option) == String.valueOf(current) ? ' selected' : '') + '>' + escapeHtml(option) + '</option>'
     }.join('') + '</select>'
 }
-def selected = String.valueOf(${referencedParameter} ?: '').tokenize(',').collect { it.trim() }
+def selected = [${referencedParameters.join(', ')}].collectMany { String.valueOf(it ?: '').tokenize(',') }.collect { it.trim() }
 def chosen = tasks.findAll { it.name in selected }
 if (!chosen) {
     return '<div>No task selected</div>'
@@ -51,6 +74,10 @@ chosen.each { task ->
     html << '<tr><td style="padding:3px 12px 3px 0">On failure</td><td>'
     html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.policy">' + select(policies, task.policy)
     html << ' abort: stop the pipeline; warn: mark unstable and continue</td></tr>'
+    html << '<tr><td style="padding:3px 12px 3px 0">Order</td><td>'
+    html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.order">'
+    html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="width:120px">'
+    html << ' smaller numbers run first in this phase</td></tr>'
     task.params.each { param ->
         html << '<tr><td style="padding:3px 12px 3px 0">' + escapeHtml(param.name) + (param.required ? ' (required)' : '') + '</td><td>'
         html << '<input type="hidden" name="value" value="@@' + escapeHtml(task.name) + '.' + escapeHtml(param.name) + '">'

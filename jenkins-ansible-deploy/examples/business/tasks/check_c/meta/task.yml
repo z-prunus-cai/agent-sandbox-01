@@ -1,6 +1,7 @@
 description: 在 task_c 之后运行的示例检查
 phases: [pre, post]
 access: read
+menu: more
 run_on: targets
 policy: warn
 timeout_minutes: 5

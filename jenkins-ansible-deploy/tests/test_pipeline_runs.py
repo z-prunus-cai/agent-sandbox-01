@@ -12,8 +12,10 @@ REGISTERED = 'Parameters registered; run again with Build with Parameters'
 
 
 @pytest.mark.parametrize('script_path, expected', [
-    (READ_WRITE, ['TARGET_GROUPS', 'SKIP_DEPLOY', 'PRE_TASKS', 'PRE_TASK_OPTIONS', 'POST_TASKS', 'POST_TASK_OPTIONS', 'DEPLOY_PLAN']),
-    (READ_ONLY, ['TARGET_GROUPS', 'PRE_TASKS', 'PRE_TASK_OPTIONS', 'POST_TASKS', 'POST_TASK_OPTIONS', 'DEPLOY_PLAN']),
+    (READ_WRITE, ['TARGET_GROUPS', 'SKIP_DEPLOY', 'PRE_TASKS', 'PRE_SHOW_MORE', 'PRE_MORE_TASKS', 'PRE_TASK_OPTIONS',
+                  'POST_TASKS', 'POST_SHOW_MORE', 'POST_MORE_TASKS', 'POST_TASK_OPTIONS', 'DEPLOY_PLAN']),
+    (READ_ONLY, ['TARGET_GROUPS', 'PRE_TASKS', 'PRE_SHOW_MORE', 'PRE_MORE_TASKS', 'PRE_TASK_OPTIONS',
+                 'POST_TASKS', 'POST_SHOW_MORE', 'POST_MORE_TASKS', 'POST_TASK_OPTIONS', 'DEPLOY_PLAN']),
 ])
 def test_first_build_registers_parameters_and_runs_nothing(jenkins, new_job, script_path, expected):
     job = new_job(script_path)
@@ -41,7 +43,7 @@ def test_parameter_page_scripts_run_in_the_sandbox_without_approval(jenkins, new
         'def approval = org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval.get()\n'
         'println approval.approvedScriptHashes.size() + approval.pendingScripts.size()')
 
-    assert active_choices == 5
+    assert active_choices == 7
     assert config.count('<sandbox>true</sandbox>') == 2 * active_choices      # every script and its fallback
     assert '<sandbox>false</sandbox>' not in config
     assert approvals.strip() == '0'
@@ -65,6 +67,28 @@ def test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only(jenki
     assert 'business/inventory/hosts.yml: ' in console
     assert 'deploy web 2.3.1 to web-02' in console and 'deploy api 1.8.0 to api-01' in console
     assert 'worker-0' not in console
+
+
+def test_order_typed_on_the_form_decides_the_order_within_a_phase(jenkins, new_job):
+    job = new_job(READ_WRITE)
+
+    result, console, _ = run(jenkins, job, {
+        'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'PRE_TASKS': 'task_a,task_b', 'PRE_MORE_TASKS': 'check_c',
+        'PRE_TASK_OPTIONS': '@@task_a.order,30,@@task_a.task_a_message,hi,@@task_b.order,,@@check_c.order,5'})
+
+    assert result == 'SUCCESS', console
+    # check_c 5, then task_b with no order typed (its catalog order 20), then task_a 30
+    assert console.index('(pre: check_c)') < console.index('(pre: task_b)') < console.index('(pre: task_a)')
+
+
+def test_tasks_from_both_lists_run_in_catalog_order_without_typed_orders(jenkins, new_job):
+    job = new_job(READ_WRITE)
+
+    result, console, _ = run(jenkins, job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'PRE_TASKS': 'task_b',
+                                            'PRE_MORE_TASKS': 'check_c'})
+
+    assert result == 'SUCCESS', console
+    assert console.index('(pre: task_b)') < console.index('(pre: check_c)')
 
 
 REPORT_PLAN = '''
@@ -239,7 +263,7 @@ def test_engine_comes_from_the_commit_the_jenkinsfile_came_from(jenkins, new_job
 
 def test_new_task_directory_runs_without_any_platform_change(jenkins, new_job, repository):
     head = repository.commit({
-        'business/tasks/task_e/meta/task.yml': 'description: added for this test\nphases: [post]\naccess: read\n'
+        'business/tasks/task_e/meta/task.yml': 'description: added for this test\nphases: [post]\naccess: read\nmenu: more\n'
                                                'run_on: controller\npolicy: abort\ntimeout_minutes: 5\norder: 70\n',
         'business/tasks/task_e/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n    options:\n'
                                                          '      task_e_word:\n        type: str\n        required: true\n'

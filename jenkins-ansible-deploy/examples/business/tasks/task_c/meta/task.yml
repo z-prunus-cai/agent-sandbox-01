@@ -1,6 +1,7 @@
 description: 带枚举参数和布尔参数的示例任务
 phases: [pre, post]
 access: write
+menu: main
 run_on: targets
 policy: abort
 timeout_minutes: 10
