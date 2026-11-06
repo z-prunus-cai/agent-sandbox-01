@@ -1,21 +1,20 @@
-# The two parameter page implementations
+# The parameter page
 
 Upstream source code and documentation are cited as `<path>` of `<owner>/<name>@<version>`, that is, the path in the upstream repository at that version. For code, the class and method are also given; for documentation, the section heading. The upstream repositories and versions are listed in [BRIEF.md section 8](../BRIEF.md#8-sources).
 
-This document describes the two parameter pages the deploy engine provides: the Active Choices form (`form: 'active-choices'` in the Jenkinsfile, Active Choices plugin 2.8.11; both example jobs, `examples/pipelines/readwrite/Jenkinsfile` and `examples/pipelines/readonly/Jenkinsfile`, use it) and the plugin-free form (`form: 'basic'` in the Jenkinsfile; uses only what Jenkins provides, and asks for the task parameters with `input` after the build starts). It covers what is on the page, how it is generated, the format of the submitted values, and how the engine turns them into a run plan. Both forms share the shared library under `examples/platform/jenkins/` (`vars/deployPipeline.groovy` and the classes in `src/deploy/`). Both get a plan draft with the same structure as `DEPLOY_PLAN` from `ParameterPage.draft`, which `PlanParser.parse` then validates in one place.
+This document describes the parameter page the deploy engine provides. It is built with the Active Choices plugin 2.8.11 (`uno-choice`), which the target Jenkins always has; both example jobs, `examples/pipelines/readwrite/Jenkinsfile` and `examples/pipelines/readonly/Jenkinsfile`, use it. It covers what is on the page, how it is generated, the format of the submitted values, and how the engine turns them into a run plan. The code is the shared library under `examples/platform/jenkins/` (`vars/deployPipeline.groovy` and the classes in `src/deploy/`). `ParameterPage.draft` reads the submitted values into a plan draft with the same structure as `DEPLOY_PLAN`, and `PlanParser.parse` validates the draft and `DEPLOY_PLAN` in one place.
 
-## 1. Comparison
+## 1. Overview
 
-| Capability | Active Choices form | Plugin-free form |
-| --- | --- | --- |
-| Select host groups | Checkboxes (`TARGET_GROUPS`) | One checkbox per group (`TARGET_web`, etc.) |
-| Select tasks | Checkboxes (`PRE_TASKS` / `POST_TASKS`) | One checkbox per task (`PRE_task_a`, etc.) |
-| Show only the parameters of the selected tasks | On the same page, as soon as a task is checked | Shown by the `input` step after the build starts |
-| Input controls | Number box for integers; drop-down for booleans, enums and the failure policy; " (required)" after the name of a required parameter; one bordered group per task | Text box for strings and integers, checkbox for booleans, drop-down for enums and the failure policy; one flat column |
-| Where the filled-in values are recorded | Build parameters (visible under Parameters on the build page) | The `input` submission record; the run plan is printed on the console |
-| While waiting for input | Not applicable | The build pauses in the `Plan` stage, which is given no executor, and waits at most 30 minutes; what runs afterwards are the files stashed with `stash` in `Prepare` |
-| Triggering from the API / an upstream job | `DEPLOY_PLAN` | `DEPLOY_PLAN` |
-| Plugins needed | `uno-choice` | None |
+| Capability | How the page does it |
+| --- | --- |
+| Select host groups | Checkboxes (`TARGET_GROUPS`) |
+| Select tasks | Checkboxes (`PRE_TASKS` / `POST_TASKS`); less-used tasks in a second list after "Show more" (section 3.5) |
+| Show only the parameters of the selected tasks | On the same page, as soon as a task is checked (`PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS`) |
+| Input controls | Number box for integers; drop-down for booleans, enums and the failure policy; " (required)" after the name of a required parameter; one bordered group per task |
+| Where the filled-in values are recorded | Build parameters (visible under Parameters on the build page); the run plan is printed on the console |
+| Triggering from the API / an upstream job | `DEPLOY_PLAN` (section 3.6) |
+| Plugins needed | `uno-choice` |
 
 ## 2. Parameter definitions can only be generated with `properties()`
 
@@ -149,31 +148,3 @@ The first row of each task in the parameter form is the run order: a number box 
 The plugin states that Active Choices parameters are meant only for people filling them in on the page, and that they are not guaranteed to work when the build is triggered by plugins, the API or scripts (the "Known Limitations" section of `README.md` of `jenkinsci/active-choices-plugin@2.8.11`). Values passed straight in through `buildWithParameters` do not go through the JSON escaping of the page and are stored as they are, but the engine's `ActiveChoicesForm.jsonUnescape` still processes the backslashes in them; for example `C:\new` becomes `C:`, a line break, `ew`. So the API and upstream jobs pass only `DEPLOY_PLAN`. The integration tests that set `TARGET_GROUPS`, `PRE_TASKS`, `PRE_MORE_TASKS` and `PRE_TASK_OPTIONS` directly (for example `test_selection_runs_tasks_in_catalog_order_on_the_selected_groups_only` in `test_pipeline_runs.py`, `test_invalid_form_values_fail_before_any_task_runs` in `test_pipeline_validation.py`) use only values without backslashes, to simulate a page submission.
 
 When `PRE_MORE_TASKS` is not passed, Jenkins runs its script to get the default value, and at that point the referenced `PRE_SHOW_MORE` is not bound: the script throws `MissingPropertyException` when it reads it, the plugin falls back to the fallback script, the text the fallback script returns becomes the parameter value, and plan validation reports `unknown task '(task list failed)'`. So `moreTasksScript` catches this exception and treats it as not checked (`test_tasks_from_both_lists_run_in_catalog_order_without_typed_orders` and other cases triggered through the API).
-
-## 4. Plugin-free form: checkboxes + input step
-
-### 4.1 Parameter page
-
-With `form: 'basic'`, `ParameterPage.definitions` generates `booleanParam(name: 'TARGET_<group>')` for each host group under `deploy_targets` in the inventory, and `booleanParam(name: '<PRE|POST>_<task name>')` for each task allowed in each phase, plus `SKIP_DEPLOY` (only in the read-write job), `EDIT_TASK_OPTIONS` (checked by default) and `DEPLOY_PLAN`. The parameter page Jenkins provides is static and cannot show or hide other input boxes based on a checkbox, so the task parameters are not on this page.
-
-### 4.2 The form after the build starts
-
-`ParameterPage.draft` (the plugin-free form is handled by its `basicDraft`), when `EDIT_TASK_OPTIONS` is true and tasks are checked, uses `ParameterPage.inputFields` to generate the input fields for each selected task and hands them to the `input` step (the confirm button is "Start", wrapped in a 30-minute `timeout`). `deployPipeline` calls it in the stage `Plan`. That stage is not inside a `node`, so the wait holds no executor and no workspace (`test_waiting_for_the_form_holds_no_executor` in `test_basic_form.py`):
-
-| Input field | Type |
-| --- | --- |
-| `<phase>.<task>.policy` | `choice`, with the task's default policy first (that is, the default value) |
-| `<phase>.<task>.<parameter>`, parameter has `choices` | `choice`, with the default value first; without a default, the original order of `choices` is kept |
-| `<phase>.<task>.<parameter>`, `bool` | `booleanParam` |
-| `<phase>.<task>.<parameter>`, `str` / `int` | `string`, prefilled with the default |
-
-With `TARGET_web`, `PRE_task_a` and `POST_check_a` checked, the form contains only the 6 fields of these two tasks: `pre.task_a.policy`, `pre.task_a.task_a_message`, `pre.task_a.task_a_repeat`, `pre.task_a.task_a_delay_seconds`, `post.check_a.policy`, `post.check_a.check_a_min_connections` (`test_form_shows_only_selected_tasks_and_its_values_are_used`).
-
-With several input fields, `input` returns `[name: value]`; **with only one input field it returns that value directly** (the `proceed` method in `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` of `jenkinsci/pipeline-input-step-plugin@560.v56198a_642157`). A task without parameters (`check_c`) has only the failure policy field, so in that case `basicDraft` builds the Map itself (`test_form_with_a_single_field_returns_its_value`).
-
-After submission, each value is turned into a string and grouped by `<phase>` into the same `[task.field: value]` as in the Active Choices form, and handed to the same `Selection.draft`. Clicking "Abort" makes the build ABORTED, and no task runs (`test_abort_in_the_form_aborts_the_build`).
-
-### 4.3 Not showing the form
-
-- `EDIT_TASK_OPTIONS=false`: all selected tasks use their defaults (`test_without_the_form_every_task_uses_its_defaults`). A task with a required parameter (such as `task_a`) therefore fails validation (`test_without_the_form_a_missing_required_parameter_fails`).
-- `DEPLOY_PLAN` not empty: all checkboxes are ignored and no form is shown (`test_deploy_plan_skips_the_form`). Use this when triggering from the API or an upstream job; otherwise the build stops at `input` waiting for someone.

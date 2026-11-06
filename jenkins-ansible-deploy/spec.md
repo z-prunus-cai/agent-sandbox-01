@@ -6,7 +6,7 @@ A template of Jenkins pipeline and Ansible code kept in one git repository, that
 
 1. Deployments target **host groups** of the Ansible inventory. On the build parameter page, the targets of this run are picked from the list of host groups with **multiple selection**.
 2. The deploy stage can be **skipped with a checkbox** on the build parameter page.
-3. Before and after the deployment, **0 or more extra tasks** can be selected for each. The parameter page shows input boxes only for the parameters of the selected tasks, and they can be filled in one by one; different tasks have parameters of different types.
+3. Before and after the deployment, **0 or more extra tasks** can be selected for each. As soon as a task is selected, the same parameter page shows input boxes for the parameters of the selected tasks only, and they can be filled in one by one; different tasks have parameters of different types.
 4. Host and host group settings (ports, paths, version numbers, etc.) are **managed only in the inventory**. The parameter page cannot override them.
 5. **Business and infrastructure are separate**: adding a business task only adds one task directory. It does not change the engine, the pipeline skeleton, the shared playbooks or the test framework.
 6. **Two jobs on the same Jenkins share one engine**: the read-only job can run only read-only tasks and has no deploy stage; the read-write job can run every task and the deployment.
@@ -21,6 +21,7 @@ A template of Jenkins pipeline and Ansible code kept in one git repository, that
 | Active Choices plugin (`uno-choice`) | 2.8.11 |
 | Pipeline: Groovy Libraries (`pipeline-groovy-lib`, provides the `library` step) | Latest version compatible with Jenkins 2.580.1 |
 | Pipeline: Input Step (`pipeline-input-step`) | Latest version compatible with Jenkins 2.580.1 |
+| Pipeline: Stage View (`pipeline-stage-view`) | 2.41 |
 | ansible-core | 2.21.5 |
 | Other Jenkins plugins (Pipeline, `pipeline-utility-steps`, etc.) | Latest versions compatible with Jenkins 2.580.1; record the exact versions during experiments |
 | Python | 3.13 (runs ansible-core and the tests) |
@@ -35,7 +36,7 @@ Directory `jenkins-ansible-deploy/`. Every file of the deliverable (documents, c
 
 | Path | Content | Owner |
 | --- | --- | --- |
-| `pipelines/readonly/Jenkinsfile` | Read-only job: declares the mode, the parameter page form and the credential IDs; everything else is left to the engine | Infrastructure |
+| `pipelines/readonly/Jenkinsfile` | Read-only job: declares the mode and the credential IDs; everything else is left to the engine | Infrastructure |
 | `pipelines/readwrite/Jenkinsfile` | Read-write job: same as above | Infrastructure |
 | `platform/jenkins/` | Engine: a shared library (`vars/` defines the whole pipeline, `src/` holds classes and enums), loaded with the `library` step from the same repository and the same commit | Infrastructure |
 | `platform/ansible/` | `ansible.cfg`, `run-task.yml` that runs any task, the deploy entry point `deploy.yml`, the inventory check `check-inventory.yml` | Infrastructure |
@@ -58,17 +59,15 @@ Directory `jenkins-ansible-deploy/`. Every file of the deliverable (documents, c
 
 Both jobs get credentials the same way: from Jenkins credentials referenced by ID. The read-only guarantee of the read-only job comes from the engine's plan validation. To keep someone from changing the mode in the read-only Jenkinsfile, configure in Jenkins a credential ID with fewer permissions for the read-only job; no code change is needed.
 
-Both parameter page forms (the Active Choices form and the plugin-free form) are provided by the engine, and the Jenkinsfile picks one of them. Both example Jenkinsfiles use the Active Choices form.
-
 ### 4.2 Inputs (build parameters)
 
-| Parameter | Active Choices form | Plugin-free form |
-| --- | --- | --- |
-| Targets | Multiple-selection list of host groups, options from the inventory | One checkbox per host group, from the inventory |
-| Skip deployment (read-write job only) | `SKIP_DEPLOY` checkbox | Same as the Active Choices form |
-| Pre-deploy tasks | The checkbox list of main tasks is always shown; the list of less-used tasks appears only after "Show more" is checked; both lists have a search box; a parameter form that changes live with the selection, where each selected task can be given a run order | One checkbox per task; after the build starts, an `input` step shows the form for the selected tasks |
-| Post-deploy tasks | Same as above | Same as above |
-| Full plan | `DEPLOY_PLAN` (YAML text); when not empty, all the parameters above are ignored; for triggering from the API or an upstream job | Same as the Active Choices form |
+| Parameter | Parameter page (Active Choices) |
+| --- | --- |
+| Targets | Multiple-selection list of host groups, options from the inventory |
+| Skip deployment (read-write job only) | `SKIP_DEPLOY` checkbox |
+| Pre-deploy tasks | The checkbox list of main tasks is always shown; the list of less-used tasks appears only after "Show more" is checked; both lists have a search box; a parameter form that changes live with the selection, where each selected task can be given a run order |
+| Post-deploy tasks | Same as above |
+| Full plan | `DEPLOY_PLAN` (YAML text); when not empty, all the parameters above are ignored; for triggering from the API or an upstream job |
 
 Parameter names are an external contract. They are hard-coded and not derived from other names.
 
@@ -93,7 +92,7 @@ post:
 - The engine finds tasks by scanning `business/tasks/*/meta/task.yml`. There is no central list of tasks.
 - Every metadata field has a limited set of values. Unknown values are reported in the prepare stage. Order numbers must not repeat between tasks.
 - Parameter types cover at least: string, integer, boolean, enum (choices).
-- Run order within a phase: in the Active Choices form, by the run order filled in for each task on the parameter form (the default is the task's order number; tasks given equal numbers keep the order of their order numbers); dependencies between tasks are not checked, and the run plan is printed before anything runs. In the plugin-free form, by order number. In `DEPLOY_PLAN`, by list order. The same task can run several times in one phase with different `id`s (`DEPLOY_PLAN` only).
+- Run order within a phase: on the parameter page, by the run order filled in for each task on the parameter form (the default is the task's order number; tasks given equal numbers keep the order of their order numbers); dependencies between tasks are not checked, and the run plan is printed before anything runs. In `DEPLOY_PLAN`, by list order. The same task can run several times in one phase with different `id`s (`DEPLOY_PLAN` only).
 - Two failure policies: `abort` (stop the pipeline, FAILURE) and `warn` (mark UNSTABLE, continue). They can be changed per task for each build.
 - Each task has a timeout. A timeout counts as a task failure and is then handled by the policy. A manual abort of the build must not be treated as a task failure and continued.
 
@@ -145,7 +144,7 @@ There is only one example inventory (no separate environments). It contains seve
 - Task parameter names must not collide with inventory variable names, Ansible reserved words or engine variables;
 - No real credentials appear in the repository. Vault examples use clearly marked example passwords;
 - No Jenkins administrator approval of any script and no administrator-configured global library;
-- Values from a limited set (phase, access, failure policy, where a task runs, parameter type, parameter page form, job mode, task result) are enums in the engine, not string comparisons;
+- Values from a limited set (phase, access, failure policy, where a task runs, parameter type, job mode, task result) are enums in the engine, not string comparisons;
 - Tests run with one command: the tests start a local Jenkins themselves and create a git repository with `examples/` as its root, and do not depend on environment variables set beforehand.
 
 ## 6. Non-goals

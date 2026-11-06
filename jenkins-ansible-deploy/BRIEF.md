@@ -4,7 +4,7 @@
 
 One git repository holds both the Jenkins pipeline and the Ansible code. The deployment targets are the **host groups** under `deploy_targets` in the Ansible inventory, selected (multiple choice) on the Jenkins parameter page. The deploy stage can be skipped with a checkbox. You can pick zero or more **extra tasks** to run before the deployment, and zero or more to run after it. The parameter page shows only the parameters of the selected tasks, filled in by parameter type (string, integer, boolean, choice). When a task fails it is handled as `abort` (stop the pipeline) or `warn` (mark the build unstable and continue). Host and host group parameters are managed only in the inventory; the parameter page cannot override them.
 
-The code is split into **business** and **infrastructure** parts. Each extra task is one directory under `business/tasks/` with its own metadata; the engine discovers it automatically. Adding a business task does not change the engine, the pipeline skeleton, the generic playbooks or the test framework. One Jenkins has **two jobs** that share one engine: the read-only job can run only tasks declared read-only and has no deploy stage; the read-write job can run all tasks and the deployment. A task can declare a **review before it runs**: the engine first has the task write out what it will do and shows it; it runs only after someone confirms, and what runs must be exactly what was shown at review. The parameter page comes in two forms: the Active Choices version shows the form of the selected tasks live on the same page; the plugin-free version uses only built-in Jenkins features and shows the form with an `input` step after the build starts. Both accept a complete plan in YAML, `DEPLOY_PLAN`, for triggering from the API and from upstream jobs. The extra tasks and the deployment itself are placeholders: they only take parameters, validate them and print the actions they would take; they do not connect to or change the target hosts.
+The code is split into **business** and **infrastructure** parts. Each extra task is one directory under `business/tasks/` with its own metadata; the engine discovers it automatically. Adding a business task does not change the engine, the pipeline skeleton, the generic playbooks or the test framework. One Jenkins has **two jobs** that share one engine: the read-only job can run only tasks declared read-only and has no deploy stage; the read-write job can run all tasks and the deployment. A task can declare a **review before it runs**: the engine first has the task write out what it will do and shows it; it runs only after someone confirms, and what runs must be exactly what was shown at review. The parameter page is built with the Active Choices plugin and shows the form of the selected tasks live on the same page. Instead of the page, a complete plan in YAML, `DEPLOY_PLAN`, can be passed, for triggering from the API and from upstream jobs. The extra tasks and the deployment itself are placeholders: they only take parameters, validate them and print the actions they would take; they do not connect to or change the target hosts.
 
 Not included: multi-environment inventories, dynamic inventories, rollback, running tasks in parallel, accessibility support on the parameter page.
 
@@ -13,7 +13,7 @@ Not included: multi-environment inventories, dynamic inventories, rollback, runn
 | Component | Version |
 | --- | --- |
 | Jenkins | 2.580.1 (Java 21) |
-| Jenkins plugins | `ansible` 635.v34b_48e979c86, `uno-choice` (Active Choices) 2.8.11, `pipeline-groovy-lib` 822.vc95f70dea_db_7, `pipeline-utility-steps` 3.810.va_7672d206740, `pipeline-input-step` 560.v56198a_642157, `credentials-binding` 728.v902a_273b_8947, `git` 5.11.0, `workflow-cps` 4395.v738456a_5da_6b_, `script-security` 1436.v1082791135e4, `workflow-aggregator` 608.v67378e9d3db_1; all 65 plugins and versions are in `tests/jenkins_server/plugins.txt` |
+| Jenkins plugins | `ansible` 635.v34b_48e979c86, `uno-choice` (Active Choices) 2.8.11, `pipeline-groovy-lib` 822.vc95f70dea_db_7, `pipeline-utility-steps` 3.810.va_7672d206740, `pipeline-input-step` 560.v56198a_642157, `credentials-binding` 728.v902a_273b_8947, `git` 5.11.0, `workflow-cps` 4395.v738456a_5da_6b_, `script-security` 1436.v1082791135e4, `workflow-aggregator` 608.v67378e9d3db_1, `pipeline-stage-view` (Stage View) 2.41 with its dependencies `pipeline-rest-api` 2.41 and `pipeline-graph-analysis` 254.v0f63a_a_447dca_; every plugin and its version, dependencies included, is pinned in `tests/jenkins_server/plugins.txt` |
 | ansible-core | 2.21.5 |
 | ansible-lint | 26.10.1 |
 | Python | 3.13; tests use pytest 9.1.1, playwright 1.64.0, PyYAML 6.0.1, cryptography 50.0.1 |
@@ -22,7 +22,7 @@ The Jenkinsfile is loaded from git and runs in the Groovy sandbox. The engine is
 
 To use it on a real Jenkins:
 
-1. Install the plugins `workflow-aggregator` (includes `workflow-cps`, `pipeline-input-step`, `pipeline-groovy-lib` and the other Pipeline plugins), `git`, `ansible`, `pipeline-utility-steps`, `credentials-binding`, `ssh-credentials`; the Active Choices version also needs `uno-choice`. The Stages page in the attached screenshots comes from `pipeline-graph-view` (optional). Per-job permissions need an authorization plugin, for example `matrix-auth`.
+1. Install the plugins `workflow-aggregator` (includes `workflow-cps`, `pipeline-input-step`, `pipeline-groovy-lib` and the other Pipeline plugins), `git`, `ansible`, `pipeline-utility-steps`, `credentials-binding`, `ssh-credentials`, `uno-choice` (Active Choices, draws the parameter page) and `pipeline-stage-view` 2.41 (Stage View, where reviews are confirmed; it brings `pipeline-rest-api` 2.41 and `pipeline-graph-analysis` 254.v0f63a_a_447dca_). The Stages page in the attached screenshots comes from `pipeline-graph-view` (optional). Per-job permissions need an authorization plugin, for example `matrix-auth`.
 2. On every Jenkins node that may run a build, install git and ansible-core 2.21.5 (for example `pip install ansible-core==2.21.5`), with `git` and `ansible-playbook` in `PATH`: the engine's `node` does not name a label, so any node may be picked.
 3. Two credentials (scope Global, or in the folder that holds both jobs): `ansible-vault-password` (kind Secret text, the ansible-vault password) and `deploy-ssh-key` (kind SSH Username with private key: the username is the user that logs in on the target hosts, and the public key of the private key is in that user's `~/.ssh/authorized_keys`). The IDs are written in the `deployPipeline(...)` call of both Jenkinsfiles; if SSH is not needed, set `sshCredentialsId` to `null`.
 4. Put the contents of `examples/` at the repository root: the Jenkinsfile Script Path, the shared library's `libraryPath` and the playbook paths in the engine are all relative to the repository root. The example `vault.yml` is encrypted with a public example password; replace it with your own: create it under `business/inventory/group_vars/all/` with `ansible-vault create vault.yml --vault-password-file <password file>` (`tests/` is only for testing this template and is not copied with `examples/`; in the other commands in this document, `../../../tests/example-vault-password.txt` means the example password file of this template).
@@ -45,7 +45,7 @@ python3 -m pytest tests -m 'not jenkins'      # only the tests that do not need 
 ```
 examples/                            copy to the repository root to use
   pipelines/                         infrastructure
-    readonly/Jenkinsfile             read-only job: loads the engine, declares the mode, parameter page form, credential IDs
+    readonly/Jenkinsfile             read-only job: loads the engine, declares the mode and credential IDs
     readwrite/Jenkinsfile            read-write job: same as above
   platform/                          infrastructure
     jenkins/                         engine (shared library)
@@ -77,7 +77,7 @@ Prepare            node: check out commit C
                    run check-variable-names.yml: whether task parameter names clash with inventory variables (4.16)
                    stash all files
                    parameters not registered yet (first build): result NOT_BUILT, end
-Plan               no executor: read DEPLOY_PLAN or the form (the plugin-free version waits for input here)
+Plan               no executor: read DEPLOY_PLAN or the values submitted on the parameter page
                    validate into an execution plan; on errors list them all at once and fail, no task runs
 pre: <id> ...      one stage per pre-deploy task; each time unstash on an executor, then ansible-playbook run-task.yml -e @params file [-l selected groups]
                    tasks that need review: run in generate mode on an executor -> wait for confirmation without an executor -> run in execute mode on an executor (4.15)
@@ -236,18 +236,18 @@ The engine is the Jenkins shared library under `platform/jenkins/`: `vars/deploy
 | --- | --- |
 | `Catalog` | Builds the task definitions and host groups from each task directory's three YAML files and `hosts.yml`; checks metadata, parameter declarations and defaults |
 | `PlanParser` | Validates `DEPLOY_PLAN` (or the same structure built from the form) into an execution plan `Plan` |
-| `Selection`, `ActiveChoicesForm` | Turn the values submitted by the two parameter pages into the `DEPLOY_PLAN` structure; generate the Active Choices scripts |
-| `Values` | Checks one value by parameter type (shared by defaults, `DEPLOY_PLAN` and the forms) |
-| `ParameterPage` | Build parameter definitions for both parameter pages; the `input` form of the plugin-free version |
+| `Selection`, `ActiveChoicesForm` | Turn the values submitted on the parameter page into the `DEPLOY_PLAN` structure; generate the Active Choices scripts |
+| `Values` | Checks one value by parameter type (shared by defaults, `DEPLOY_PLAN` and the form) |
+| `ParameterPage` | Build parameter definitions of the parameter page; reads the submitted values into a plan draft (`draft`, waits for nothing) |
 | `TaskRunner` | Runs tasks, reviews and the deployment; produces the report |
 | `TaskResult` | One row of the report |
 | `TaskDefinition`, `ParameterDefinition`, `PlannedTask`, `Plan` | Task and parameter definitions; one task in the plan; the whole plan |
 | `Labels` | Finds enum constants by their external spelling; records a problem when not found |
 | `FormStyle` | Inline styles of the Active Choices task form (column widths, spacing), kept in one map; see `attachments/parameter-page.md` section 3.3 |
-| `FormField` | Keys of form fields: `task.field` in the Active Choices version, `phase.task.field` in the plugin-free version; the two fields besides parameters, `policy` and `order` |
+| `FormField` | Keys of form fields (`task.field`); the two fields besides parameters, `policy` and `order` |
 | `AnsibleNames` | Names Ansible reserves that a name with a task-name prefix could still hit (keywords and special variables containing `_`); `test_engine_refuses_every_name_ansible_reserves_that_a_task_prefix_can_produce` ensures it covers the names ansible-core treats as such |
-| `Limits` | Input limits: `DEPLOY_PLAN` 20000 characters, 50 tasks in a plan, string parameters 1000 characters, `id` 64 characters, timeout 240 minutes, plugin-free form wait 30 minutes |
-| Enums | `Phase`, `FormField`, `TaskAccess`, `TaskMenu`, `AccessMode`, `FailurePolicy`, `RunLocation`, `ParameterType`, `ParameterForm`, `RequestKind`, `ReviewStep`, `TaskOutcome`, `EngineVariable`; the external spelling (values in YAML, build parameter names, results in the report) is written on each constant, and parsing an unknown value is an error |
+| `Limits` | Input limits: `DEPLOY_PLAN` 20000 characters, 50 tasks in a plan, string parameters 1000 characters, `id` 64 characters, timeout 240 minutes |
+| Enums | `Phase`, `FormField`, `TaskAccess`, `TaskMenu`, `AccessMode`, `FailurePolicy`, `RunLocation`, `ParameterType`, `RequestKind`, `ReviewStep`, `TaskOutcome`, `EngineVariable`; the external spelling (values in YAML, build parameter names, results in the report) is written on each constant, and parsing an unknown value is an error |
 
 ### 3.5 Jenkinsfile
 
@@ -262,17 +262,15 @@ node {
 }
 library(identifier: "deploy-engine@${commit}",
         retriever: modernSCM(scm: [$class: 'GitSCMSource', remote: scm.userRemoteConfigs[0].url], libraryPath: 'platform/jenkins/'))
-deployPipeline(commit: commit, mode: 'read-write', form: 'active-choices',
+deployPipeline(commit: commit, mode: 'read-write',
                vaultCredentialsId: 'ansible-vault-password', sshCredentialsId: 'deploy-ssh-key')
 ```
 
-The read-only job (`pipelines/readonly/Jenkinsfile`) differs only in `mode: 'read-only'` and the first comment line. `form` can be `'active-choices'` or `'basic'` (plugin-free version). If the repository needs credentials to check out, `scm.userRemoteConfigs[0]` also has `credentialsId`; add `credentialsId: scm.userRemoteConfigs[0].credentialsId` to `GitSCMSource`.
+The read-only job (`pipelines/readonly/Jenkinsfile`) differs only in `mode: 'read-only'` and the first comment line. If the repository needs credentials to check out, `scm.userRemoteConfigs[0]` also has `credentialsId`; add `credentialsId: scm.userRemoteConfigs[0].credentialsId` to `GitSCMSource`.
 
 The pipeline is Scripted: the build parameters must be generated from the task directories and inventory read at run time, each task gets one stage, and waiting for confirmation must leave the executor; all of this is controlled directly by `node` and `stage` in `deployPipeline`. Do not also set parameters or "Do not allow concurrent builds" in the job configuration: the `properties` step removes the job properties it set itself on the previous run, and properties of the same kind overwrite each other (`Execution.run` in `src/main/java/org/jenkinsci/plugins/workflow/multibranch/JobPropertyStep.java` of `jenkinsci/workflow-multibranch-plugin@842.v3a_b_59b_57b_e6e`).
 
 ### 3.6 Build parameters
-
-Active Choices version:
 
 | Parameter | Type | Purpose |
 | --- | --- | --- |
@@ -284,9 +282,7 @@ Active Choices version:
 | `PRE_TASK_OPTIONS` / `POST_TASK_OPTIONS` | Active Choices dynamic HTML | Generated live from what is ticked in the two lists: one group per selected task, with a number box for the run order (default `order`; smaller numbers run first, ties are broken by `order`), a failure policy drop-down and an input box per parameter, prefilled with the role's defaults; integers get a number box, booleans and choices a drop-down, and required parameter names are followed by "(required)" |
 | `DEPLOY_PLAN` | Multi-line text | When not empty, all the parameters above are ignored |
 
-Plugin-free version: one checkbox `TARGET_<group>` per host group, `SKIP_DEPLOY` (only in the read-write job), one checkbox `PRE_<task>` / `POST_<task>` per task in each phase, `EDIT_TASK_OPTIONS` (ticked by default), `DEPLOY_PLAN`. After the build starts, if tasks are ticked and `EDIT_TASK_OPTIONS` is true, the pipeline pauses and shows a form with only the selected tasks (field names like `pre.task_a.task_a_repeat`); "Start" continues, "Abort" makes the build ABORTED (`test_abort_in_the_form_aborts_the_build`). The wait is wrapped in a 30-minute `timeout` and holds no executor meanwhile (`test_waiting_for_the_form_holds_no_executor`).
-
-`DEPLOY_PLAN` format (same for both parameter pages; the read-only job does not accept `skip_deploy`):
+`DEPLOY_PLAN` format (the read-only job does not accept `skip_deploy`):
 
 ```yaml
 targets: [web, api]
@@ -303,7 +299,7 @@ Quote string parameter values in YAML: unquoted `yes`, `2026-01-01`, `1.0` are p
 
 Triggering from the API or an upstream job: POST to the job's `buildWithParameters` endpoint with `DEPLOY_PLAN` as the only parameter. Most integration tests trigger builds this way (`Jenkins.start_build` in `tests/jenkins_server/client.py`); a few cases assign Active Choices parameters directly to simulate a page submission. The Active Choices plugin states that these parameters are meant only for people filling in the page and are not guaranteed to work when triggered through the API or scripts (the "Known Limitations" section of `README.md` in `jenkinsci/active-choices-plugin@2.8.11`), so do not pass `TARGET_GROUPS` and similar parameters directly through the API.
 
-UI details of the two parameter page forms and the format of the submitted values are in [attachments/parameter-page.md](attachments/parameter-page.md).
+UI details of the parameter page and the format of the submitted values are in [attachments/parameter-page.md](attachments/parameter-page.md).
 
 ### 3.7 Output
 
@@ -440,7 +436,7 @@ The implementation of `task_d`:
 
 Execute mode only reads the review file and does not generate it again from the parameters: when the parameters and the review file differ, the review file is what runs (case `task_d/execute-runs-the-review-file-not-its-parameters` in `business/tasks/task_d/tests/cases.yml`). The review file is on the Jenkins node. A task with `run_on: targets` adds `delegate_to: localhost` and `run_once: true` to the step that writes the file in generate mode, and in execute mode reads it with `lookup('ansible.builtin.file', task_review_file)` (lookups run on the Jenkins node), not with `slurp`, which runs on the target host. In the examples only `task_d` (which runs on the Jenkins node itself) shows review; this way of writing it has no example and no test.
 
-Between the two runs the build pauses at an `input`: the prompt shows the sha256 and the full text of the review file, and the buttons are "Run" and "Abort". After confirmation the console prints `[deploy] task_d confirmed by <user>` and the task's `reviewer` in the report is the person who confirmed. On abort or timeout the build is ABORTED, the task does not run, and the report shows the task as `aborted`, `not confirmed`. The review file is archived as the build artifact `.deploy-run/review/<phase>-<id>.txt`. The UI flow and screenshots are in [attachments/review-before-run.md](attachments/review-before-run.md).
+Between the two runs the build pauses at an `input`: the prompt shows the sha256 and the full text of the review file, and the buttons are "Run" and "Abort". Review it in Stage View on the job page, where the cell of the paused stage opens a popup with the prompt and both buttons, or in the console; both keep the line breaks of the review file. After confirmation the console prints `[deploy] task_d confirmed by <user>` and the task's `reviewer` in the report is the person who confirmed. On abort or timeout the build is ABORTED, the task does not run, and the report shows the task as `aborted`, `not confirmed`. The review file is archived as the build artifact `.deploy-run/review/<phase>-<id>.txt`. The UI flow and screenshots are in [attachments/review-before-run.md](attachments/review-before-run.md).
 
 ## 4. Key points
 
@@ -531,7 +527,7 @@ Through the engine these values are rejected; the build is FAILURE and no task r
 
 Rule: `Catalog.parse`, `PlanParser.parse` and `Values.check` collect problems into a list and call `error` once at the end. Optional fields are checked with `== null` to see whether they were given: in Groovy `0`, `''`, `[]`, `[:]` are false, and `?:` would treat them as not given and skip the type check.
 
-Problems covered (`test_invalid_plan_fails_before_any_task_runs`): unknown host group, no host group selected (needed for the deployment, or when deployment is skipped but a task runs on the selected host groups), host groups not a list; `skip_deploy` not a boolean; phase not a list; entry neither a task name nor a mapping; unknown task; task not allowed in that phase; unknown field; unknown or empty policy; required parameter missing or blank; `params` not a mapping; undeclared parameter; integer, choice, boolean or string type mismatch; the three template syntaxes and a leading `#jinja2:`; control, format and line-separator characters; a parameter name that is not a string; repeated `id` in one phase, invalid, empty or too long `id`; `timeout_minutes` not between 1 and 240; string too long; too many tasks (counted before any entry is read); unknown field in the plan; `DEPLOY_PLAN` not a mapping, not valid YAML or too long. Values submitted by the forms add: the same field twice (value contains `,@@`), a field of a task that is not ticked, a field that is not a declared parameter of that task, an integer outside 64 bits, a run order that is not an integer, template syntax, `*_TASK_OPTIONS` longer than the length limit of `DEPLOY_PLAN` (`test_invalid_form_values_fail_before_any_task_runs`), any other form value longer than that limit (`test_form_value_longer_than_the_plan_limit_fails_before_any_task_runs`); the read-only job adds: write tasks, the `skip_deploy` field, write tasks ticked in the form (4.14).
+Problems covered (`test_invalid_plan_fails_before_any_task_runs`): unknown host group, no host group selected (needed for the deployment, or when deployment is skipped but a task runs on the selected host groups), host groups not a list; `skip_deploy` not a boolean; phase not a list; entry neither a task name nor a mapping; unknown task; task not allowed in that phase; unknown field; unknown or empty policy; required parameter missing or blank; `params` not a mapping; undeclared parameter; integer, choice, boolean or string type mismatch; the three template syntaxes and a leading `#jinja2:`; control, format and line-separator characters; a parameter name that is not a string; repeated `id` in one phase, invalid, empty or too long `id`; `timeout_minutes` not between 1 and 240; string too long; too many tasks (counted before any entry is read); unknown field in the plan; `DEPLOY_PLAN` not a mapping, not valid YAML or too long. Values submitted on the parameter page add: the same field twice (value contains `,@@`), a field of a task that is not ticked, a field that is not a declared parameter of that task, an integer outside 64 bits, a run order that is not an integer, template syntax, `*_TASK_OPTIONS` longer than the length limit of `DEPLOY_PLAN` (`test_invalid_form_values_fail_before_any_task_runs`), any other form value longer than that limit (`test_form_value_longer_than_the_plan_limit_fails_before_any_task_runs`); the read-only job adds: write tasks, the `skip_deploy` field, write tasks ticked in the form (4.14).
 
 Test: `test_invalid_plan_lists_all_problems_at_once`. Output when run with `{targets: [nope], pre: [no_such_task, {name: task_a, policy: ask}]}` (console excerpt):
 
@@ -556,7 +552,7 @@ Tests: `test_documented_defaults_equal_role_defaults_and_cover_every_optional_op
 
 ### 4.7 The first run only registers parameters; `params` must be read before `properties()`
 
-Rule: `deployPipeline` first copies `params` (`Map requested = [:] + params`), then calls `properties()`. When the parameters are not registered yet (no `DEPLOY_PLAN` in `requested`; both parameter pages register it; `RequestKind.of`), the build result is set to NOT_BUILT and no task runs.
+Rule: `deployPipeline` first copies `params` (`Map requested = [:] + params`), then calls `properties()`. When the parameters are not registered yet (no `DEPLOY_PLAN` in `requested`; the parameter page always registers it; `RequestKind.of`), the build result is set to NOT_BUILT and no task runs.
 
 Mechanism: each time `params` is read, besides the values submitted for this build it fills in defaults from the job's **current** parameter definitions (`getValue` in `plugin/src/main/java/org/jenkinsci/plugins/workflow/cps/ParamsVariable.java` of `jenkinsci/workflow-cps-plugin@4395.v738456a_5da_6b_`). After `properties()` runs, `params` of the first run already has defaults such as `DEPLOY_PLAN=''`, so you cannot tell whether the parameter page was submitted.
 
@@ -580,11 +576,11 @@ Tests: `test_every_run_needs_the_vault_password_even_on_localhost`: without the 
 
 ### 4.10 Waiting holds no executor
 
-Rule: `deployPipeline` does not wrap the whole pipeline in `node`: `Prepare`, each task, the deployment and the report each request an executor and release it when done; `Plan` (the `input` form of the plugin-free version) and the review `input` are outside `node`. Each time it enters an executor it first runs `deleteDir()`, then `unstash` of the files `Prepare` stored.
+Rule: `deployPipeline` does not wrap the whole pipeline in `node`: `Prepare`, each task, the deployment and the report each request an executor and release it when done; `Plan` (which waits for nothing) and the review `input` (the engine's only wait) are outside `node`. Each time it enters an executor it first runs `deleteDir()`, then `unstash` of the files `Prepare` stored.
 
 Mechanism: an `input` inside `node` holds the executor and workspace for the whole wait. `unstash` ensures each executor runs the files `Prepare` validated, not the latest commit on the branch.
 
-Tests: `test_waiting_for_the_form_holds_no_executor`, `test_waiting_for_review_holds_no_executor`: while the build waits at `input`, the number of busy Jenkins executors is 0. `test_runs_the_files_it_validated_even_if_the_branch_moves_while_waiting`: during the wait a new commit that changes `hosts.yml` lands on the branch, and `task_b` still reports the size of the original file.
+Test: `test_waiting_for_review_holds_no_executor`: while the build waits for the review, the number of busy Jenkins executors is 0. `test_confirmed_run_uses_the_files_the_build_validated_even_if_the_branch_moved_during_the_review`: a commit that changes `task_d` lands on the branch while the review waits, and the confirmed run still prints the original output, because every executor unstashes the files the build validated.
 
 ### 4.11 No concurrent builds of the same job
 
@@ -630,7 +626,7 @@ A library loaded dynamically from the repository runs in the Groovy sandbox, and
 | `new IllegalArgumentException(...)`, `new LinkedHashMap(map)` | `Scripts not permitted to use new ...` | Collect problems into a list, then call `error`; copy a Map with `[:] + map` |
 | `list.sort(false) { ... }` (returns a new sorted list) | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods sort java.util.Collection boolean groovy.lang.Closure` | Make a copy, then use `sort { ... }` |
 | `text.codePointCount(...)` | `Scripts not permitted to use method java.lang.String codePointCount int int` | Use `length()`: it counts UTF-16 code units, so the character limits in `Limits` are stricter for characters outside the BMP (such as emoji) |
-| An enum value in a field of an engine object, or in a variable, parameter or `switch` of a method that is on the stack while an `input` waits (the review, the basic form's options) | After a Jenkins restart the build ends with `Scripts not permitted to use staticMethod deploy.TaskOutcome $INIT java.lang.Object[]` (Jenkins reads the build state back under the generic whitelist only: `RiverReader.SandboxedUnmarshaller` in `src/main/java/org/jenkinsci/plugins/workflow/support/pickles/serialization/RiverReader.java` of `jenkinsci/workflow-support-plugin@1015.v785e5a_b_b_8b_22` passes `Whitelist.all()` to `GroovySandbox.runInSandbox`, and loading a Groovy enum class calls its own `$INIT`) | Objects keep the label in a `String` field; the getter and setter of the same name convert, so callers still see the enum (`PlannedTask.phase`, `TaskResult.outcome`); `ParameterPage` converts in its private `mode()` and `form()`; `Plan.tasks` is keyed by phase label; `runTasks` takes the task list, not the phase; the basic form keeps phase labels while it waits and decides its form in a `@NonCPS` method; `tests/test_engine_state.py` checks the fields of every class and the variables of every method that waits for input or calls one, and `test_waiting_review_survives_a_jenkins_restart` and `test_waiting_options_form_survives_a_jenkins_restart` check the behavior |
+| An enum value in a field of an engine object, or in a variable, parameter or `switch` of a method that is on the stack while an `input` waits (the review is the engine's only `input`) | After a Jenkins restart the build ends with `Scripts not permitted to use staticMethod deploy.TaskOutcome $INIT java.lang.Object[]` (Jenkins reads the build state back under the generic whitelist only: `RiverReader.SandboxedUnmarshaller` in `src/main/java/org/jenkinsci/plugins/workflow/support/pickles/serialization/RiverReader.java` of `jenkinsci/workflow-support-plugin@1015.v785e5a_b_b_8b_22` passes `Whitelist.all()` to `GroovySandbox.runInSandbox`, and loading a Groovy enum class calls its own `$INIT`) | Objects keep the label in a `String` field; the getter and setter of the same name convert, so callers still see the enum (`PlannedTask.phase`, `TaskResult.outcome`); `ParameterPage` converts in its private `mode()`; `Plan.tasks` is keyed by phase label; `runTasks` takes the task list, not the phase; `tests/test_engine_state.py` checks the fields of every class and the variables of every method that waits for input or calls one, and `test_waiting_review_survives_a_jenkins_restart` checks the behavior |
 | `collection.flatten()` | `Scripts not permitted to use staticMethod org.codehaus.groovy.runtime.DefaultGroovyMethods flatten java.util.Collection` | Nested `any` / `collectMany` |
 | Spread operator on an array (`values()*.label`) | `No such field found: field ...[] label` | `values().collect { it.label }` |
 | A `@NonCPS` method calls a method not marked `@NonCPS` | `expected to call deploy.Catalog.tasksFor but wound up catching deploy.AccessMode.allows` | Every method that only computes is marked `@NonCPS` |
@@ -681,7 +677,6 @@ Test: `test_parameter_name_used_by_the_inventory_stops_the_build_before_any_task
 | Active Choices checkbox text contains non-ASCII punctuation (such as full-width parentheses, colon or exclamation mark) or `@ = + "` | Entity text such as `web&#xff08;web-01&#xff09;` is shown next to the checkbox | Checkbox text is ASCII only, without `@ = + "`; the same goes for `description` in a task's `meta/task.yml`, which `Catalog` checks in `Prepare` (`description-not-ascii` in `test_problem_in_a_task_directory_or_the_inventory_stops_the_build_before_any_task_runs`, and `test_description_is_ascii_without_characters_the_active_choices_sanitizer_turns_into_entities`). Reason: every return value of a sandboxed script goes through the plugin's HTML filter (`eval` in `src/main/java/org/biouno/unochoice/model/GroovyScript.java` of `jenkinsci/active-choices-plugin@2.8.11`), which turns these characters into entities; the checkbox text is then escaped once more by the page template. Entities in the HTML form (`*_TASK_OPTIONS`) are decoded by the browser and are not affected |
 | Use `fieldset` / `legend` / `label`, `title` or `aria-*` attributes in the dynamic HTML form | These tags and attributes disappear | The filter lets through only basic tags plus `input`, `select`, `option`, `textarea` and a few attributes (the `POLICY` constant in `src/main/java/org/biouno/unochoice/util/SafeHtmlExtendedMarkupFormatter.java` of `jenkinsci/active-choices-plugin@2.8.11`); group with `div` plus `style`, and mark required fields with the text "(required)" |
 | Fill in the parameters of one task, then tick another task | All values already typed go back to the defaults | Changing the selection regenerates the whole form. Tick all tasks first, then fill in the parameters (`test_changing_the_selection_regenerates_the_form_and_drops_typed_values`) |
-| Only one input field in the plugin-free version | `input` returns the value itself instead of a Map, and treating it as a Map fails | With only one input field, build the Map yourself (`basicDraft` in `ParameterPage`); for the behavior of `input` see `proceed` in `src/main/java/org/jenkinsci/plugins/workflow/support/steps/input/InputStepExecution.java` of `jenkinsci/pipeline-input-step-plugin@560.v56198a_642157`. `check_c` has no parameters, so when only it is ticked the form has one field (`test_form_with_a_single_field_returns_its_value`) |
 | Take an optional field with `x ?: default` | `timeout_minutes: 0`, `policy: ''`, `params: []` raise no error and silently fall back to the default | In Groovy `0`, `''`, `[]` are false; use `x == null ? default : x`, then check the type (4.5) |
 | Write unquoted `2026-01-01` or `yes` for a string parameter in `DEPLOY_PLAN` | Without a check, Ansible receives `Thu Jan 01 00:00:00 UTC 2026` and `true` | YAML parsing has already turned them into a date and a boolean; the engine accepts only strings and integers and tells you to add quotes |
 | A value in the form contains `,@@` | The value is cut, and the second half is taken as another field | Submitted values are split on `,@@`, which cannot be told apart; the engine reports an error when a field repeats (`test_invalid_form_values_fail_before_any_task_runs`) |
@@ -728,7 +723,7 @@ missing required arguments: app_version
 ## 7. Attachments
 
 - [attachments/inventory-practices.md](attachments/inventory-practices.md): managing the inventory - directory layout and variable layering, variable precedence and naming, ansible-vault and Jenkins credentials, validation with `ansible-inventory` / argument_specs / ansible-lint and how to use them in CI. Read it before designing or changing the inventory.
-- [attachments/parameter-page.md](attachments/parameter-page.md): UI and implementation details of the two parameter pages - definitions of the Active Choices parameters, the form HTML, the format and parsing of submitted values, the `input` form of the plugin-free version. Read it when changing the parameter page or tracking down problems with passing parameters.
+- [attachments/parameter-page.md](attachments/parameter-page.md): UI and implementation details of the parameter page - definitions of the Active Choices parameters, the form HTML, the format and parsing of submitted values. Read it when changing the parameter page or tracking down problems with passing parameters.
 - [attachments/review-before-run.md](attachments/review-before-run.md): the UI flow of review before running, with a Jenkins screenshot for each step. Read it the first time you use review, or when explaining to a reviewer what to do.
 
 ## 8. Sources

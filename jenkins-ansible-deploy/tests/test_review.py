@@ -224,3 +224,21 @@ def test_review_file_that_is_a_directory_fails_the_task_as_an_error(jenkins, new
     assert result == 'FAILURE'
     assert 'Input requested' not in console
     assert [(row['id'], row['outcome']) for row in report] == [('task_f', 'error')]
+
+
+def test_confirmed_run_uses_the_files_the_build_validated_even_if_the_branch_moved_during_the_review(jenkins, new_job, repository):
+    job = new_job(READ_WRITE)
+    number = jenkins.start_build(job, plan(REVIEW_PLAN))
+    [pending] = jenkins.wait_for_input(job, number)
+    tasks = repository.path / 'business/tasks/task_d/tasks/main.yml'
+    head = repository.commit({'business/tasks/task_d/tasks/main.yml': tasks.read_text().replace('msg: "applied ', 'msg: "newer ')},
+                             'task_d changes while the review waits')
+    try:
+        jenkins.submit_input(job, number, pending['id'], {})
+        result = jenkins.wait_for_build(job, number)
+        console = jenkins.console(job, number)
+    finally:
+        repository.reset(head)
+
+    assert result == 'SUCCESS', console
+    assert '"msg": "applied change a"' in console and 'newer' not in console

@@ -12,17 +12,15 @@ On the **Build with Parameters** page, check `SKIP_DEPLOY`, check `PRE_SHOW_MORE
 
 ## 2. The build stops for review
 
-`task_d` first runs once in generate mode and writes the review file, then the build pauses. On the Stages page, `pre: task_d` shows a pause icon, with the review prompt and the **Run** / **Abort** buttons on the right:
+`task_d` first runs once in generate mode and writes the review file, then the build pauses. Review it in **Stage View** on the job page: the cell of the paused stage `pre: task_d` opens a yellow popup with the review prompt, the sha256 of the review file and its full text with its line breaks, and the buttons **Run** and **Abort**. This is the main way to review:
 
-![Stages page](review-before-run/02-stages-waiting.png)
+![Stage View popup](review-before-run/02-stage-view-popup.png)
 
-The prompt on the Stages page folds the line breaks into one line. The console has the full prompt: the task to execute, the sha256 of the review file and its full text, with line breaks kept; the last line is the two links **Run or Abort**. Review here:
+The console shows the same prompt, also with its line breaks; the last line is the two links **Run or Abort**:
 
 ![Console](review-before-run/03-console-waiting.png)
 
-The page opened by **Paused for Input** in the left menu also folds the prompt into one line, which makes long content hard to read:
-
-![Confirmation page](review-before-run/04-input-page.png)
+Known limit: the page opened by **Paused for Input** in the left menu and the **Stages** page (`pipeline-graph-view`) run the lines of the prompt together, so review in the Stage View popup or the console instead.
 
 The review file is also archived as the build artifact `.deploy-run/review/pre-task_d.txt`, which can be opened or downloaded on its own:
 
@@ -38,6 +36,8 @@ The console shows `Approved by anonymous`, `[deploy] task_d confirmed by anonymo
 
 ![Console after confirmation](review-before-run/07-console-confirmed.png)
 
+After confirmation every stage of the build has passed:
+
 ![Stages page after confirmation](review-before-run/08-stages-confirmed.png)
 
 In the report `deploy-report.json`, the task's `reviewer` is the person who confirmed:
@@ -49,6 +49,8 @@ In the report `deploy-report.json`, the task's `reviewer` is the person who conf
 The build is ABORTED, the console has `Rejected by anonymous`, the task did not run in execute mode, and in the report the task is `aborted`, `not confirmed`. The result is the same when the wait exceeds `review.timeout_minutes`.
 
 ![Console after abort](review-before-run/10-console-aborted.png)
+
+After the abort the stage `pre: task_d` is marked aborted; `Report` still runs:
 
 ![Stages page after abort](review-before-run/11-stages-aborted.png)
 
