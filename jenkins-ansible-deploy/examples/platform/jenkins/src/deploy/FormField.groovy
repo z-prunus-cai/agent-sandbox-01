@@ -33,8 +33,8 @@ enum FormField {
     }
 
     @NonCPS
-    static String phasedKey(Phase phase, String task, String field) {
-        return phase.label + '.' + key(task, field)
+    static String phasedKey(String phase, String task, String field) {
+        return phase + '.' + key(task, field)
     }
 
     /** [task: ..., field: ...], or null when the key is not "task.field". */

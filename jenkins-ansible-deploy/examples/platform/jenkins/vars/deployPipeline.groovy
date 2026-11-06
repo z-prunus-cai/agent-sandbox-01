@@ -10,6 +10,7 @@ import deploy.Plan
 import deploy.PlanParser
 import deploy.RequestKind
 import deploy.TaskRunner
+import deploy.Values
 
 /** The pipeline of one job; config: commit, mode (AccessMode label), form (ParameterForm label), vaultCredentialsId, sshCredentialsId. */
 // No enum is held in a variable that lives while tasks run: Jenkins reads the build state back after a restart under a
@@ -18,7 +19,7 @@ def call(Map config) {
     List<String> errors = []
     Labels.find(AccessMode.values() as List, config.mode, 'mode', errors)
     Labels.find(ParameterForm.values() as List, config.form, 'form', errors)
-    if (errors) error "[deploy] Jenkinsfile settings: ${errors.join('; ')}"
+    if (errors) error "[deploy] Jenkinsfile settings: ${Values.problems(errors, '; ')}"
     // properties() fills params with the defaults it registers, so the request is read before it runs
     Map requested = [:] + params
     TaskRunner runner = new TaskRunner(this, [vaultCredentialsId: config.vaultCredentialsId, sshCredentialsId: config.sshCredentialsId])
@@ -30,7 +31,7 @@ def call(Map config) {
             deleteDir()
             checkout([$class: 'GitSCM', branches: [[name: config.commit]], userRemoteConfigs: scm.userRemoteConfigs])
             catalog = readCatalog(errors)
-            if (errors) error '[deploy] task catalog or inventory:\n  - ' + errors.join('\n  - ')
+            if (errors) error '[deploy] task catalog or inventory:\n  - ' + Values.problems(errors, '\n  - ')
             // a change to the tasks or groups shows on the parameter page from the next build on
             page = new ParameterPage(this, catalog, accessMode(config), Labels.of(ParameterForm.values() as List, config.form))
             properties([disableConcurrentBuilds(), parameters(page.definitions())])
@@ -49,11 +50,11 @@ def call(Map config) {
     }
     Plan plan = null
     stage('Plan') {
-        RequestKind kind = RequestKind.of(requested)
-        echo "[deploy] reading the plan from the ${kind.label}"
-        Map raw = kind == RequestKind.PLAN_TEXT ? readPlan(requested[Limits.PLAN_PARAMETER].toString(), errors) : page.draft(requested, errors)
+        // no RequestKind variable: page.draft may wait in input, and an enum may not be part of the build state then
+        echo "[deploy] reading the plan from the ${RequestKind.of(requested).label}"
+        Map raw = RequestKind.of(requested) == RequestKind.PLAN_TEXT ? readPlan(requested[ParameterPage.PLAN_PARAMETER].toString(), errors) : page.draft(requested, errors)
         if (raw != null) plan = PlanParser.parse(raw, catalog, accessMode(config), errors)
-        if (errors) error '[deploy] the plan has problems:\n  - ' + errors.join('\n  - ')
+        if (errors) error '[deploy] the plan has problems:\n  - ' + Values.problems(errors, '\n  - ')
         echo plan.describe()
     }
     try {
@@ -89,19 +90,19 @@ private Catalog readCatalog(List<String> errors) {
 }
 
 private Map readPlan(String text, List<String> errors) {
-    echo "[deploy] using ${Limits.PLAN_PARAMETER}; every other parameter is ignored"
+    echo "[deploy] using ${ParameterPage.PLAN_PARAMETER}; every other parameter is ignored"
     if (text.length() > Limits.MAX_PLAN_CHARACTERS) {
-        errors << "${Limits.PLAN_PARAMETER} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
+        errors << "${ParameterPage.PLAN_PARAMETER} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
         return null
     }
     Object raw
     try {
         raw = readYaml(text: text)
     } catch (Exception e) {
-        errors << "${Limits.PLAN_PARAMETER} is not valid YAML: ${e.message}".toString()
+        errors << "${ParameterPage.PLAN_PARAMETER} is not valid YAML: ${e.message}".toString()
         return null
     }
     if (raw instanceof Map) return raw
-    errors << "${Limits.PLAN_PARAMETER} must be a YAML mapping".toString()
+    errors << "${ParameterPage.PLAN_PARAMETER} must be a YAML mapping".toString()
     return null
 }

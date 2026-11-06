@@ -17,7 +17,7 @@ enum RequestKind {
 
     @NonCPS
     static RequestKind of(Map requested) {
-        if (!requested.containsKey(Limits.PLAN_PARAMETER)) return UNREGISTERED
-        return requested[Limits.PLAN_PARAMETER]?.toString()?.trim() ? PLAN_TEXT : FORM
+        if (!requested.containsKey(ParameterPage.PLAN_PARAMETER)) return UNREGISTERED
+        return requested[ParameterPage.PLAN_PARAMETER]?.toString()?.trim() ? PLAN_TEXT : FORM
     }
 }

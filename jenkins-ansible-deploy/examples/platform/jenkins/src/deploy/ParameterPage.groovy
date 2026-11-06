@@ -8,6 +8,7 @@ class ParameterPage implements Serializable {
     public static final String BASIC_TARGET_PREFIX = 'TARGET_'
     public static final String SKIP_DEPLOY_PARAMETER = 'SKIP_DEPLOY'
     public static final String EDIT_OPTIONS_PARAMETER = 'EDIT_TASK_OPTIONS'
+    public static final String PLAN_PARAMETER = 'DEPLOY_PLAN'
 
     private final def script
     private final Catalog catalog
@@ -91,42 +92,54 @@ class ParameterPage implements Serializable {
             result << script.booleanParam(name: EDIT_OPTIONS_PARAMETER, defaultValue: true,
                     description: 'Ask for the failure policy and parameters of the selected tasks after the build starts; unticked, every task uses its defaults')
         }
-        result << script.text(name: Limits.PLAN_PARAMETER, defaultValue: '',
+        result << script.text(name: PLAN_PARAMETER, defaultValue: '',
                 description: 'A complete plan in YAML; when not empty, every other parameter is ignored. For the API and upstream jobs.')
         return result
     }
 
     /** Reads the form into a DEPLOY_PLAN-shaped draft. The basic form asks for task options with input, holding no executor. */
     Map draft(Map requested, List<String> errors) {
+        // no switch on the form here: its value would stay in the build state while the basic form waits (see PlannedTask)
+        return basicForm() ? basicDraft(requested, errors) : activeChoicesDraft(requested, errors)
+    }
+
+    @NonCPS
+    private boolean basicForm() {
         switch (form()) {
-            case ParameterForm.ACTIVE_CHOICES:
-                Map<Phase, Map> chosen = [:]
-                for (Phase phase in Phase.values()) {
-                    String options = requested[phase.optionsParameter] ?: ''
-                    // bounded like DEPLOY_PLAN before it is split into fields
-                    if (options.length() > Limits.MAX_PLAN_CHARACTERS) {
-                        errors << "${phase.optionsParameter} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
-                        options = ''
-                    }
-                    chosen[phase] = [names : Selection.splitList(requested[phase.tasksParameter]) + Selection.splitList(requested[phase.moreTasksParameter]),
-                                     values: ActiveChoicesForm.parseOptions(options, errors)]
-                }
-                return Selection.draft(catalog, Selection.splitList(requested[TARGETS_PARAMETER]), skipDeploy(requested), chosen, errors)
-            case ParameterForm.BASIC:
-                return basicDraft(requested, errors)
+            case ParameterForm.ACTIVE_CHOICES: return false
+            case ParameterForm.BASIC: return true
         }
         throw new IllegalStateException(form().name())
     }
 
+    @NonCPS
+    private Map activeChoicesDraft(Map requested, List<String> errors) {
+        Map<Phase, Map> chosen = [:]
+        for (Phase phase in Phase.values()) {
+            chosen[phase] = [names : Selection.splitList(ParameterPage.bounded(requested, phase.tasksParameter, errors)) +
+                                     Selection.splitList(ParameterPage.bounded(requested, phase.moreTasksParameter, errors)),
+                             values: ActiveChoicesForm.parseOptions(ParameterPage.bounded(requested, phase.optionsParameter, errors), errors)]
+        }
+        return Selection.draft(catalog, Selection.splitList(ParameterPage.bounded(requested, TARGETS_PARAMETER, errors)), skipDeploy(requested), chosen, errors)
+    }
+
+    /** A form value, bounded like DEPLOY_PLAN before it is split; an oversized value is reported and read as empty. */
+    @NonCPS
+    static String bounded(Map requested, String name, List<String> errors) {
+        String value = requested[name] == null ? '' : requested[name].toString()
+        if (value.length() <= Limits.MAX_PLAN_CHARACTERS) return value
+        errors << "${name} is longer than ${Limits.MAX_PLAN_CHARACTERS} characters".toString()
+        return ''
+    }
+
     private Map basicDraft(Map requested, List<String> errors) {
         List<String> targets = catalog.groups.keySet().findAll { requested[BASIC_TARGET_PREFIX + it] == true } as List
-        Map<Phase, Map> chosen = [:]
+        // keyed by phase label: this method waits in input, and no enum may be part of the build state then
+        Map<String, Map> chosen = basicSelection(requested)
         List fields = []
-        for (Phase phase in Phase.values()) {
-            List<String> names = catalog.tasksFor(phase, mode()).findAll { requested[phase.basicParameterPrefix + it.name] == true }.collect { it.name }
-            chosen[phase] = [names: names, values: [:]]
-            if (requested[EDIT_OPTIONS_PARAMETER]) {
-                for (String name in names) fields.addAll(inputFields(phase, catalog.task(name)))
+        if (requested[EDIT_OPTIONS_PARAMETER]) {
+            for (String phaseLabel in chosen.keySet()) {
+                for (String name in chosen[phaseLabel].names) fields.addAll(inputFields(phaseLabel, catalog.task(name)))
             }
         }
         if (fields) {
@@ -138,23 +151,35 @@ class ParameterPage implements Serializable {
             answers.each { String key, Object value ->
                 // the input form's keys are "phase.task.field": the phase, then a form key of the task
                 int dot = key.indexOf('.')
-                Phase phase = Labels.find(Phase.values() as List, key.substring(0, dot), 'input field phase', errors)
-                if (phase != null) chosen[phase].values[key.substring(dot + 1)] = String.valueOf(value)
+                chosen[key.substring(0, dot)].values[key.substring(dot + 1)] = String.valueOf(value)
             }
         }
-        return Selection.draft(catalog, targets, skipDeploy(requested), chosen, errors)
+        return Selection.draft(catalog, targets, skipDeploy(requested), ParameterPage.byPhase(chosen), errors)
+    }
+
+    @NonCPS
+    private Map<String, Map> basicSelection(Map requested) {
+        return (Phase.values() as List).collectEntries { Phase phase ->
+            [(phase.label): [names : catalog.tasksFor(phase, mode()).findAll { requested[phase.basicParameterPrefix + it.name] == true }.collect { it.name },
+                             values: [:]]]
+        }
+    }
+
+    @NonCPS
+    static Map<Phase, Map> byPhase(Map<String, Map> chosen) {
+        return chosen.collectEntries { String label, Map entry -> [(Labels.of(Phase.values() as List, label)): entry] }
     }
 
     /** [[name: field name such as pre.task_a.policy, input: parameter definition], ...] */
-    private List<Map> inputFields(Phase phase, TaskDefinition task) {
+    private List<Map> inputFields(String phase, TaskDefinition task) {
         String policyName = FormField.phasedKey(phase, task.name, FormField.POLICY.label)
         List<String> policies = FailurePolicy.values().collect { it.label }
         List<Map> fields = [[name : policyName,
                              input: script.choice(name: policyName, choices: defaultFirst(policies, task.policy.label),
-                                     description: "${task.name}: on failure, abort stops the pipeline, warn marks it unstable and continues")]]
+                                     description: "${task.name}: on failure, ${FailurePolicy.help()}")]]
         for (ParameterDefinition parameter in task.parameters) {
             String name = FormField.phasedKey(phase, task.name, parameter.name)
-            String description = "${task.name}: ${parameter.description}${parameter.required ? ' (required)' : ''}"
+            String description = "${task.name}: ${parameter.description}${parameter.required ? ParameterDefinition.REQUIRED_SUFFIX : ''}"
             fields << [name: name, input: inputField(name, parameter, description)]
         }
         return fields
@@ -172,6 +197,7 @@ class ParameterPage implements Serializable {
         throw new IllegalStateException(String.valueOf(parameter.type))
     }
 
+    @NonCPS
     private boolean skipDeploy(Map requested) {
         return mode().deploys() && requested[SKIP_DEPLOY_PARAMETER] == true
     }

@@ -2,7 +2,6 @@ package deploy
 
 /** Bounds on everything a build accepts. */
 class Limits {
-    public static final String PLAN_PARAMETER = 'DEPLOY_PLAN'
     public static final int MAX_PLAN_CHARACTERS = 20000
     public static final int MAX_PLAN_ENTRIES = 50
     public static final int MAX_STRING_PARAMETER_CHARACTERS = 1000

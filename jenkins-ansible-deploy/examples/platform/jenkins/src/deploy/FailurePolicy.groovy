@@ -1,13 +1,22 @@
 package deploy
 
-/** What a failed task does to the build: abort stops it, warn marks it unstable and goes on. */
+import com.cloudbees.groovy.cps.NonCPS
+
+/** What a failed task does to the build; the meaning is the help text both parameter page forms show. */
 enum FailurePolicy {
-    ABORT('abort'),
-    WARN('warn')
+    ABORT('abort', 'stop the pipeline'),
+    WARN('warn', 'mark the build unstable and continue')
 
     final String label
+    final String meaning
 
-    FailurePolicy(String label) {
+    FailurePolicy(String label, String meaning) {
         this.label = label
+        this.meaning = meaning
+    }
+
+    @NonCPS
+    static String help() {
+        return values().collect { it.label + ': ' + it.meaning }.join('; ')
     }
 }

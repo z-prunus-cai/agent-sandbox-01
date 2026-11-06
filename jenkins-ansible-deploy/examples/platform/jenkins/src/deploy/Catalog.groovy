@@ -53,11 +53,8 @@ class Catalog implements Serializable {
                 meta.phases.collect { Labels.find(Phase.values() as List, it, "${where}: phase", errors) }.findAll { it != null } : []
         if (!phases) errors << "${where}: phases must be a non-empty list of ${Phase.values().collect { it.label }}".toString()
         String description = (meta.description ?: name).toString()
-        // a checkbox label: the Active Choices sanitizer turns other characters into entities, and the plugin ticks
-        // by default, in builds started through the API, every checkbox whose label contains "selected"
-        if (!(description ==~ /[ -~]*/) || description.find(/[@=+"]/) != null || description.contains('selected')) {
-            errors << "${where}: description must be ASCII without @ = + \" and without the word selected".toString()
-        }
+        Catalog.checkLabel("${where}: description", description, errors)
+        Catalog.checkLabel("${where}: the directory name", name, errors)
         Map review = meta.review instanceof Map ? meta.review : null
         if (meta.review != null && review == null) errors << "${where}: review must be a mapping with timeout_minutes".toString()
         return new TaskDefinition(
@@ -138,6 +135,16 @@ class Catalog implements Serializable {
         groups.findAll { group, hosts -> !hosts }.each { group, hosts ->
             errors << "business/inventory/hosts.yml: group ${group} has no hosts".toString()
         }
+        groups.each { group, hosts -> Catalog.checkLabel("business/inventory/hosts.yml: group ${group} and its host names", group + ' ' + hosts.join(' '), errors) }
         return groups
+    }
+
+    // Text shown in a checkbox label: the Active Choices sanitizer turns other characters into entities, and the plugin
+    // ticks by default, in builds started through the API, every checkbox whose label contains "selected"
+    @NonCPS
+    static void checkLabel(String where, String text, List<String> errors) {
+        if (!(text ==~ /[ -~]*/) || text.find(/[@=+"]/) != null || text.contains('selected')) {
+            errors << "${where} must be ASCII without @ = + \" and without the word selected".toString()
+        }
     }
 }

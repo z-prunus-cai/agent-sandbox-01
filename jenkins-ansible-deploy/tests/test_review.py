@@ -69,18 +69,35 @@ def test_aborted_review_runs_nothing_and_aborts_the_build(jenkins, waiting):
     assert [(row['id'], row['outcome'], row['message']) for row in report] == [('task_d', 'aborted', 'not confirmed')]
 
 
-def test_build_aborted_after_confirmation_before_the_run_reports_the_task_aborted(jenkins, waiting):
-    job, number, pending = waiting
+@pytest.fixture
+def no_executors(jenkins):
+    """Take every executor away for one test, and check they are back afterwards."""
     executors = jenkins.run_script('print(Jenkins.get().numExecutors)').strip()
-    jenkins.run_script('Jenkins.get().setNumExecutors(0)')
     try:
-        jenkins.submit_input(job, number, pending['id'], {})
-        jenkins.wait_for_console(job, number, 'confirmed by')
-        time.sleep(3)                                               # the confirmed run now waits for an executor
-        jenkins.stop_build(job, number)
-        jenkins.wait_for_console(job, number, 'Aborted by')
+        jenkins.run_script('Jenkins.get().setNumExecutors(0)')
+        yield
     finally:
         jenkins.run_script(f'Jenkins.get().setNumExecutors({executors})')
+        assert jenkins.run_script('print(Jenkins.get().numExecutors)').strip() == executors
+
+
+def wait_for_queued(jenkins, job, timeout_seconds=60):
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        # a node block of a running build is queued as "part of <job> #<number>"
+        if any(job in str(item) for item in jenkins.json('/queue', 'items[task[name,url]]')['items']):
+            return
+        time.sleep(1)
+    raise TimeoutError(f'{job}: nothing queued')
+
+
+def test_build_aborted_after_confirmation_before_the_run_reports_the_task_aborted(jenkins, waiting, no_executors):
+    job, number, pending = waiting
+    jenkins.submit_input(job, number, pending['id'], {})
+    wait_for_queued(jenkins, job)                                   # the confirmed run waits for an executor
+    jenkins.stop_build(job, number)
+    jenkins.wait_for_console(job, number, 'Aborted by')
+
 
     assert jenkins.wait_for_build(job, number) == 'ABORTED'
     console = jenkins.console(job, number)
@@ -167,3 +184,43 @@ def test_waiting_review_survives_a_jenkins_restart(jenkins, new_job):
     console = jenkins.console(job, number)
     assert 'Resuming build' in console
     assert '"msg": "applied change a"' in console and '"msg": "applied change b"' in console
+
+
+def test_failed_generate_run_under_warn_continues_without_asking_for_review(jenkins, new_job, repository):
+    tasks = mutated_task_d('- name: Write the changes to review\n',
+                           '- name: Fail before writing\n  ansible.builtin.fail:\n    msg: cannot generate\n'
+                           '  when: task_review_mode == \'generate\'\n\n- name: Write the changes to review\n', repository)
+    meta = repository.path / 'business/tasks/task_d/meta/task.yml'
+    head = repository.commit({**tasks, 'business/tasks/task_d/meta/task.yml': meta.read_text().replace('policy: abort', 'policy: warn')},
+                             'task_d fails while generating, under warn')
+    try:
+        job = new_job(READ_WRITE)
+        result, console, number = run(jenkins, job, plan(REVIEW_PLAN))
+        report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+    finally:
+        repository.reset(head)
+
+    assert result == 'UNSTABLE'
+    assert 'Input requested' not in console and 'applied' not in console
+    assert [(row['id'], row['outcome']) for row in report] == [('task_d', 'failed-continued')]
+
+
+def test_review_file_that_is_a_directory_fails_the_task_as_an_error(jenkins, new_job, repository):
+    head = repository.commit({
+        'business/tasks/task_f/meta/task.yml': 'description: writes a directory to review\nphases: [pre]\naccess: write\nmenu: more\n'
+                                               'run_on: controller\npolicy: abort\ntimeout_minutes: 5\norder: 80\n'
+                                               'review: {timeout_minutes: 5}\n',
+        'business/tasks/task_f/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n    options: {}\n',
+        'business/tasks/task_f/tasks/main.yml': '- name: Write a directory instead of a file\n  ansible.builtin.file:\n'
+                                                '    path: "{{ task_review_file }}"\n    state: directory\n    mode: "0755"\n',
+    }, 'add task_f')
+    try:
+        job = new_job(READ_WRITE)
+        result, console, number = run(jenkins, job, plan('{skip_deploy: true, pre: [task_f]}'))
+        report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+    finally:
+        repository.reset(head)
+
+    assert result == 'FAILURE'
+    assert 'Input requested' not in console
+    assert [(row['id'], row['outcome']) for row in report] == [('task_f', 'error')]

@@ -75,7 +75,7 @@ chosen.each { task ->
     html << '<input type="number" name="value" value="' + escapeHtml(task.order) + '" placeholder="order" class="jenkins-input" style="' + style.number + '">'
     html << hint('smaller numbers run first in this phase') + '</td></tr>'
     html << '<tr><td style="' + style.label + '">On failure</td><td style="' + style.value + '">' + marker(task.policyKey) + select(policies, task.policy)
-    html << hint('abort: stop the pipeline; warn: mark unstable and continue') + '</td></tr>'
+    html << hint(${literal(FailurePolicy.help())}) + '</td></tr>'
     task.params.each { param ->
         html << '<tr><td style="' + style.label + '">' + escapeHtml(param.label) + '</td><td style="' + style.value + '">' + marker(param.key)
         if (param.choices) {
@@ -95,7 +95,7 @@ return html.join('')
     /** How the options form shows one parameter, decided here so the sandboxed script compares no type names. */
     @NonCPS
     static Map input(TaskDefinition task, ParameterDefinition parameter) {
-        Map field = [key: FormField.key(task.name, parameter.name), label: parameter.name + (parameter.required ? ' (required)' : ''),
+        Map field = [key: FormField.key(task.name, parameter.name), label: parameter.name + (parameter.required ? ParameterDefinition.REQUIRED_SUFFIX : ''),
                      description: parameter.description, choices: parameter.choices, default: parameter.defaultValue, inputType: 'text',
                      style: FormStyle.STYLES.text]
         switch (parameter.type) {

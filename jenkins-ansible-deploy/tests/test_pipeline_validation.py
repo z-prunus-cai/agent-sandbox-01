@@ -58,6 +58,10 @@ def padded_plan(text, length):
                  'pre[0]: parameter task_a_message must not contain template syntax ({{, {%, {# or a leading #jinja2:)', id='template-override-header'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\x1bb"}}]}',
                  'pre[0]: parameter task_a_message must not contain control or format characters', id='control-character'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\u2028b"}}]}',
+                 'pre[0]: parameter task_a_message must not contain control or format characters', id='line-separator'),
+    pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: x, 1: y}}]}',
+                 'pre[0]: task task_a takes no parameters [1]', id='parameter-name-not-a-string'),
     pytest.param('{targets: [web], pre: [{name: task_a, params: {task_a_message: "a\\u202Eb"}}]}',
                  'pre[0]: parameter task_a_message must not contain control or format characters', id='format-character'),
     pytest.param('{skip_deploy: true, pre: [check_c]}', 'no group selected', id='no-group-for-a-task-on-targets'),
@@ -98,12 +102,21 @@ def test_invalid_plan_fails_before_any_task_runs(jenkins, shared_job, deploy_pla
     pytest.param('{targets: [web], skip_deploy: true, pre: [{name: check_c, timeout_minutes: ' + str(MAX_TIMEOUT) + '}]}',
                  id='longest-timeout'),
     pytest.param(padded_plan('{targets: [web], skip_deploy: true, pre: [check_c]}', MAX_PLAN), id='longest-plan'),
+    pytest.param('{targets: [web], skip_deploy: true, pre: [{name: task_a, params: {task_a_message: "a\\tb"}}]}', id='tab-in-string'),
 ])
 def test_values_at_their_limit_are_accepted(jenkins, shared_job, deploy_plan):
     result, console, _ = run(jenkins, shared_job, plan(deploy_plan))
 
     assert result == 'SUCCESS', console
     assert 'the plan has problems' not in console
+
+
+def test_problems_print_control_characters_as_escapes_so_they_cannot_fake_a_line(jenkins, shared_job):
+    result, console, _ = run(jenkins, shared_job, plan('{targets: [web], pre: [{name: task_a, policy: "x\\n[deploy] forged"}]}'))
+
+    assert result == 'FAILURE'
+    assert "pre[0]: policy 'x\\u000a[deploy] forged' is not one of [abort, warn]" in console
+    assert '\n[deploy] forged' not in console
 
 
 def test_invalid_plan_lists_all_problems_at_once(jenkins, shared_job):
@@ -139,3 +152,21 @@ def test_invalid_form_values_fail_before_any_task_runs(jenkins, shared_job, opti
     assert result == 'FAILURE'
     assert message in console
     assert playbook_runs(console) == []
+
+
+def test_form_value_longer_than_the_plan_limit_fails_before_any_task_runs(jenkins, shared_job):
+    result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web,' * (MAX_PLAN // 4 + 1), 'PRE_TASKS': 'check_c'})
+
+    assert result == 'FAILURE'
+    assert f'TARGET_GROUPS is longer than {MAX_PLAN} characters' in console
+    assert playbook_runs(console) == []
+
+
+def test_task_options_exactly_at_the_plan_limit_are_accepted(jenkins, shared_job):
+    options = '@@task_a.task_a_message,hi,@@task_a.task_a_delay_seconds,'
+    options += '0' * (MAX_PLAN - len(options))                       # leading zeros: still the integer 0
+
+    result, console, _ = run(jenkins, shared_job, {'TARGET_GROUPS': 'web', 'SKIP_DEPLOY': 'true', 'PRE_TASKS': 'task_a', 'PRE_TASK_OPTIONS': options})
+
+    assert len(options) == MAX_PLAN
+    assert result == 'SUCCESS', console

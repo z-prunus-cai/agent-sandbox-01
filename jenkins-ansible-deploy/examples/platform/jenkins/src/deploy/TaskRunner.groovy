@@ -59,6 +59,8 @@ class TaskRunner implements Serializable {
             // writeFile creates the directory the role writes its review file into
             script.writeFile(file: "${RUN_DIRECTORY}/review/.directory", text: '')
             if (attempt(planned, targets, result, [step: ReviewStep.GENERATE.label, file: reviewFile])) {
+                // the generate run passed; only the confirmed run decides how the task ended
+                result.outcome = null
                 if (!script.fileExists(reviewFile)) {
                     result.outcome = TaskOutcome.ERROR
                     result.message = "wrote no review file at ${EngineVariable.REVIEW_FILE.label}".toString()
@@ -82,8 +84,6 @@ class TaskRunner implements Serializable {
             throw e
         }
         script.echo "[deploy] ${planned.id} confirmed by ${result.reviewer}"
-        // the generate run passed; only the confirmed run decides how the task ended
-        result.outcome = null
         script.node {
             restoreSource()
             script.unstash(stashName)

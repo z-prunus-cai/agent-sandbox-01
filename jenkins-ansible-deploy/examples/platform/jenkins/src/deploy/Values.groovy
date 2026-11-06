@@ -29,13 +29,19 @@ class Values {
                 if (text.contains('{{') || text.contains('{%') || text.contains('{#') || text.startsWith(JINJA_OVERRIDE)) {
                     errors << "${where} must not contain template syntax ({{, {%, {# or a leading ${JINJA_OVERRIDE})".toString()
                 }
-                if (text.find(/[\p{Cc}\p{Cf}&&[^\t]]/) != null) errors << "${where} must not contain control or format characters".toString()
+                if (text.find(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}&&[^\t]]/) != null) errors << "${where} must not contain control or format characters".toString()
                 if (text.length() > Limits.MAX_STRING_PARAMETER_CHARACTERS) {
                     errors << "${where} is longer than ${Limits.MAX_STRING_PARAMETER_CHARACTERS} characters".toString()
                 }
                 return text
         }
         throw new IllegalStateException(String.valueOf(parameter.type))
+    }
+
+    /** A problem list as printed: values in it were not all accepted, so control, format and line-break characters print as backslash-u escapes. */
+    @NonCPS
+    static String problems(List<String> errors, String separator) {
+        return errors.collect { String.valueOf(it).replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/) { String c -> String.format('\\u%04x', c.codePointAt(0)) } }.join(separator)
     }
 
     /** Form fields are text: an empty integer or boolean means "use the default"; an integer that does not parse stays text for check. */

@@ -362,7 +362,20 @@ def mutated(repository, path, old, new):
     return {path: text.replace(old, new, 1)}
 
 
+SELECTED_TASK = {
+    'business/tasks/check_selected/meta/task.yml': 'description: example\nphases: [pre]\naccess: read\nmenu: main\nrun_on: controller\n'
+                                                   'policy: abort\ntimeout_minutes: 5\norder: 81\n',
+    'business/tasks/check_selected/meta/argument_specs.yml': 'argument_specs:\n  main:\n    short_description: x\n    options: {}\n',
+    'business/tasks/check_selected/tasks/main.yml': '- name: Do nothing\n  ansible.builtin.debug:\n    msg: nothing\n',
+}
+
 CATALOG_PROBLEMS = [
+    pytest.param(lambda r: SELECTED_TASK, 'task check_selected: the directory name must be ASCII without @ = + " and without the word selected',
+                 id='task-name-says-selected'),
+    pytest.param(lambda r: mutated(r, 'business/inventory/hosts.yml', 'api-01:', 'api-selected-01:'),
+                 'business/inventory/hosts.yml: group api and its host names must be ASCII without', id='host-name-says-selected'),
+    pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'checks a file', 'checks a=file'),
+                 'task task_b: description must be ASCII without @ = + "', id='description-with-sanitized-character'),
     pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'checks a file', 'checks a selected file'),
                  'task task_b: description must be ASCII without @ = + " and without the word selected', id='description-says-selected'),
     pytest.param(lambda r: mutated(r, 'business/tasks/task_b/meta/task.yml', 'checks a file', 'checks a caf\u00e9 file'),
@@ -432,3 +445,18 @@ def test_problem_in_a_task_directory_or_the_inventory_stops_the_build_before_any
     assert '[deploy] task catalog or inventory:' in console
     assert message in console
     assert playbook_runs(console) == []
+
+
+def test_numeric_default_of_a_string_parameter_reaches_ansible_as_a_string(jenkins, new_job, repository):
+    head = repository.commit(mutated(repository, 'business/tasks/task_c/defaults/main.yml', 'task_c_label: ""', 'task_c_label: 8080'),
+                             'numeric default for a str parameter')
+    try:
+        job = new_job(READ_WRITE)
+        result, console, number = run(jenkins, job, plan('{targets: [api], skip_deploy: true, pre: [task_c]}'))
+        report = json.loads(jenkins.artifact(job, number, 'deploy-report.json'))
+    finally:
+        repository.reset(head)
+
+    assert result == 'SUCCESS', console
+    assert report[0]['params']['task_c_label'] == '8080'
+    assert '"msg": "api-01: task_c mode=plan label=8080"' in console

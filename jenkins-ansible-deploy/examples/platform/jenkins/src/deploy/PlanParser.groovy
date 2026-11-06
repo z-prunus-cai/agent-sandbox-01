@@ -21,7 +21,13 @@ class PlanParser {
         if (unknownGroups) errors << "unknown groups ${unknownGroups}, expected ${catalog.groups.keySet()}".toString()
         if (raw.skip_deploy != null && !(raw.skip_deploy instanceof Boolean)) errors << 'skip_deploy must be true or false'
         Map<String, List<PlannedTask>> tasks = [:]
+        // counted before any entry is read, so an oversized plan costs no per-entry work
         int entries = 0
+        for (Phase phase in Phase.values()) entries += raw[phase.label] instanceof List ? raw[phase.label].size() : 0
+        if (entries > Limits.MAX_PLAN_ENTRIES) {
+            errors << "the plan has ${entries} tasks, at most ${Limits.MAX_PLAN_ENTRIES} are allowed".toString()
+            return new Plan(targets: [], deploy: false, tasks: [:])
+        }
         Phase.values().each { Phase phase ->
             Object items = raw[phase.label] == null ? [] : raw[phase.label]
             tasks[phase.label] = []
@@ -29,7 +35,6 @@ class PlanParser {
                 errors << "${phase.label} must be a list".toString()
                 return
             }
-            entries += items.size()
             List<String> ids = []
             items.eachWithIndex { Object item, int index ->
                 PlannedTask planned = PlanParser.entry("${phase.label}[${index}]", phase, item, catalog, mode, errors)
@@ -40,7 +45,6 @@ class PlanParser {
                 tasks[phase.label] << planned
             }
         }
-        if (entries > Limits.MAX_PLAN_ENTRIES) errors << "the plan has ${entries} tasks, at most ${Limits.MAX_PLAN_ENTRIES} are allowed".toString()
         boolean deploy = mode.deploys() && raw.skip_deploy != true
         Plan plan = new Plan(targets: targets.collect { it.toString() }, deploy: deploy, tasks: tasks)
         boolean needsTargets = deploy || tasks.values().any { List<PlannedTask> planned -> planned.any { it.task.runOn == RunLocation.TARGETS } }
@@ -75,7 +79,7 @@ class PlanParser {
             errors << "${where}: params must be a mapping".toString()
             given = [:]
         }
-        List unknownParams = given.keySet().findAll { task.parameter(it) == null } as List
+        List unknownParams = given.keySet().findAll { !(it instanceof String) || task.parameter(it) == null } as List
         if (unknownParams) errors << "${where}: task ${task.name} takes no parameters ${unknownParams}, expected ${task.parameters.collect { it.name }}".toString()
         Map<String, Object> params = [:]
         task.parameters.each { ParameterDefinition parameter ->
