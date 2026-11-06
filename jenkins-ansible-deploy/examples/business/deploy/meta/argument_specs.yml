@@ -1,33 +1,33 @@
 # Host variables the deployment needs, all from the inventory; Ansible checks types and presence before the role runs
 argument_specs:
   main:
-    short_description: 部署应用（占位：只校验变量并输出将要执行的动作，不改动目标主机）
+    short_description: Deploy the application (placeholder - checks the variables and prints the planned actions, changes no host)
     options:
       app_name:
         type: str
         required: true
-        description: 应用名，也是安装目录名
+        description: Application name, also the name of its install directory
       app_version:
         type: str
         required: true
-        description: 要部署的版本号
+        description: Version to deploy
       app_port:
         type: int
         required: true
-        description: 应用监听端口
+        description: Port the application listens on
       app_max_connections:
         type: int
         required: true
-        description: 最大连接数
+        description: Maximum number of connections
       app_base_dir:
         type: path
         required: true
-        description: 应用安装的上级目录
+        description: Parent directory of the install directory
       app_run_user:
         type: str
         required: true
-        description: 运行应用的系统用户
+        description: System user that runs the application
       app_api_token:
         type: str
         required: true
-        description: 应用访问外部接口的令牌（来自 vault）
+        description: Token the application uses for an external API (from the vault)

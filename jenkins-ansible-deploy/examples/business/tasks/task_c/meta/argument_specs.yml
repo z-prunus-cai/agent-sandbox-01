@@ -1,17 +1,17 @@
 argument_specs:
   main:
-    short_description: 示例任务 C：带枚举参数和布尔参数
+    short_description: Example task C - has a choice and a boolean parameter
     options:
       task_c_mode:
         type: str
         default: plan
         choices: [plan, apply]
-        description: 执行模式
+        description: Run mode
       task_c_verbose:
         type: bool
         default: false
-        description: 是否输出详细信息
+        description: Whether to print details
       task_c_label:
         type: str
         default: ""
-        description: 附加标签，可留空
+        description: Extra label, may be empty

@@ -8,7 +8,7 @@ from conftest import READ_WRITE
 
 pytestmark = pytest.mark.jenkins
 
-SPECIAL_TEXT = 'a,"b" c\\d, @@x 中文=1+2'
+SPECIAL_TEXT = 'a,"b" c\\d, @@x caf\u00e9=1+2'
 
 
 # Active Choices regenerates the form through a server round trip; the default 5 s can be short on a cold Jenkins
@@ -55,9 +55,9 @@ def test_lists_show_inventory_groups_and_only_main_tasks_until_more_is_shown(par
     expect(page.locator('#ecp_choice-target-groups label')).to_have_text(
         ['web (web-01, web-02)', 'api (api-01)', 'worker (worker-01, worker-02)'])
     expect(page.locator('#ecp_choice-pre-tasks label')).to_have_text([
-        'task_a - 在所选主机组上运行的示例任务', 'task_b - 在 Jenkins 节点本机检查文件的示例任务', 'task_c - 带枚举参数和布尔参数的示例任务'])
+        'task_a - Example task that runs on the selected host groups', 'task_b - Example task that checks a file on the Jenkins node', 'task_c - Example task with a choice and a boolean parameter'])
     expect(page.locator('#ecp_choice-post-tasks label')).to_have_text([
-        'task_c - 带枚举参数和布尔参数的示例任务', 'check_a - 部署后比较主机变量的示例检查'])
+        'task_c - Example task with a choice and a boolean parameter', 'check_a - Example check that compares host variables after deployment'])
     expect(page.locator('#ecp_choice-pre-more-tasks')).to_have_count(1)
     expect(page.locator('#ecp_choice-post-more-tasks')).to_have_count(1)
     expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_count(0)
@@ -69,7 +69,7 @@ def test_showing_more_lists_the_less_used_tasks_and_hiding_them_drops_their_sele
 
     show_more(page, 'PRE')
     expect(page.locator('#ecp_choice-pre-more-tasks label')).to_have_text([
-        'check_c - 在 task_c 之后运行的示例检查', 'task_d - 执行前需要复核的示例任务'])
+        'check_c - Example check that runs after task_c', 'task_d - Example task that is reviewed before it runs'])
     tick(page, 'ecp_choice-pre-more-tasks', 'task_d')
     expect(field(page, 'task_d.task_d_items')).to_be_visible()
     show_more(page, 'PRE')
@@ -85,7 +85,7 @@ def test_filter_box_narrows_a_task_list(parameter_page):
     # the plugin filters on keyup, which fill() does not send
     page.locator('#ecp_choice-pre-tasks').locator('xpath=..').locator('input.uno_choice_filter').press_sequentially('task_b')
 
-    expect(page.locator('#ecp_choice-pre-tasks label:visible')).to_have_text(['task_b - 在 Jenkins 节点本机检查文件的示例任务'])
+    expect(page.locator('#ecp_choice-pre-tasks label:visible')).to_have_text(['task_b - Example task that checks a file on the Jenkins node'])
 
 
 def test_order_field_is_prefilled_with_the_catalog_order(parameter_page):
@@ -155,7 +155,7 @@ def test_submitted_form_values_reach_ansible_unchanged(jenkins, parameter_page):
 
     assert jenkins.wait_for_build(job, number) == 'SUCCESS'
     console = jenkins.console(job, number)
-    assert '    - task_a [warn] [task_a_message:a,"b" c\\d, @@x 中文=1+2, task_a_repeat:2, task_a_delay_seconds:0]' in console
-    assert '"msg": "api-01: a,\\"b\\" c\\\\d, @@x 中文=1+2 (2/2)"' in console
+    assert '    - task_a [warn] [task_a_message:a,"b" c\\d, @@x caf\u00e9=1+2, task_a_repeat:2, task_a_delay_seconds:0]' in console
+    assert '"msg": "api-01: a,\\"b\\" c\\\\d, @@x caf\u00e9=1+2 (2/2)"' in console
     assert '"msg": "api-01: task_c mode=apply label="' in console
     assert '"msg": "api-01: app=api version=1.8.0"' in console      # task_c_verbose arrived as a boolean

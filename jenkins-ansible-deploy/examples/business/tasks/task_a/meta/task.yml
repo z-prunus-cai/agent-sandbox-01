@@ -1,4 +1,4 @@
-description: 在所选主机组上运行的示例任务
+description: Example task that runs on the selected host groups
 phases: [pre]
 access: write
 menu: main

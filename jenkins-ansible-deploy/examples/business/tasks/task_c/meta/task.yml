@@ -1,4 +1,4 @@
-description: 带枚举参数和布尔参数的示例任务
+description: Example task with a choice and a boolean parameter
 phases: [pre, post]
 access: write
 menu: main

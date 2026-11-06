@@ -1,4 +1,4 @@
-description: 部署后比较主机变量的示例检查
+description: Example check that compares host variables after deployment
 phases: [post]
 access: read
 menu: main

@@ -1,4 +1,4 @@
-description: 在 Jenkins 节点本机检查文件的示例任务
+description: Example task that checks a file on the Jenkins node
 phases: [pre]
 access: read
 menu: main

@@ -1,16 +1,16 @@
 argument_specs:
   main:
-    short_description: 示例任务 A：在所选主机组的每台主机上运行
+    short_description: Example task A - runs on each host of the selected host groups
     options:
       task_a_message:
         type: str
         required: true
-        description: 要输出的文字
+        description: Text to print
       task_a_repeat:
         type: int
         default: 1
-        description: 输出次数，1 到 5
+        description: How many times to print it, 1 to 5
       task_a_delay_seconds:
         type: int
         default: 0
-        description: 开始前等待的秒数，用于演示超时
+        description: Seconds to wait before starting, to show a timeout

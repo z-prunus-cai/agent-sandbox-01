@@ -1,4 +1,4 @@
-description: 在 task_c 之后运行的示例检查
+description: Example check that runs after task_c
 phases: [pre, post]
 access: read
 menu: more

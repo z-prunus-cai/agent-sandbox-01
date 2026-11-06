@@ -1,4 +1,4 @@
-description: 执行前需要复核的示例任务
+description: Example task that is reviewed before it runs
 phases: [pre, post]
 access: write
 menu: more
